@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, use } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -74,7 +74,8 @@ const mockMessages: Message[] = [
 
 type ActiveTab = "messages" | "tasks" | "files" | "brief";
 
-export default function AdminProjectDetailPage({ params }: { params: { id: string } }) {
+export default function AdminProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const [activeTab, setActiveTab] = useState<ActiveTab>("messages");
   const [newMessage, setNewMessage] = useState("");
   const [tasks, setTasks] = useState(mockTasks);
@@ -103,7 +104,7 @@ export default function AdminProjectDetailPage({ params }: { params: { id: strin
     if (!newTaskTitle.trim()) return;
     const newTask: Task = {
       id: `t${Date.now()}`,
-      project_id: params.id,
+      project_id: resolvedParams.id,
       title: newTaskTitle,
       status: "todo",
       created_at: new Date().toISOString(),
