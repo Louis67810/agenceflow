@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, use } from "react";
 import Link from "next/link";
 import { ArrowLeft, Send, ExternalLink, CheckCircle, Clock } from "lucide-react";
 import { StageTimeline } from "@/components/shared/StageTimeline";
@@ -29,7 +29,8 @@ const mockMessages = [
   { id: "m3", sender: "Équipe AgenceFlow", role: "admin" as const, content: "Parfait ! Le design V1 sera prêt d'ici vendredi. On vous envoie un lien dès que c'est prêt.", time: "Hier" },
 ];
 
-export default function ClientProjectDetailPage({ params }: { params: { id: string } }) {
+export default function ClientProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  use(params);
   const [message, setMessage] = useState("");
   const project = mockProject;
 
