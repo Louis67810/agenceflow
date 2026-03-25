@@ -31,7 +31,11 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // Routes publiques
+  // Routes publiques (pas besoin d'être connecté)
+  if (path.startsWith("/setup")) {
+    return supabaseResponse;
+  }
+
   if (path.startsWith("/login")) {
     if (user) {
       // Récupère le rôle pour rediriger vers le bon espace
