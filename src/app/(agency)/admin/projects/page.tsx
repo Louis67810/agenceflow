@@ -17,7 +17,7 @@ const mockProjects: Project[] = [
     client_id: "c1",
     client: { id: "c1", name: "Martin Dupont", email: "martin@xyz.com", created_at: "", payment_status: "paid" },
     designer_id: "d1",
-    designer: { id: "d1", name: "Sarah K.", email: "sarah@agency.com", created_at: "" },
+    designer: { id: "d1", name: "Sarah K.", email: "sarah@agency.com", role: "designer" as const, created_at: "" },
     current_stage: "design",
     stages: [
       { stage: "copywriting", label: "Copywriting", duration_days: 5, completed: true },
@@ -55,7 +55,7 @@ const mockProjects: Project[] = [
     client_id: "c3",
     client: { id: "c3", name: "Pierre Martin", email: "pierre@techstart.io", created_at: "", payment_status: "partial" },
     designer_id: "d2",
-    designer: { id: "d2", name: "Tom A.", email: "tom@agency.com", created_at: "" },
+    designer: { id: "d2", name: "Tom A.", email: "tom@agency.com", role: "designer" as const, created_at: "" },
     current_stage: "wireframe",
     stages: [
       { stage: "copywriting", label: "Copywriting", duration_days: 3, completed: true },
