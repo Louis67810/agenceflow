@@ -15,6 +15,18 @@ body {
   box-sizing: border-box;
 }
 
+/* Cursor pointer sur tous les éléments interactifs */
+button,
+a,
+[role="button"],
+select,
+label[for],
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"] {
+  cursor: pointer;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

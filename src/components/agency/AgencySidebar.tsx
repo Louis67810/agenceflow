@@ -108,10 +108,12 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
           <Settings size={18} />
           Paramètres
         </Link>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-red-400 transition-colors">
-          <LogOut size={18} />
-          Déconnexion
-        </button>
+        <form action="/api/auth/signout" method="POST">
+          <button type="submit" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-red-400 transition-colors">
+            <LogOut size={18} />
+            Déconnexion
+          </button>
+        </form>
         <div className="px-3 py-2 mt-2">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-sm font-bold">

@@ -240,6 +240,46 @@ type ActiveTab = "messages" | "tasks" | "files";
 type MessageChannel = "client" | "designer" | "developer";
 type PlatformFilter = "all" | "whatsapp" | "figma" | "app";
 
+/** Convertit n'importe quelle URL Google Docs en URL de prévisualisation embed */
+function toGoogleDocsPreviewUrl(url: string): string {
+  // Format : https://docs.google.com/document/d/{id}/edit → /preview
+  try {
+    const u = new URL(url);
+    // Remplace /edit, /view, etc. par /preview
+    u.pathname = u.pathname.replace(/\/(edit|view|pub)$/, "") + "/preview";
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+function GoogleDocsPreview({ url }: { url: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const previewUrl = toGoogleDocsPreviewUrl(url);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 text-xs text-gray-500 hover:bg-gray-100 transition-colors"
+      >
+        <span>{expanded ? "Masquer la prévisualisation" : "Voir la prévisualisation"}</span>
+        <span className="text-gray-400">{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && (
+        <div className="w-full h-96 bg-gray-100">
+          <iframe
+            src={previewUrl}
+            className="w-full h-full border-0"
+            title="Prévisualisation Google Docs"
+            sandbox="allow-scripts allow-same-origin"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SourceBadge({ source }: { source: string }) {
   const map: Record<string, { icon: ReactNode; label: string; color: string }> = {
     whatsapp: {
@@ -713,28 +753,33 @@ export default function AdminProjectDetailPage({
                     </a>
                   )}
                   {project.google_doc_url && (
-                    <a
-                      href={project.google_doc_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-all group"
-                    >
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <FileText size={18} className="text-blue-600" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          Brief client
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Document de spécifications
-                        </p>
-                      </div>
-                      <ExternalLink
-                        size={14}
-                        className="text-gray-400 group-hover:text-indigo-500"
-                      />
-                    </a>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Header cliquable */}
+                      <a
+                        href={project.google_doc_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 hover:bg-indigo-50 transition-colors group border-b border-gray-100"
+                      >
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+                          <FileText size={18} className="text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            Brief client / Google Docs
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Cliquez pour ouvrir dans Google Docs
+                          </p>
+                        </div>
+                        <ExternalLink
+                          size={14}
+                          className="text-gray-400 group-hover:text-indigo-500"
+                        />
+                      </a>
+                      {/* Preview iframe */}
+                      <GoogleDocsPreview url={project.google_doc_url} />
+                    </div>
                   )}
                 </div>
 
