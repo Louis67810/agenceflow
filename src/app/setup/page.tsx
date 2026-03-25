@@ -33,31 +33,42 @@ export default function SetupPage() {
     setLoading(true);
     setError(null);
 
-    // 1. Appel API serveur — crée le compte sans email de confirmation
-    const res = await fetch("/api/setup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+    // 1. Créer le compte
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, role: "admin" } },
     });
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error ?? "Une erreur est survenue.");
+    if (signUpError) {
+      if (signUpError.message.includes("already registered")) {
+        setError(
+          "Un compte existe déjà avec cet email. Va sur /login pour te connecter, ou supprime ce compte dans Supabase → Authentication → Users."
+        );
+      } else {
+        setError(signUpError.message);
+      }
       setLoading(false);
       return;
     }
 
-    // 2. Connexion automatique avec les identifiants
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError("Compte créé ! Mais connexion auto échouée : " + signInError.message);
+    // Si session null = confirmation email encore activée dans Supabase
+    if (!signUpData.session) {
+      setError(
+        "Supabase demande encore une confirmation email. Va dans Supabase → Authentication → Settings → désactive « Enable email confirmations », puis réessaie."
+      );
       setLoading(false);
       return;
+    }
+
+    // 2. Créer le profil admin (best effort)
+    if (signUpData.user) {
+      await supabase.from("agency_profiles").insert({
+        id: signUpData.user.id,
+        role: "admin",
+        name,
+        email,
+      });
     }
 
     setStep("done");
@@ -71,7 +82,7 @@ export default function SetupPage() {
           <CheckCircle2 size={40} className="text-green-400 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-white mb-2">Compte créé !</h1>
           <p className="text-gray-400 text-sm mb-6">
-            Ton compte admin a été créé et tu es connecté.
+            Tu es connecté en tant qu&apos;admin.
           </p>
           <button
             onClick={() => router.push("/admin")}
@@ -128,7 +139,6 @@ export default function SetupPage() {
               className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
               Email
@@ -142,7 +152,6 @@ export default function SetupPage() {
               className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
               Mot de passe
