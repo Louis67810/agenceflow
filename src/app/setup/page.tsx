@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter } from "next/navigation";
-import { Briefcase, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, ShieldCheck } from "lucide-react";
+import {
+  Briefcase,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -25,51 +33,29 @@ export default function SetupPage() {
     setLoading(true);
     setError(null);
 
-    // 1. Créer le compte dans Supabase Auth
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, role: "admin" },
-      },
+    // 1. Appel API serveur — crée le compte sans email de confirmation
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
     });
 
-    if (signUpError) {
-      setError(
-        signUpError.message === "User already registered"
-          ? "Un compte avec cet email existe déjà. Allez sur /login."
-          : signUpError.message
-      );
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error ?? "Une erreur est survenue.");
       setLoading(false);
       return;
     }
 
-    const userId = authData.user?.id;
-    if (!userId) {
-      setError("Erreur lors de la création du compte. Réessayez.");
-      setLoading(false);
-      return;
-    }
-
-    // 2. Créer le profil admin dans agency_profiles
-    const { error: profileError } = await supabase
-      .from("agency_profiles")
-      .insert({ id: userId, role: "admin", name, email });
-
-    if (profileError) {
-      // La table n'existe peut-être pas encore — on continue quand même
-      console.warn("agency_profiles insert failed:", profileError.message);
-    }
-
-    // 3. Se connecter directement
+    // 2. Connexion automatique avec les identifiants
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (signInError) {
-      // Compte créé mais connexion auto impossible (ex: email confirmation activé)
-      setStep("done");
+      setError("Compte créé ! Mais connexion auto échouée : " + signInError.message);
       setLoading(false);
       return;
     }
@@ -85,7 +71,7 @@ export default function SetupPage() {
           <CheckCircle2 size={40} className="text-green-400 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-white mb-2">Compte créé !</h1>
           <p className="text-gray-400 text-sm mb-6">
-            Ton compte admin a été créé avec succès.
+            Ton compte admin a été créé et tu es connecté.
           </p>
           <button
             onClick={() => router.push("/admin")}
@@ -93,9 +79,6 @@ export default function SetupPage() {
           >
             Accéder au dashboard
           </button>
-          <p className="text-xs text-gray-600 mt-4">
-            Cette page /setup est désormais inutilisable si un compte admin existe.
-          </p>
         </div>
       </div>
     );
@@ -103,7 +86,6 @@ export default function SetupPage() {
 
   return (
     <div className="w-full max-w-sm">
-      {/* Logo */}
       <div className="flex items-center gap-3 justify-center mb-8">
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
           <Briefcase size={18} className="text-white" />
@@ -112,7 +94,6 @@ export default function SetupPage() {
       </div>
 
       <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8">
-        {/* Badge setup */}
         <div className="flex items-center gap-2 bg-indigo-950 border border-indigo-800 rounded-lg px-3 py-2 mb-6">
           <ShieldCheck size={14} className="text-indigo-400" />
           <span className="text-xs text-indigo-300 font-medium">
@@ -122,7 +103,7 @@ export default function SetupPage() {
 
         <h1 className="text-xl font-bold text-white mb-1">Créer ton compte</h1>
         <p className="text-sm text-gray-500 mb-6">
-          Ce compte aura les droits admin complets sur AgenceFlow.
+          Ce compte aura les droits admin complets.
         </p>
 
         {error && (
@@ -201,14 +182,6 @@ export default function SetupPage() {
             )}
           </button>
         </form>
-      </div>
-
-      <div className="mt-4 flex items-start gap-2 px-2">
-        <AlertCircle size={13} className="text-gray-600 mt-0.5 shrink-0" />
-        <p className="text-xs text-gray-600">
-          Si la connexion automatique échoue, désactive la confirmation email dans{" "}
-          <span className="text-gray-500">Supabase → Authentication → Settings → Email Confirmations</span>.
-        </p>
       </div>
     </div>
   );
