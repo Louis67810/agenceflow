@@ -50,6 +50,7 @@ const mockProject: Project = {
     name: "Sarah Kimura",
     email: "sarah@agency.com",
     speciality: "UI/UX Design",
+    role: "designer" as const,
     created_at: "2025-06-01",
   },
   current_stage: "design",
