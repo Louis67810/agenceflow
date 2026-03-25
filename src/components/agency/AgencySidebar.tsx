@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -20,7 +21,7 @@ import type { AgencyRole } from "@/types/agency";
 interface NavItem {
   href: string;
   label: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }
 
 const adminNav: NavItem[] = [

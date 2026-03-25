@@ -1,13 +1,10 @@
+import type { ReactNode } from "react";
 import { AgencySidebar } from "@/components/agency/AgencySidebar";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import type { AgencyRole } from "@/types/agency";
 
-export default async function AgencyLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AgencyLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient();
   const {
     data: { user },

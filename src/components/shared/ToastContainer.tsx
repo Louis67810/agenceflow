@@ -1,10 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Toast, ToastType } from "@/hooks/useToast";
 
-const toastConfig: Record<ToastType, { icon: React.ReactNode; className: string }> = {
+const toastConfig: Record<ToastType, { icon: ReactNode; className: string }> = {
   success: {
     icon: <CheckCircle size={16} />,
     className: "bg-green-50 border-green-200 text-green-800",
