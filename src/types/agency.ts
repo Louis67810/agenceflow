@@ -37,6 +37,7 @@ export interface Designer {
   avatar_url?: string;
   speciality?: string;
   hourly_rate?: number;
+  role: "designer" | "developer";
   created_at: string;
 }
 

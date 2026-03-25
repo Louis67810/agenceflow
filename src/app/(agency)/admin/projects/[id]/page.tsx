@@ -17,10 +17,11 @@ import {
   Monitor,
   Sparkles,
   CheckCircle2,
-  Users,
   User,
   LayoutGrid,
   ClipboardList,
+  Pen,
+  Code2,
 } from "lucide-react";
 import { StatusBadge } from "@/components/agency/StatusBadge";
 import { StageTimeline } from "@/components/shared/StageTimeline";
@@ -173,7 +174,7 @@ const mockClientMessages: Message[] = [
   },
 ];
 
-const mockTeamMessages: Message[] = [
+const mockDesignerMessages: Message[] = [
   {
     id: "tm1",
     project_id: "1",
@@ -209,8 +210,33 @@ const mockTeamMessages: Message[] = [
   },
 ];
 
+const mockDevMessages: Message[] = [
+  {
+    id: "dev1",
+    project_id: "1",
+    sender_id: "a1",
+    sender_name: "Admin",
+    sender_role: "admin",
+    content:
+      "Karim, les maquettes V2 sont prêtes. Tu peux commencer l'intégration Framer dès que possible.",
+    source: "app",
+    created_at: "2026-03-22T09:00:00",
+  },
+  {
+    id: "dev2",
+    project_id: "1",
+    sender_id: "dev1",
+    sender_name: "Karim Benali",
+    sender_role: "designer",
+    content:
+      "Reçu ! Je commence l'intégration aujourd'hui. J'ai quelques questions sur les animations de la hero section.",
+    source: "app",
+    created_at: "2026-03-22T10:15:00",
+  },
+];
+
 type ActiveTab = "messages" | "tasks" | "files";
-type MessageChannel = "client" | "team";
+type MessageChannel = "client" | "designer" | "developer";
 type PlatformFilter = "all" | "whatsapp" | "figma" | "app";
 
 function SourceBadge({ source }: { source: string }) {
@@ -318,7 +344,11 @@ export default function AdminProjectDetailPage({
   };
 
   const currentMessages =
-    messageChannel === "client" ? mockClientMessages : mockTeamMessages;
+    messageChannel === "client"
+      ? mockClientMessages
+      : messageChannel === "designer"
+        ? mockDesignerMessages
+        : mockDevMessages;
 
   const filteredMessages =
     platformFilter === "all"
@@ -327,11 +357,7 @@ export default function AdminProjectDetailPage({
 
   const platforms: { key: PlatformFilter; label: string; icon: ReactNode }[] = [
     { key: "all", label: "Tout", icon: <LayoutGrid size={12} /> },
-    {
-      key: "whatsapp",
-      label: "WhatsApp",
-      icon: <MessageSquare size={12} />,
-    },
+    { key: "whatsapp", label: "WhatsApp", icon: <MessageSquare size={12} /> },
     { key: "figma", label: "Figma", icon: <Figma size={12} /> },
     { key: "app", label: "App", icon: <Monitor size={12} /> },
   ];
@@ -427,7 +453,7 @@ export default function AdminProjectDetailPage({
             {activeTab === "messages" && (
               <div className="flex flex-col">
                 {/* Channel sub-tabs */}
-                <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-100">
+                <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-100 flex-wrap">
                   <button
                     onClick={() => setMessageChannel("client")}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -440,15 +466,26 @@ export default function AdminProjectDetailPage({
                     Client
                   </button>
                   <button
-                    onClick={() => setMessageChannel("team")}
+                    onClick={() => setMessageChannel("designer")}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      messageChannel === "team"
-                        ? "bg-indigo-600 text-white"
+                      messageChannel === "designer"
+                        ? "bg-purple-600 text-white"
                         : "text-gray-500 hover:bg-gray-100"
                     }`}
                   >
-                    <Users size={12} />
-                    Équipe
+                    <Pen size={12} />
+                    Designer
+                  </button>
+                  <button
+                    onClick={() => setMessageChannel("developer")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      messageChannel === "developer"
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    <Code2 size={12} />
+                    Développeur
                   </button>
 
                   {/* Platform filter (only for client messages) */}
@@ -535,7 +572,9 @@ export default function AdminProjectDetailPage({
                       placeholder={
                         messageChannel === "client"
                           ? "Écrire au client..."
-                          : "Écrire à l'équipe..."
+                          : messageChannel === "designer"
+                            ? "Écrire au designer..."
+                            : "Écrire au développeur..."
                       }
                       className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     />

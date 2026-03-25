@@ -27,7 +27,7 @@ const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { href: "/admin/projects", label: "Projets", icon: <FolderKanban size={18} /> },
   { href: "/admin/clients", label: "Clients", icon: <Users size={18} /> },
-  { href: "/admin/designers", label: "Designers", icon: <Palette size={18} /> },
+  { href: "/admin/designers", label: "Prestataires", icon: <Palette size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
 ];
