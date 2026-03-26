@@ -49,11 +49,13 @@ export async function POST(request: Request) {
 
     // Profil admin (best effort — la table peut ne pas exister encore)
     if (authData.user?.id) {
-      await supabaseAdmin
-        .from("agency_profiles")
-        .insert({ id: authData.user.id, role: "admin", name, email })
-        .then(() => null)
-        .catch(() => null);
+      try {
+        await supabaseAdmin
+          .from("agency_profiles")
+          .insert({ id: authData.user.id, role: "admin", name, email });
+      } catch {
+        // Table pas encore créée — ignoré
+      }
     }
 
     return NextResponse.json({ success: true });
