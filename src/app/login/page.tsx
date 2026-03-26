@@ -47,9 +47,8 @@ export default function LoginPage() {
       return;
     }
 
-    log("Connexion ok, appel router.push('/admin')...");
-    router.push("/admin");
-    log("router.push appelé");
+    log("Connexion ok, navigation hard vers /admin...");
+    window.location.href = "/admin";
   };
 
   return (
