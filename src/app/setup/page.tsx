@@ -33,42 +33,31 @@ export default function SetupPage() {
     setLoading(true);
     setError(null);
 
-    // 1. Créer le compte
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role: "admin" } },
+    // 1. Créer le compte via l'API route (admin.createUser → email déjà confirmé)
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
     });
 
-    if (signUpError) {
-      if (signUpError.message.includes("already registered")) {
-        setError(
-          "Un compte existe déjà avec cet email. Va sur /login pour te connecter, ou supprime ce compte dans Supabase → Authentication → Users."
-        );
-      } else {
-        setError(signUpError.message);
-      }
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      setError(data.error ?? "Erreur inconnue.");
       setLoading(false);
       return;
     }
 
-    // Si session null = confirmation email encore activée dans Supabase
-    if (!signUpData.session) {
-      setError(
-        "Supabase demande encore une confirmation email. Va dans Supabase → Authentication → Settings → désactive « Enable email confirmations », puis réessaie."
-      );
+    // 2. Se connecter directement (email déjà confirmé par admin.createUser)
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      setError("Compte créé mais connexion échouée : " + signInError.message);
       setLoading(false);
       return;
-    }
-
-    // 2. Créer le profil admin (best effort)
-    if (signUpData.user) {
-      await supabase.from("agency_profiles").insert({
-        id: signUpData.user.id,
-        role: "admin",
-        name,
-        email,
-      });
     }
 
     setStep("done");
