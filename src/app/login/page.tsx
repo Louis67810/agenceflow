@@ -1,48 +1,44 @@
 "use client";
 
 import { useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 import { Briefcase, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
 
-  const log = (msg: string) =>
-    setLogs((prev) => [...prev, `[${new Date().toISOString().slice(11, 23)}] ${msg}`]);
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    log("Soumission du formulaire");
 
-    log("Appel /api/auth/login...");
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
 
-    const data = await res.json();
-    log(`Réponse HTTP ${res.status} : ${JSON.stringify(data)}`);
-
-    if (!res.ok) {
+    if (signInError) {
       setError(
-        data.error === "Invalid login credentials"
+        signInError.message === "Invalid login credentials"
           ? "Email ou mot de passe incorrect."
-          : data.error ?? "Erreur inconnue."
+          : signInError.message
       );
       setLoading(false);
       return;
     }
 
-    log("Cookies set, navigation vers /admin...");
-    window.location.href = "/admin";
+    router.push("/admin");
   };
 
   return (
@@ -126,17 +122,6 @@ export default function LoginPage() {
       <p className="text-center text-xs text-gray-400 mt-4">
         Pas encore de compte ? Contactez l&apos;administrateur.
       </p>
-
-      {logs.length > 0 && (
-        <div className="mt-4 bg-black border border-gray-700 rounded-xl p-4 w-full">
-          <p className="text-xs text-gray-400 font-mono mb-2 select-all">— Debug log —</p>
-          {logs.map((l, i) => (
-            <p key={i} className="text-xs font-mono text-green-400 break-all leading-relaxed select-all">
-              {l}
-            </p>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
