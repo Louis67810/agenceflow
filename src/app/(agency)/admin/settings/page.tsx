@@ -25,22 +25,11 @@ interface AccessKey {
   used_at: string | null; created_at: string;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STANDARD_FIELDS = [
-  { id: "full_name",    label: "Nom complet",                   type: "text" },
-  { id: "email",        label: "Email",                         type: "email" },
-  { id: "company",      label: "Entreprise / Organisation",     type: "text" },
-  { id: "phone",        label: "Téléphone",                     type: "text" },
-  { id: "project_name", label: "Nom du projet",                 type: "text" },
-  { id: "description",  label: "Description du projet",         type: "textarea" },
-  { id: "budget",       label: "Budget estimé",                 type: "text" },
-  { id: "deadline",     label: "Délai souhaité",                type: "text" },
-  { id: "references",   label: "Références / inspirations",     type: "textarea" },
-  { id: "notes",        label: "Remarques complémentaires",     type: "textarea" },
-];
-
-const DEFAULT_SELECTED = ["full_name", "email", "project_name", "description"];
+interface FormTemplate {
+  id: string;
+  name: string;
+  fields: { id: string; type: string; label: string; required?: boolean; options?: string[] }[];
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -54,20 +43,27 @@ export default function SettingsPage() {
   const [savedStatus, setSavedStatus]   = useState<Record<string, boolean>>({});
 
   // ── Access keys state ──
-  const [accessKeys, setAccessKeys]       = useState<AccessKey[]>([]);
-  const [keysLoading, setKeysLoading]     = useState(false);
-  const [showCreate, setShowCreate]       = useState(false);
-  const [newName, setNewName]             = useState("");
-  const [newRole, setNewRole]             = useState<"client" | "designer">("client");
-  const [selectedFields, setSelectedFields] = useState<string[]>(DEFAULT_SELECTED);
-  const [creating, setCreating]           = useState(false);
-  const [createError, setCreateError]     = useState<string | null>(null);
-  const [createdKey, setCreatedKey]       = useState<AccessKey | null>(null);
-  const [copied, setCopied]               = useState(false);
-  const [deleting, setDeleting]           = useState<string | null>(null);
+  const [accessKeys, setAccessKeys]   = useState<AccessKey[]>([]);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [showCreate, setShowCreate]   = useState(false);
+  const [newName, setNewName]         = useState("");
+  const [newRole, setNewRole]         = useState<"client" | "designer">("client");
+  const [forms, setForms]             = useState<FormTemplate[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState("");
+  const [creating, setCreating]       = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdKey, setCreatedKey]   = useState<AccessKey | null>(null);
+  const [copied, setCopied]           = useState(false);
+  const [deleting, setDeleting]       = useState<string | null>(null);
 
   useEffect(() => {
-    if (tab === "keys") loadKeys();
+    if (tab === "keys") {
+      loadKeys();
+      fetch("/api/forms").then((r) => r.json()).then((d) => {
+        setForms(d.forms ?? []);
+        if (d.forms?.length > 0) setSelectedFormId(d.forms[0].id);
+      });
+    }
   }, [tab]);
 
   async function loadKeys() {
@@ -82,18 +78,17 @@ export default function SettingsPage() {
     e.preventDefault();
     setCreating(true);
     setCreateError(null);
-    const fields = STANDARD_FIELDS.filter((f) => selectedFields.includes(f.id)).map((f) => ({
-      id: f.id, label: f.label, required: true,
-    }));
+    const selectedForm = forms.find((f) => f.id === selectedFormId);
+    if (!selectedForm) { setCreateError("Sélectionne un formulaire."); setCreating(false); return; }
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, role: newRole, formFields: fields }),
+      body: JSON.stringify({ name: newName, role: newRole, formFields: selectedForm.fields }),
     });
     const data = await res.json();
     if (!res.ok) { setCreateError(data.error ?? "Erreur"); setCreating(false); return; }
     setCreatedKey(data.key);
-    setNewName(""); setNewRole("client"); setSelectedFields(DEFAULT_SELECTED);
+    setNewName(""); setNewRole("client");
     setShowCreate(false);
     setCreating(false);
     loadKeys();
@@ -113,9 +108,6 @@ export default function SettingsPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function toggleField(id: string) {
-    setSelectedFields((p) => p.includes(id) ? p.filter((f) => f !== id) : [...p, id]);
-  }
 
   // ── Integrations ──
   const integrations: Integration[] = [
@@ -315,19 +307,29 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Champs du formulaire</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {STANDARD_FIELDS.map((f) => (
-                      <label key={f.id} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm cursor-pointer transition-colors ${selectedFields.includes(f.id) ? "bg-indigo-50 border-indigo-300 text-indigo-800" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
-                        <input type="checkbox" checked={selectedFields.includes(f.id)} onChange={() => toggleField(f.id)} className="rounded accent-indigo-600" />
-                        {f.label}
-                      </label>
-                    ))}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Formulaire d&apos;onboarding</label>
+                  {forms.length === 0 ? (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                      <AlertCircle size={14} />
+                      Aucun formulaire trouvé. Crée-en un dans l&apos;onglet <a href="/admin/forms" className="underline font-medium">Formulaires</a>.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {forms.map((f) => (
+                        <label key={f.id} className={`flex items-start gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors ${selectedFormId === f.id ? "bg-indigo-50 border-indigo-300" : "border-gray-200 hover:border-gray-300"}`}>
+                          <input type="radio" name="form" checked={selectedFormId === f.id} onChange={() => setSelectedFormId(f.id)} className="mt-0.5 accent-indigo-600" />
+                          <div>
+                            <p className={`text-sm font-medium ${selectedFormId === f.id ? "text-indigo-800" : "text-gray-800"}`}>{f.name}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{f.fields.length} champ{f.fields.length !== 1 ? "s" : ""}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-1">
-                  <button type="submit" disabled={creating || selectedFields.length === 0} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
+                  <button type="submit" disabled={creating || !selectedFormId} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">
                     {creating ? <><Loader2 size={14} className="animate-spin" />Création...</> : <><Key size={14} />Générer le lien</>}
                   </button>
                   <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
