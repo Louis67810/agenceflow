@@ -12,6 +12,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  const log = (msg: string) =>
+    setLogs((prev) => [...prev, `[${new Date().toISOString().slice(11, 23)}] ${msg}`]);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,13 +26,18 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    log("Soumission du formulaire");
+    log(`Email : ${email}`);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    log("Appel signInWithPassword...");
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    log(`Réponse : error=${JSON.stringify(signInError)}, user=${signInData?.user?.id ?? "null"}`);
 
     if (signInError) {
+      log(`Erreur auth : ${signInError.message}`);
       setError(
         signInError.message === "Invalid login credentials"
           ? "Email ou mot de passe incorrect."
@@ -38,8 +47,9 @@ export default function LoginPage() {
       return;
     }
 
-    // Connexion ok — redirige vers le dashboard
+    log("Connexion ok, appel router.push('/admin')...");
     router.push("/admin");
+    log("router.push appelé");
   };
 
   return (
@@ -123,6 +133,17 @@ export default function LoginPage() {
       <p className="text-center text-xs text-gray-400 mt-4">
         Pas encore de compte ? Contactez l&apos;administrateur.
       </p>
+
+      {logs.length > 0 && (
+        <div className="mt-4 bg-black border border-gray-700 rounded-xl p-4 w-full">
+          <p className="text-xs text-gray-400 font-mono mb-2 select-all">— Debug log —</p>
+          {logs.map((l, i) => (
+            <p key={i} className="text-xs font-mono text-green-400 break-all leading-relaxed select-all">
+              {l}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
