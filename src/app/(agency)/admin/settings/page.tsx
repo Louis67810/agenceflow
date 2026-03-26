@@ -83,7 +83,7 @@ export default function SettingsPage() {
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, role: newRole, formFields: selectedForm.fields }),
+      body: JSON.stringify({ name: newName, role: newRole, formPages: (selectedForm as { pages?: object[] }).pages ?? selectedForm.fields }),
     });
     const data = await res.json();
     if (!res.ok) { setCreateError(data.error ?? "Erreur"); setCreating(false); return; }

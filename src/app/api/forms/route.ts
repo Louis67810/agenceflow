@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 function admin() {
   return createClient(
@@ -12,9 +12,24 @@ function admin() {
 export async function GET() {
   const { data, error } = await admin()
     .from("forms")
-    .select("id, name, fields")
+    .select("id, name, pages, created_at")
     .order("created_at");
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ forms: data ?? [] });
+}
+
+export async function POST(request: NextRequest) {
+  const { name } = await request.json();
+  const defaultPage = {
+    id: crypto.randomUUID().replace(/-/g, ""),
+    title: "Page 1",
+    fields: [],
+  };
+  const { data, error } = await admin()
+    .from("forms")
+    .insert({ name: name || "Nouveau formulaire", pages: [defaultPage] })
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ form: data });
 }

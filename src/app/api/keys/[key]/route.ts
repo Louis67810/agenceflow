@@ -16,7 +16,7 @@ export async function GET(
   const { key } = await context.params;
   const { data, error } = await admin()
     .from("access_keys")
-    .select("name, role, form_fields, used_at")
+    .select("name, role, form_fields, form_pages, used_at")
     .eq("key", key)
     .single();
 

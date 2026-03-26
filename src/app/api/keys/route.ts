@@ -20,14 +20,19 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { name, role, formFields } = await request.json();
+  const { name, role, formFields, formPages } = await request.json();
   if (!name || !role) return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
 
   const key = crypto.randomUUID().replace(/-/g, "");
 
+  // Flatten pages → form_fields for backward compat
+  const flatFields = formPages
+    ? (formPages as { fields: object[] }[]).flatMap((p) => p.fields)
+    : (formFields ?? []);
+
   const { data, error } = await admin()
     .from("access_keys")
-    .insert({ key, name, role, form_fields: formFields ?? [] })
+    .insert({ key, name, role, form_fields: flatFields, form_pages: formPages ?? [] })
     .select()
     .single();
 
