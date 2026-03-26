@@ -1,12 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
 import { Briefcase, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -17,37 +14,34 @@ export default function LoginPage() {
   const log = (msg: string) =>
     setLogs((prev) => [...prev, `[${new Date().toISOString().slice(11, 23)}] ${msg}`]);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     log("Soumission du formulaire");
-    log(`Email : ${email}`);
 
-    log("Appel signInWithPassword...");
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    log("Appel /api/auth/login...");
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
     });
-    log(`Réponse : error=${JSON.stringify(signInError)}, user=${signInData?.user?.id ?? "null"}`);
 
-    if (signInError) {
-      log(`Erreur auth : ${signInError.message}`);
+    const data = await res.json();
+    log(`Réponse HTTP ${res.status} : ${JSON.stringify(data)}`);
+
+    if (!res.ok) {
       setError(
-        signInError.message === "Invalid login credentials"
+        data.error === "Invalid login credentials"
           ? "Email ou mot de passe incorrect."
-          : signInError.message
+          : data.error ?? "Erreur inconnue."
       );
       setLoading(false);
       return;
     }
 
-    log("Connexion ok, navigation hard vers /admin...");
+    log("Cookies set, navigation vers /admin...");
     window.location.href = "/admin";
   };
 
