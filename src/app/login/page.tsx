@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 import { Briefcase, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
-import { signIn } from "@/app/actions/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,31 +13,37 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const result = await signIn(email, password);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (result?.error) {
+    if (signInError) {
       setError(
-        result.error === "Invalid login credentials"
+        signInError.message === "Invalid login credentials"
           ? "Email ou mot de passe incorrect."
-          : result.error
+          : signInError.message
       );
       setLoading(false);
       return;
     }
 
-    if (result?.redirectTo) {
-      router.push(result.redirectTo);
-    }
+    // Connexion ok — redirige vers le dashboard
+    router.push("/admin");
   };
 
   return (
     <div className="w-full max-w-sm">
-      {/* Logo */}
       <div className="flex items-center gap-3 justify-center mb-8">
         <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
           <Briefcase size={18} className="text-white" />
@@ -45,7 +51,6 @@ export default function LoginPage() {
         <span className="text-xl font-bold text-gray-900">AgenceFlow</span>
       </div>
 
-      {/* Card */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
         <h1 className="text-xl font-bold text-gray-900 mb-1">Connexion</h1>
         <p className="text-sm text-gray-500 mb-6">
