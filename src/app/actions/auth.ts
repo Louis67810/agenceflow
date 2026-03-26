@@ -23,7 +23,7 @@ export async function signIn(email: string, password: string) {
     .single();
 
   const role = profile?.role ?? "admin";
-  redirect(`/${role}`);
+  return { redirectTo: `/${role}` };
 }
 
 export async function signOut() {

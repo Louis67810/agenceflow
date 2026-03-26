@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Briefcase, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { signIn } from "@/app/actions/auth";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +19,7 @@ export default function LoginPage() {
     setError(null);
 
     const result = await signIn(email, password);
+
     if (result?.error) {
       setError(
         result.error === "Invalid login credentials"
@@ -24,6 +27,11 @@ export default function LoginPage() {
           : result.error
       );
       setLoading(false);
+      return;
+    }
+
+    if (result?.redirectTo) {
+      router.push(result.redirectTo);
     }
   };
 
