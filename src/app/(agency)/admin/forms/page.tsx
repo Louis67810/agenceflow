@@ -57,6 +57,9 @@ const needsOptions = (t: string) => ["select", "radio", "checkbox"].includes(t);
 export default function FormsPage() {
   const [forms, setForms]           = useState<FormMeta[]>([]);
   const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState<string | null>(null);
+  const [creating, setCreating]     = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Editor
@@ -82,12 +85,19 @@ export default function FormsPage() {
 
   async function loadForms() {
     setLoading(true);
-    const r = await fetch("/api/forms");
-    const d = await r.json();
-    const list: FormMeta[] = d.forms ?? [];
-    setForms(list);
-    setLoading(false);
-    if (list.length > 0 && !selectedId) selectForm(list[0]);
+    setLoadError(null);
+    try {
+      const r = await fetch("/api/forms");
+      const d = await r.json();
+      if (!r.ok) { setLoadError(d.error ?? "Erreur chargement"); setLoading(false); return; }
+      const list: FormMeta[] = d.forms ?? [];
+      setForms(list);
+      setLoading(false);
+      if (list.length > 0 && !selectedId) selectForm(list[0]);
+    } catch (e) {
+      setLoadError("Impossible de contacter l'API : " + String(e));
+      setLoading(false);
+    }
   }
 
   function selectForm(form: FormMeta) {
@@ -102,16 +112,26 @@ export default function FormsPage() {
   }
 
   async function createForm() {
-    const r = await fetch("/api/forms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Nouveau formulaire" }),
-    });
-    const d = await r.json();
-    if (d.form) {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const r = await fetch("/api/forms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Nouveau formulaire" }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.form) {
+        setCreateError(d.error ?? "Erreur création. Vérifie que la table 'forms' existe dans Supabase (exécute le SQL fourni).");
+        setCreating(false);
+        return;
+      }
       await loadForms();
       selectForm(d.form);
+    } catch (e) {
+      setCreateError("Erreur réseau : " + String(e));
     }
+    setCreating(false);
   }
 
   async function deleteForm(id: string, e: React.MouseEvent) {
@@ -253,21 +273,32 @@ export default function FormsPage() {
           <p className="text-xs text-gray-400 mt-0.5">Gérez vos templates</p>
         </div>
 
-        <div className="p-3">
+        <div className="p-3 space-y-2">
           <button
             onClick={createForm}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+            disabled={creating}
+            className="w-full flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60"
           >
-            <Plus size={14} />
-            Nouveau formulaire
+            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {creating ? "Création..." : "Nouveau formulaire"}
           </button>
+          {createError && (
+            <div className="px-1 py-2 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-600">{createError}</p>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
           {loading ? (
             <div className="flex justify-center py-8"><Loader2 className="animate-spin text-gray-300" size={20} /></div>
+          ) : loadError ? (
+            <div className="px-2 py-3 bg-red-50 border border-red-200 rounded-lg mx-1">
+              <p className="text-xs text-red-600">{loadError}</p>
+              <p className="text-xs text-red-400 mt-1">Exécute le SQL fourni dans Supabase SQL Editor.</p>
+            </div>
           ) : forms.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">Aucun formulaire</p>
+            <p className="text-xs text-gray-400 text-center py-8">Aucun formulaire.<br/>Crée-en un ci-dessus.</p>
           ) : (
             forms.map((form) => (
               <div
