@@ -10,26 +10,34 @@ function admin() {
 }
 
 export async function GET() {
-  const { data, error } = await admin()
-    .from("forms")
-    .select("id, name, pages, created_at")
-    .order("created_at");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ forms: data ?? [] });
+  try {
+    const { data, error } = await admin()
+      .from("forms")
+      .select("id, name, pages, created_at")
+      .order("created_at");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ forms: data ?? [] });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const { name } = await request.json();
-  const defaultPage = {
-    id: crypto.randomUUID().replace(/-/g, ""),
-    title: "Page 1",
-    fields: [],
-  };
-  const { data, error } = await admin()
-    .from("forms")
-    .insert({ name: name || "Nouveau formulaire", pages: [defaultPage] })
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ form: data });
+  try {
+    const { name } = await request.json();
+    const defaultPage = {
+      id: crypto.randomUUID().replace(/-/g, ""),
+      title: "Page 1",
+      fields: [],
+    };
+    const { data, error } = await admin()
+      .from("forms")
+      .insert({ name: name || "Nouveau formulaire", pages: [defaultPage] })
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ form: data });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }
