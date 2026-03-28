@@ -28,7 +28,8 @@ interface AccessKey {
 interface FormTemplate {
   id: string;
   name: string;
-  fields: { id: string; type: string; label: string; required?: boolean; options?: string[] }[];
+  pages?: { id: string; title: string; fields: { id: string; type: string; label: string; required?: boolean; options?: string[] }[] }[];
+  fields?: { id: string; type: string; label: string; required?: boolean; options?: string[] }[];
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ export default function SettingsPage() {
     const res = await fetch("/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, role: newRole, formPages: (selectedForm as { pages?: object[] }).pages ?? selectedForm.fields }),
+      body: JSON.stringify({ name: newName, role: newRole, formPages: selectedForm.pages ?? [] }),
     });
     const data = await res.json();
     if (!res.ok) { setCreateError(data.error ?? "Erreur"); setCreating(false); return; }
@@ -320,7 +321,11 @@ export default function SettingsPage() {
                           <input type="radio" name="form" checked={selectedFormId === f.id} onChange={() => setSelectedFormId(f.id)} className="mt-0.5 accent-indigo-600" />
                           <div>
                             <p className={`text-sm font-medium ${selectedFormId === f.id ? "text-indigo-800" : "text-gray-800"}`}>{f.name}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">{f.fields.length} champ{f.fields.length !== 1 ? "s" : ""}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{
+                              f.pages
+                                ? `${f.pages.length} page${f.pages.length !== 1 ? "s" : ""} · ${f.pages.reduce((n, p) => n + p.fields.length, 0)} champs`
+                                : `${f.fields?.length ?? 0} champ${(f.fields?.length ?? 0) !== 1 ? "s" : ""}`
+                            }</p>
                           </div>
                         </label>
                       ))}
