@@ -1,94 +1,130 @@
-import Link from "next/link";
-import { FolderKanban, MessageSquare, ArrowRight, CheckCircle } from "lucide-react";
-import { StageTimeline } from "@/components/shared/StageTimeline";
-import { StatusBadge } from "@/components/agency/StatusBadge";
+"use client";
+
+import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { FolderOpen, Clock, CheckCircle2, Loader2 } from "lucide-react";
+
+interface Project {
+  id: string;
+  name: string;
+  client_name: string | null;
+  status: string;
+  form_data: Record<string, unknown>;
+  created_at: string;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "En attente de traitement",
+  in_progress: "En cours",
+  review: "En révision",
+  completed: "Terminé",
+};
+
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  pending: <Clock size={16} className="text-yellow-500" />,
+  in_progress: <Loader2 size={16} className="text-blue-500" />,
+  review: <CheckCircle2 size={16} className="text-purple-500" />,
+  completed: <CheckCircle2 size={16} className="text-green-500" />,
+};
 
 export default function ClientDashboard() {
-  // Mock active project
-  const project = {
-    id: "1",
-    name: "Site web Startup XYZ",
-    status: "in_progress" as const,
-    current_stage: "design" as const,
-    stages: [
-      { stage: "copywriting" as const, label: "Copywriting", duration_days: 5, completed: true },
-      { stage: "wireframe" as const, label: "Wireframe", duration_days: 7, completed: true },
-      { stage: "design" as const, label: "Design", duration_days: 14, completed: false },
-      { stage: "development" as const, label: "Développement", duration_days: 10, completed: false },
-      { stage: "revision" as const, label: "Révisions", duration_days: 5, completed: false },
-    ],
-    deadline: "2026-03-28",
-  };
+  const [project, setProject]   = useState<Project | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [userName, setUserName] = useState("");
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  useEffect(() => {
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setLoading(false); return; }
+      const { user } = session;
+
+      // Fetch the project linked to this user
+      const r = await fetch("/api/projects/me", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const d = await r.json();
+      if (d.project) {
+        setProject(d.project);
+        setUserName(d.project.client_name ?? user.email ?? "");
+      } else {
+        setUserName(user.email ?? "");
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const firstName = userName.split(" ")[0] || userName.split("@")[0];
 
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-3xl">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Bonjour Martin 👋</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Bonjour {firstName} !
+        </h1>
         <p className="text-gray-500 mt-1">Voici l&apos;avancement de votre projet.</p>
       </div>
 
-      {/* Project Status Card */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold text-gray-900">{project.name}</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Deadline : {new Date(project.deadline).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="animate-spin text-indigo-500" size={28} />
+        </div>
+      ) : !project ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <FolderOpen size={40} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Aucun projet en cours</p>
+          <p className="text-gray-400 text-sm mt-1">Votre agence va bientôt démarrer votre projet.</p>
+        </div>
+      ) : (
+        <>
+          {/* Project card */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">{project.name}</h2>
+                <p className="text-sm text-gray-400 mt-0.5">
+                  Démarré le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full">
+                {STATUS_ICONS[project.status] ?? <Clock size={16} className="text-gray-400" />}
+                <span className="text-xs font-medium text-gray-700">
+                  {STATUS_LABELS[project.status] ?? project.status}
+                </span>
+              </div>
+            </div>
+
+            {/* Form data summary */}
+            {Object.keys(project.form_data ?? {}).length > 0 && (
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Vos informations</p>
+                <div className="space-y-2">
+                  {Object.entries(project.form_data).slice(0, 5).map(([key, val]) => (
+                    <div key={key} className="flex gap-3 text-sm">
+                      <span className="text-gray-400 capitalize min-w-32 shrink-0">{key.replace(/_/g, " ")}</span>
+                      <span className="text-gray-700 font-medium">{Array.isArray(val) ? val.join(", ") : String(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Next steps */}
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5">
+            <p className="text-sm font-semibold text-indigo-800 mb-1">Prochaine étape</p>
+            <p className="text-sm text-indigo-700">
+              Votre agence analyse vos informations et vous contactera très prochainement pour démarrer le projet.
             </p>
           </div>
-          <StatusBadge status={project.status} />
-        </div>
-        <StageTimeline stages={project.stages} currentStage={project.current_stage} />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <Link href="/client/projects">
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-indigo-200 transition-all group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="p-2 bg-indigo-50 rounded-lg inline-block mb-3">
-                  <FolderKanban size={20} className="text-indigo-600" />
-                </div>
-                <p className="font-semibold text-gray-900">Mon projet</p>
-                <p className="text-sm text-gray-500 mt-0.5">Suivre l&apos;avancement détaillé</p>
-              </div>
-              <ArrowRight size={18} className="text-gray-300 group-hover:text-indigo-500 transition-colors" />
-            </div>
-          </div>
-        </Link>
-        <Link href="/client/messages">
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-indigo-200 transition-all group">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="p-2 bg-blue-50 rounded-lg inline-block mb-3">
-                  <MessageSquare size={20} className="text-blue-600" />
-                </div>
-                <p className="font-semibold text-gray-900">Messages</p>
-                <p className="text-sm text-gray-500 mt-0.5">Communiquer avec l&apos;équipe</p>
-              </div>
-              <ArrowRight size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Completed steps */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="font-semibold text-gray-900 mb-4">Étapes validées</h2>
-        <div className="space-y-3">
-          {project.stages.filter((s) => s.completed).map((stage) => (
-            <div key={stage.stage} className="flex items-center gap-3 text-sm">
-              <CheckCircle size={16} className="text-green-500 shrink-0" />
-              <span className="text-gray-700 font-medium">{stage.label}</span>
-              <span className="text-gray-400">— Validé</span>
-            </div>
-          ))}
-          {project.stages.filter((s) => s.completed).length === 0 && (
-            <p className="text-gray-400 text-sm">Aucune étape validée pour le moment</p>
-          )}
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

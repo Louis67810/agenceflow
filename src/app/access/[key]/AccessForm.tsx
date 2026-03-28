@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   Briefcase, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
@@ -28,8 +29,10 @@ type Step = "loading" | "not_found" | "already_done" | "register" | "form" | "do
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AccessForm({ accessKey }: { accessKey: string }) {
+  const router = useRouter();
   const [step, setStep]       = useState<Step>("loading");
   const [keyData, setKeyData] = useState<KeyData | null>(null);
+  const [userId, setUserId]   = useState<string | null>(null);
 
   // Register
   const [email, setEmail]           = useState("");
@@ -113,16 +116,18 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
     if (!res.ok) {
       if (data.error === "already_exists") {
-        const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
+        const { data: siData, error: siErr } = await supabase.auth.signInWithPassword({ email, password });
         if (siErr) { setRegisterError("Un compte existe déjà. Vérifiez votre mot de passe."); setRegistering(false); return; }
+        if (siData.user) setUserId(siData.user.id);
       } else {
         setRegisterError(data.error ?? "Erreur lors de la création du compte.");
         setRegistering(false);
         return;
       }
     } else {
-      const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: siData, error: siErr } = await supabase.auth.signInWithPassword({ email, password });
       if (siErr) { setRegisterError("Compte créé mais connexion échouée : " + siErr.message); setRegistering(false); return; }
+      if (siData.user) setUserId(siData.user.id);
     }
 
     setRegistering(false);
@@ -139,7 +144,12 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     const res = await fetch(`/api/keys/${accessKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      body: JSON.stringify({
+        ...values,
+        _user_id: userId,
+        _client_name: keyData?.name,
+        _client_email: email,
+      }),
     });
     if (!res.ok) {
       const d = await res.json();
@@ -147,8 +157,8 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
       setSubmitting(false);
       return;
     }
-    setStep("done");
     setSubmitting(false);
+    router.push("/client");
   };
 
   // ── Field renderer ─────────────────────────────────────────────────────────
@@ -236,7 +246,13 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
       <div className="text-center max-w-sm px-4">
         <CheckCircle2 size={40} className="text-green-500 mx-auto mb-4" />
         <h1 className="text-xl font-bold text-gray-900 mb-2">Formulaire déjà envoyé</h1>
-        <p className="text-gray-500 text-sm">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
+        <p className="text-gray-500 text-sm mb-4">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
+        <button
+          onClick={() => router.push("/client")}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+        >
+          Accéder à mon espace
+        </button>
       </div>
     </div>
   );
