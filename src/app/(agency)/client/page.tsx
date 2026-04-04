@@ -62,6 +62,8 @@ export default function ClientDashboard() {
       if (projects.length > 0) {
         setProject(projects[0]);
         setUserName(projects[0].client_name ?? session.user.email?.split("@")[0] ?? "");
+      } else {
+        setUserName(session.user.email?.split("@")[0] ?? "");
       }
       setLoading(false);
     }

@@ -141,24 +141,46 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     if (!validatePage()) return;
     setSubmitting(true);
     setFormError(null);
+
+    // Get user ID from live session (more reliable than state after re-renders)
+    let uid = userId;
+    if (!uid) {
+      const { data: { session } } = await supabase.auth.getSession();
+      uid = session?.user?.id ?? null;
+    }
+
+    if (!uid) {
+      setFormError("Session expirée. Rechargez la page et reconnectez-vous.");
+      setSubmitting(false);
+      return;
+    }
+
     const res = await fetch(`/api/keys/${accessKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...values,
-        _user_id: userId,
+        _user_id: uid,
         _client_name: keyData?.name,
         _client_email: email,
       }),
     });
+
+    const data = await res.json();
+
     if (!res.ok) {
-      const d = await res.json();
-      setFormError(d.error ?? "Erreur lors de l'envoi.");
+      setFormError(data.error ?? "Erreur lors de l'envoi.");
       setSubmitting(false);
       return;
     }
+
     setSubmitting(false);
-    router.push("/client");
+    // Redirect to project if created, otherwise to client dashboard
+    if (data.project_id) {
+      router.push(`/client/projects/${data.project_id}`);
+    } else {
+      router.push("/client");
+    }
   };
 
   // ── Field renderer ─────────────────────────────────────────────────────────

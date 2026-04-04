@@ -12,24 +12,31 @@ function admin() {
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
-    if (!token) return NextResponse.json({ projects: [] });
+    const token = authHeader?.replace("Bearer ", "").trim();
 
-    const anonClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    const { data: { user } } = await anonClient.auth.getUser(token);
-    if (!user) return NextResponse.json({ projects: [] });
+    if (!token) {
+      return NextResponse.json({ projects: [], debug: "no_token" });
+    }
 
-    const { data } = await admin()
+    // Validate token and get user
+    const { data: { user }, error: authError } = await admin().auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ projects: [], debug: "invalid_token" });
+    }
+
+    const { data, error } = await admin()
       .from("projects")
       .select("*")
       .eq("client_user_id", user.id)
       .order("created_at", { ascending: false });
 
+    if (error) {
+      return NextResponse.json({ projects: [], debug: error.message });
+    }
+
     return NextResponse.json({ projects: data ?? [] });
-  } catch {
-    return NextResponse.json({ projects: [] });
+  } catch (e) {
+    return NextResponse.json({ projects: [], debug: String(e) });
   }
 }
