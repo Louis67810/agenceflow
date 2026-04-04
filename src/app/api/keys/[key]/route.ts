@@ -17,7 +17,7 @@ export async function GET(
     const { key } = await context.params;
     const { data, error } = await admin()
       .from("access_keys")
-      .select("name, role, form_fields, form_pages, used_at")
+      .select("name, role, form_fields, form_pages, used_at, service_type_id")
       .eq("key", key)
       .single();
 
@@ -36,7 +36,6 @@ export async function POST(
     const { key } = await context.params;
     const body = await request.json();
 
-    // Extract meta fields (prefixed with _) from form data
     const { _user_id, _client_email, _client_name, ...formData } = body as {
       _user_id?: string;
       _client_email?: string;
@@ -53,11 +52,39 @@ export async function POST(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Auto-create a project
+    // Auto-create a project if user_id provided
     if (_user_id) {
-      const projectName = _client_name
-        ? `Projet de ${_client_name}`
-        : "Nouveau projet";
+      // Get service type stages if linked
+      const { data: keyData } = await admin()
+        .from("access_keys")
+        .select("service_type_id, name")
+        .eq("key", key)
+        .single();
+
+      let stages: object[] = [];
+      let serviceTypeName = "";
+
+      if (keyData?.service_type_id) {
+        const { data: serviceType } = await admin()
+          .from("service_types")
+          .select("stages, name")
+          .eq("id", keyData.service_type_id)
+          .single();
+
+        if (serviceType) {
+          // Snapshot stages with completed=false
+          stages = ((serviceType.stages ?? []) as { id: string; label: string; duration_days: number }[])
+            .map((s) => ({ ...s, completed: false, completed_at: null }));
+          serviceTypeName = serviceType.name;
+        }
+      }
+
+      // Use "project_name" form field as project name, fallback to client name
+      const projectNameFromForm = formData.project_name as string | undefined;
+      const projectName = projectNameFromForm?.trim()
+        || (serviceTypeName
+          ? `${serviceTypeName} — ${_client_name ?? "Client"}`
+          : `Projet de ${_client_name ?? "Client"}`);
 
       await admin()
         .from("projects")
@@ -66,9 +93,13 @@ export async function POST(
           client_name: _client_name ?? null,
           client_email: _client_email ?? null,
           client_user_id: _user_id,
-          status: "pending",
+          status: stages.length > 0 ? "in_progress" : "pending",
           form_data: formData,
           access_key: key,
+          service_type_id: keyData?.service_type_id ?? null,
+          stages,
+          current_stage_index: 0,
+          start_date: new Date().toISOString().split("T")[0],
         });
     }
 

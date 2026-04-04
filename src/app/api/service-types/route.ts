@@ -12,11 +12,11 @@ function admin() {
 export async function GET() {
   try {
     const { data, error } = await admin()
-      .from("forms")
-      .select("id, name, pages, created_at")
+      .from("service_types")
+      .select("*")
       .order("created_at");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ forms: data ?? [] });
+    return NextResponse.json({ service_types: data ?? [] });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
@@ -24,27 +24,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name } = await request.json();
-    const defaultPage = {
-      id: crypto.randomUUID().replace(/-/g, ""),
-      title: "Page 1",
-      fields: [
-        {
-          id: "project_name",
-          type: "text",
-          label: "Quel est le nom de votre projet ?",
-          required: true,
-          placeholder: "Ex : Site vitrine, Application mobile...",
-        },
-      ],
-    };
+    const { name, description, price, stages } = await request.json();
+    if (!name) return NextResponse.json({ error: "Nom requis" }, { status: 400 });
     const { data, error } = await admin()
-      .from("forms")
-      .insert({ name: name || "Nouveau formulaire", pages: [defaultPage] })
+      .from("service_types")
+      .insert({ name, description: description ?? null, price: price ?? null, stages: stages ?? [] })
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ form: data });
+    return NextResponse.json({ service_type: data });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

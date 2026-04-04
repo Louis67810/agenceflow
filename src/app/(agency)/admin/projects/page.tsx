@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Loader2, FolderOpen } from "lucide-react";
+import Link from "next/link";
+import { Search, Loader2, FolderOpen, ChevronRight } from "lucide-react";
 
 interface Project {
   id: string;
@@ -131,7 +132,10 @@ export default function AdminProjectsPage() {
               {filtered.map((project) => (
                 <tr key={project.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-4">
-                    <p className="font-medium text-gray-900 text-sm">{project.name}</p>
+                    <Link href={`/admin/projects/${project.id}`} className="font-medium text-gray-900 text-sm hover:text-indigo-600 transition-colors flex items-center gap-1 group">
+                      {project.name}
+                      <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all" />
+                    </Link>
                   </td>
                   <td className="px-5 py-4">
                     <p className="text-sm text-gray-700">{project.client_name ?? "—"}</p>

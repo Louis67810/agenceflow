@@ -12,7 +12,7 @@ function admin() {
 export async function GET() {
   const { data, error } = await admin()
     .from("access_keys")
-    .select("id, key, name, role, form_fields, used_at, form_data, created_at")
+    .select("id, key, name, role, form_fields, used_at, form_data, service_type_id, created_at")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -20,24 +20,34 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { name, role, formFields, formPages } = await request.json();
-  if (!name || !role) return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
+  try {
+    const { name, role, formFields, formPages, serviceTypeId } = await request.json();
+    if (!name || !role) return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
 
-  const key = crypto.randomUUID().replace(/-/g, "");
+    const key = crypto.randomUUID().replace(/-/g, "");
 
-  // Flatten pages → form_fields for backward compat
-  const flatFields = formPages
-    ? (formPages as { fields: object[] }[]).flatMap((p) => p.fields)
-    : (formFields ?? []);
+    const flatFields = formPages
+      ? (formPages as { fields: object[] }[]).flatMap((p) => p.fields)
+      : (formFields ?? []);
 
-  const { data, error } = await admin()
-    .from("access_keys")
-    .insert({ key, name, role, form_fields: flatFields, form_pages: formPages ?? [] })
-    .select()
-    .single();
+    const { data, error } = await admin()
+      .from("access_keys")
+      .insert({
+        key,
+        name,
+        role,
+        form_fields: flatFields,
+        form_pages: formPages ?? [],
+        service_type_id: serviceTypeId ?? null,
+      })
+      .select()
+      .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ key: data });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ key: data });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: NextRequest) {
