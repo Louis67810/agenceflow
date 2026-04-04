@@ -5,11 +5,20 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { FolderOpen, Clock, CheckCircle2, Loader2, ChevronRight } from "lucide-react";
 
+interface Stage {
+  id: string;
+  label: string;
+  duration_days: number;
+  completed: boolean;
+}
+
 interface Project {
   id: string;
   name: string;
   client_name: string | null;
   status: string;
+  stages: Stage[];
+  current_stage_index: number;
   form_data: Record<string, unknown>;
   created_at: string;
 }
