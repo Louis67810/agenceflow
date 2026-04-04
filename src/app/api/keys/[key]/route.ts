@@ -91,7 +91,6 @@ export async function POST(
         client_user_id: _user_id,
         status: stages.length > 0 ? "in_progress" : "pending",
         form_data: formData,
-        access_key: key,
         service_type_id: keyRow?.service_type_id ?? null,
         stages,
         current_stage_index: 0,
