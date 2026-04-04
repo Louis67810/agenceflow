@@ -24,7 +24,7 @@ interface Project {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: "En attente de traitement",
+  pending: "En attente",
   in_progress: "En cours",
   review: "En révision",
   completed: "Terminé",
@@ -51,33 +51,29 @@ export default function ClientDashboard() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setLoading(false); return; }
-      const { user } = session;
 
-      // Fetch the project linked to this user
+      setUserName(session.user.email?.split("@")[0] ?? "");
+
       const r = await fetch("/api/projects/me", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const d = await r.json();
-      if (d.project) {
-        setProject(d.project);
-        setUserName(d.project.client_name ?? user.email ?? "");
-      } else {
-        setUserName(user.email ?? "");
+      const projects: Project[] = d.projects ?? [];
+      if (projects.length > 0) {
+        setProject(projects[0]);
+        setUserName(projects[0].client_name ?? session.user.email?.split("@")[0] ?? "");
       }
       setLoading(false);
     }
     load();
   }, []);
 
-  const firstName = userName.split(" ")[0] || userName.split("@")[0];
+  const firstName = userName.split(" ")[0] || userName;
 
   return (
     <div className="p-8 max-w-3xl">
-      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Bonjour {firstName} !
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-900">Bonjour {firstName} !</h1>
         <p className="text-gray-500 mt-1">Voici l&apos;avancement de votre projet.</p>
       </div>
 
@@ -94,10 +90,15 @@ export default function ClientDashboard() {
       ) : (
         <>
           {/* Project card */}
-          <Link href={`/client/projects/${project.id}`} className="block bg-white rounded-xl border border-gray-200 p-6 mb-6 hover:border-indigo-200 hover:shadow-sm transition-all group">
+          <Link
+            href={`/client/projects/${project.id}`}
+            className="block bg-white rounded-xl border border-gray-200 p-6 mb-4 hover:border-indigo-200 hover:shadow-sm transition-all group"
+          >
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h2 className="text-lg font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">{project.name}</h2>
+                <h2 className="text-lg font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                  {project.name}
+                </h2>
                 <p className="text-sm text-gray-400 mt-0.5">
                   Démarré le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                 </p>
@@ -115,12 +116,11 @@ export default function ClientDashboard() {
 
             {/* Form data summary */}
             {Object.keys(project.form_data ?? {}).length > 0 && (
-              <div className="border-t border-gray-100 pt-4 mt-4">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Vos informations</p>
-                <div className="space-y-2">
-                  {Object.entries(project.form_data).slice(0, 5).map(([key, val]) => (
-                    <div key={key} className="flex gap-3 text-sm">
-                      <span className="text-gray-400 capitalize min-w-32 shrink-0">{key.replace(/_/g, " ")}</span>
+              <div className="border-t border-gray-100 pt-4 mt-2">
+                <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+                  {Object.entries(project.form_data).slice(0, 4).map(([key, val]) => (
+                    <div key={key} className="text-sm">
+                      <span className="text-gray-400 capitalize">{key.replace(/_/g, " ")} : </span>
                       <span className="text-gray-700 font-medium">{Array.isArray(val) ? val.join(", ") : String(val)}</span>
                     </div>
                   ))}
@@ -129,18 +129,24 @@ export default function ClientDashboard() {
             )}
           </Link>
 
-          {/* Stages quick view */}
+          {/* Stages */}
           {(project.stages ?? []).length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Avancement</p>
               <div className="flex gap-2 flex-wrap">
                 {project.stages.map((s, i) => (
                   <span key={s.id ?? i} className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${
-                    s.completed ? "bg-green-50 text-green-700 border-green-200"
-                    : i === project.current_stage_index ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                    : "bg-gray-50 text-gray-400 border-gray-100"
+                    s.completed
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : i === project.current_stage_index
+                      ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                      : "bg-gray-50 text-gray-400 border-gray-100"
                   }`}>
-                    {s.completed ? <CheckCircle2 size={11} /> : i === project.current_stage_index ? <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" /> : null}
+                    {s.completed
+                      ? <CheckCircle2 size={11} />
+                      : i === project.current_stage_index
+                      ? <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                      : null}
                     {s.label}
                   </span>
                 ))}

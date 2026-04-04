@@ -11,29 +11,25 @@ function admin() {
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user from Authorization header (Bearer token from Supabase session)
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "");
-    if (!token) return NextResponse.json({ project: null });
+    if (!token) return NextResponse.json({ projects: [] });
 
-    // Verify token and get user
     const anonClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
     const { data: { user } } = await anonClient.auth.getUser(token);
-    if (!user) return NextResponse.json({ project: null });
+    if (!user) return NextResponse.json({ projects: [] });
 
     const { data } = await admin()
       .from("projects")
       .select("*")
       .eq("client_user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+      .order("created_at", { ascending: false });
 
-    return NextResponse.json({ project: data ?? null });
+    return NextResponse.json({ projects: data ?? [] });
   } catch {
-    return NextResponse.json({ project: null });
+    return NextResponse.json({ projects: [] });
   }
 }

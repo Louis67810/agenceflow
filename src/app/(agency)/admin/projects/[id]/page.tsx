@@ -4,7 +4,7 @@ import { useState, useEffect, use, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Send, CheckCircle2, Clock, Loader2, ChevronRight,
-  User, MessageSquare, AlertCircle,
+  User, MessageSquare, AlertCircle, UserPlus, X,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -17,6 +17,13 @@ interface Stage {
   completed_at: string | null;
 }
 
+interface Designer {
+  id: string;
+  name: string;
+  speciality: string | null;
+  role: string;
+}
+
 interface Project {
   id: string;
   name: string;
@@ -27,6 +34,7 @@ interface Project {
   current_stage_index: number;
   form_data: Record<string, unknown>;
   start_date: string | null;
+  designer_id: string | null;
   created_at: string;
 }
 
@@ -79,7 +87,10 @@ export default function AdminProjectDetailPage({
   const [project, setProject]     = useState<Project | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
-  const [advancing, setAdvancing] = useState(false);
+  const [advancing, setAdvancing]   = useState(false);
+  const [designers, setDesigners]   = useState<Designer[]>([]);
+  const [showAssign, setShowAssign] = useState(false);
+  const [assigning, setAssigning]   = useState(false);
 
   const [messages, setMessages]     = useState<Message[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
@@ -87,7 +98,7 @@ export default function AdminProjectDetailPage({
   const [sending, setSending]       = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadProject(); }, [id]);
+  useEffect(() => { loadProject(); loadDesigners(); }, [id]);
   useEffect(() => { if (project) loadMessages(); }, [project?.id]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -103,6 +114,27 @@ export default function AdminProjectDetailPage({
       setError(String(e));
     }
     setLoading(false);
+  }
+
+  async function loadDesigners() {
+    try {
+      const r = await fetch("/api/designers");
+      const d = await r.json();
+      setDesigners(d.designers ?? []);
+    } catch { /* silent */ }
+  }
+
+  async function handleAssignDesigner(designerId: string | null) {
+    if (!project) return;
+    setAssigning(true);
+    await fetch(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ designer_id: designerId }),
+    });
+    setProject((p) => p ? { ...p, designer_id: designerId } : p);
+    setShowAssign(false);
+    setAssigning(false);
   }
 
   async function loadMessages() {
@@ -200,13 +232,66 @@ export default function AdminProjectDetailPage({
               {STATUS_LABELS[project.status] ?? project.status}
             </span>
           </div>
-          {project.client_name && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <User size={14} />
-              <span>{project.client_name}</span>
-              {project.client_email && <span className="text-gray-400">— {project.client_email}</span>}
+          <div className="flex items-center gap-4 flex-wrap">
+            {project.client_name && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <User size={14} />
+                <span>{project.client_name}</span>
+                {project.client_email && <span className="text-gray-400">— {project.client_email}</span>}
+              </div>
+            )}
+            {/* Designer assignment */}
+            <div className="relative">
+              {project.designer_id ? (
+                <button
+                  onClick={() => setShowAssign((v) => !v)}
+                  className="flex items-center gap-2 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition-colors"
+                >
+                  <UserPlus size={13} />
+                  {designers.find((d) => d.id === project.designer_id)?.name ?? "Prestataire assigné"}
+                  <X size={11} className="text-indigo-400" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowAssign((v) => !v)}
+                  className="flex items-center gap-2 text-sm text-gray-500 border border-dashed border-gray-300 px-3 py-1 rounded-full hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+                >
+                  <UserPlus size={13} />Assigner un prestataire
+                </button>
+              )}
+              {showAssign && (
+                <div className="absolute top-8 left-0 z-20 bg-white rounded-xl border border-gray-200 shadow-lg p-2 min-w-52">
+                  {project.designer_id && (
+                    <button
+                      onClick={() => handleAssignDesigner(null)}
+                      className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 rounded-lg"
+                    >
+                      Retirer le prestataire
+                    </button>
+                  )}
+                  {designers.length === 0 ? (
+                    <p className="text-xs text-gray-400 px-3 py-2">Aucun prestataire</p>
+                  ) : designers.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => handleAssignDesigner(d.id)}
+                      disabled={assigning}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${project.designer_id === d.id ? "bg-indigo-50 text-indigo-700" : "hover:bg-gray-50 text-gray-700"}`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
+                        {d.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium">{d.name}</p>
+                        {d.speciality && <p className="text-xs text-gray-400">{d.speciality}</p>}
+                      </div>
+                      {project.designer_id === d.id && <ChevronRight size={12} className="ml-auto text-indigo-500" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
         <p className="text-xs text-gray-400">
           Créé le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
