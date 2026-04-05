@@ -53,12 +53,32 @@ export async function POST(
       return NextResponse.json({ error: "user_id manquant — impossible de créer le projet" }, { status: 400 });
     }
 
-    // Get service type stages if linked
+    // Get service type stages and role
     const { data: keyRow } = await admin()
       .from("access_keys")
-      .select("service_type_id, name")
+      .select("service_type_id, name, role")
       .eq("key", key)
       .single();
+
+    // ── Designer role: create designer record, no project ──────────────────────
+    if (keyRow?.role === "designer") {
+      const { data: existing } = await admin()
+        .from("designers")
+        .select("id")
+        .eq("user_id", _user_id)
+        .maybeSingle();
+
+      if (!existing) {
+        await admin()
+          .from("designers")
+          .insert({
+            name: _client_name ?? keyRow.name ?? "Prestataire",
+            email: _client_email ?? null,
+            user_id: _user_id,
+          });
+      }
+      return NextResponse.json({ success: true, role: "designer" });
+    }
 
     let stages: object[] = [];
     let serviceTypeName = "";

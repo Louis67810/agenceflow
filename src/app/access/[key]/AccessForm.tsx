@@ -175,8 +175,10 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     }
 
     setSubmitting(false);
-    // Redirect to project if created, otherwise to client dashboard
-    if (data.project_id) {
+    // Designer → designer dashboard, client → project or client dashboard
+    if (data.role === "designer") {
+      router.push("/designer");
+    } else if (data.project_id) {
       router.push(`/client/projects/${data.project_id}`);
     } else {
       router.push("/client");
@@ -270,7 +272,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         <h1 className="text-xl font-bold text-gray-900 mb-2">Formulaire déjà envoyé</h1>
         <p className="text-gray-500 text-sm mb-4">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
         <button
-          onClick={() => router.push("/client")}
+          onClick={() => router.push(keyData?.role === "designer" ? "/designer" : "/client")}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
         >
           Accéder à mon espace
@@ -299,7 +301,11 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             <span className="text-xs text-indigo-700 font-medium">Invitation de votre agence</span>
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-1">Bienvenue, {keyData?.name} !</h1>
-          <p className="text-sm text-gray-500 mb-6">Créez votre accès pour remplir le formulaire.</p>
+          <p className="text-sm text-gray-500 mb-6">
+            {keyData?.role === "designer"
+              ? "Créez votre accès prestataire pour rejoindre l'agence."
+              : "Créez votre accès pour remplir le formulaire."}
+          </p>
 
           {registerError && (
             <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">

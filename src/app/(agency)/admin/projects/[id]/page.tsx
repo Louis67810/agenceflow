@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Send, CheckCircle2, Clock, Loader2, ChevronRight,
   User, MessageSquare, AlertCircle, UserPlus, X,
+  Paperclip, FolderOpen, ExternalLink, Trash2, Plus,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,6 +45,14 @@ interface Message {
   sender_role: "admin" | "client";
   sender_name: string;
   content: string;
+  created_at: string;
+}
+
+interface ProjectFile {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
   created_at: string;
 }
 
@@ -98,8 +107,17 @@ export default function AdminProjectDetailPage({
   const [sending, setSending]       = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Files
+  const [files, setFiles]           = useState<ProjectFile[]>([]);
+  const [rightTab, setRightTab]     = useState<"messages" | "fichiers">("messages");
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileUrl, setNewFileUrl]   = useState("");
+  const [newFileType, setNewFileType] = useState("other");
+  const [addingFile, setAddingFile]   = useState(false);
+  const [showAddFile, setShowAddFile] = useState(false);
+
   useEffect(() => { loadProject(); loadDesigners(); }, [id]);
-  useEffect(() => { if (project) loadMessages(); }, [project?.id]);
+  useEffect(() => { if (project) { loadMessages(); loadFiles(); } }, [project?.id]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function loadProject() {
@@ -146,6 +164,46 @@ export default function AdminProjectDetailPage({
       setMessages(d.messages ?? []);
     } catch { /* silent */ }
     setMsgLoading(false);
+  }
+
+  async function loadFiles() {
+    if (!project) return;
+    try {
+      const r = await fetch(`/api/files?project_id=${project.id}`);
+      const d = await r.json();
+      setFiles(d.files ?? []);
+    } catch { /* silent */ }
+  }
+
+  async function handleAddFile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newFileName.trim() || !newFileUrl.trim() || !project) return;
+    setAddingFile(true);
+    try {
+      const r = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: project.id, name: newFileName.trim(), url: newFileUrl.trim(), type: newFileType }),
+      });
+      const d = await r.json();
+      if (r.ok && d.file) {
+        setFiles((prev) => [d.file, ...prev]);
+        setNewFileName(""); setNewFileUrl(""); setNewFileType("other");
+        setShowAddFile(false);
+      }
+    } catch { /* silent */ }
+    setAddingFile(false);
+  }
+
+  async function handleDeleteFile(fileId: string) {
+    try {
+      await fetch("/api/files", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fileId }),
+      });
+      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+    } catch { /* silent */ }
   }
 
   async function handleAdvanceStage() {
@@ -398,64 +456,171 @@ export default function AdminProjectDetailPage({
           )}
         </div>
 
-        {/* Right: chat (2 columns) */}
+        {/* Right: tabs Messages / Fichiers */}
         <div className="col-span-2 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden" style={{ height: "600px" }}>
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <MessageSquare size={16} className="text-indigo-500" />
-            <h2 className="font-semibold text-gray-900 text-sm">Messages avec le client</h2>
+          {/* Tab bar */}
+          <div className="flex border-b border-gray-100 shrink-0">
+            <button
+              onClick={() => setRightTab("messages")}
+              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "messages" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              <MessageSquare size={14} />Messages
+            </button>
+            <button
+              onClick={() => setRightTab("fichiers")}
+              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "fichiers" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              <Paperclip size={14} />
+              Fichiers{files.length > 0 ? ` (${files.length})` : ""}
+            </button>
           </div>
 
-          {/* Messages list */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {msgLoading ? (
-              <div className="flex justify-center py-8"><Loader2 className="animate-spin text-gray-300" size={20} /></div>
-            ) : messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
-                <MessageSquare size={28} className="mb-2 opacity-30" />
-                <p>Aucun message pour l&apos;instant</p>
-                <p className="text-xs mt-1">Envoyez le premier message au client</p>
-              </div>
-            ) : (
-              messages.map((msg) => {
-                const isAdmin = msg.sender_role === "admin";
-                return (
-                  <div key={msg.id} className={`flex gap-3 ${isAdmin ? "flex-row-reverse" : ""}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isAdmin ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-600"}`}>
-                      {msg.sender_name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className={`flex flex-col max-w-xs ${isAdmin ? "items-end" : "items-start"}`}>
-                      <span className="text-xs text-gray-400 mb-1">{msg.sender_name}</span>
-                      <div className={`px-3 py-2 rounded-xl text-sm ${isAdmin ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800"}`}>
-                        {msg.content}
+          {/* ── Messages ── */}
+          {rightTab === "messages" && (
+            <>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {msgLoading ? (
+                  <div className="flex justify-center py-8"><Loader2 className="animate-spin text-gray-300" size={20} /></div>
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
+                    <MessageSquare size={28} className="mb-2 opacity-30" />
+                    <p>Aucun message pour l&apos;instant</p>
+                    <p className="text-xs mt-1">Envoyez le premier message au client</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isAdmin = msg.sender_role === "admin";
+                    return (
+                      <div key={msg.id} className={`flex gap-3 ${isAdmin ? "flex-row-reverse" : ""}`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isAdmin ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-600"}`}>
+                          {msg.sender_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`flex flex-col max-w-xs ${isAdmin ? "items-end" : "items-start"}`}>
+                          <span className="text-xs text-gray-400 mb-1">{msg.sender_name}</span>
+                          <div className={`px-3 py-2 rounded-xl text-sm ${isAdmin ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+                            {msg.content}
+                          </div>
+                          <span className="text-xs text-gray-400 mt-1">
+                            {new Date(msg.created_at).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-xs text-gray-400 mt-1">
-                        {new Date(msg.created_at).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
-                      </span>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 flex gap-2 shrink-0">
+                <input
+                  type="text"
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  placeholder="Écrire un message au client..."
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <button
+                  type="submit"
+                  disabled={sending || !newMsg.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── Fichiers ── */}
+          {rightTab === "fichiers" && (
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+              {/* Add file form */}
+              {showAddFile ? (
+                <form onSubmit={handleAddFile} className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Nom du fichier</label>
+                      <input
+                        value={newFileName}
+                        onChange={(e) => setNewFileName(e.target.value)}
+                        placeholder="Ex : Maquette Figma"
+                        required
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                      <select
+                        value={newFileType}
+                        onChange={(e) => setNewFileType(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      >
+                        <option value="figma">🎨 Figma</option>
+                        <option value="google_doc">📄 Google Doc</option>
+                        <option value="image">🖼️ Image</option>
+                        <option value="pdf">📕 PDF</option>
+                        <option value="other">📎 Autre</option>
+                      </select>
                     </div>
                   </div>
-                );
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">URL</label>
+                    <input
+                      value={newFileUrl}
+                      onChange={(e) => setNewFileUrl(e.target.value)}
+                      placeholder="https://..."
+                      type="url"
+                      required
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={addingFile} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
+                      {addingFile ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                      Ajouter
+                    </button>
+                    <button type="button" onClick={() => setShowAddFile(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                      Annuler
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setShowAddFile(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-indigo-300 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-50 transition-colors w-full justify-center"
+                >
+                  <Plus size={14} />Ajouter un fichier
+                </button>
+              )}
 
-          {/* Input */}
-          <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 flex gap-2">
-            <input
-              type="text"
-              value={newMsg}
-              onChange={(e) => setNewMsg(e.target.value)}
-              placeholder="Écrire un message au client..."
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-            <button
-              type="submit"
-              disabled={sending || !newMsg.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-            </button>
-          </form>
+              {/* Files list */}
+              {files.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 text-gray-400">
+                  <FolderOpen size={32} className="mb-3 opacity-40" />
+                  <p className="text-sm">Aucun fichier partagé</p>
+                  <p className="text-xs mt-1">Les fichiers ajoutés seront visibles par le client et le prestataire.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {files.map((file) => (
+                    <div key={file.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 group hover:border-indigo-200 hover:bg-indigo-50 transition-colors">
+                      <span className="text-xl shrink-0">
+                        {file.type === "figma" ? "🎨" : file.type === "google_doc" ? "📄" : file.type === "image" ? "🖼️" : file.type === "pdf" ? "📕" : "📎"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-400">{new Date(file.created_at).toLocaleDateString("fr-FR")}</p>
+                      </div>
+                      <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-indigo-500 transition-colors">
+                        <ExternalLink size={14} />
+                      </a>
+                      <button onClick={() => handleDeleteFile(file.id)} className="text-gray-200 hover:text-red-400 transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

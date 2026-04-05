@@ -6,7 +6,7 @@ import {
   MessageSquare, Figma, FileText, Sparkles, Check, Eye, EyeOff,
   ExternalLink, AlertCircle, CheckCircle2, Settings, Zap, Key,
   Plus, Copy, Trash2, Loader2, Clock, UserCheck, Briefcase,
-  ChevronDown, ChevronUp, GripVertical, Euro, X,
+  ChevronDown, ChevronUp, GripVertical, Euro, X, ImageIcon,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ interface ServiceStage {
   id: string;
   label: string;
   duration_days: number;
+  image_url?: string;
 }
 
 interface ServiceType {
@@ -186,6 +187,15 @@ export default function SettingsPage() {
 
   function updateStage(id: string, field: keyof ServiceStage, value: string | number) {
     setSStages((p) => p.map((s) => s.id === id ? { ...s, [field]: value } : s));
+  }
+
+  function handleStageImage(id: string, file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setSStages((p) => p.map((s) => s.id === id ? { ...s, image_url: dataUrl } : s));
+    };
+    reader.readAsDataURL(file);
   }
 
   function removeStage(id: string) {
@@ -407,29 +417,62 @@ export default function SettingsPage() {
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {sStages.map((stage, idx) => (
-                        <div key={stage.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                          <GripVertical size={14} className="text-gray-300 shrink-0" />
-                          <span className="text-xs text-gray-400 w-5 shrink-0">{idx + 1}.</span>
-                          <input
-                            value={stage.label}
-                            onChange={(e) => updateStage(stage.id, "label", e.target.value)}
-                            placeholder="Nom de l'étape"
-                            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                          />
-                          <input
-                            type="number"
-                            value={stage.duration_days}
-                            onChange={(e) => updateStage(stage.id, "duration_days", Number(e.target.value))}
-                            min={1}
-                            className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-center"
-                          />
-                          <span className="text-xs text-gray-400 shrink-0">jours</span>
-                          <button type="button" onClick={() => removeStage(stage.id)} className="text-gray-300 hover:text-red-400 transition-colors shrink-0">
-                            <X size={15} />
-                          </button>
-                        </div>
-                      ))}
+                      {sStages.map((stage, idx) => {
+                        const imgInputId = `stage-img-${stage.id}`;
+                        return (
+                          <div key={stage.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                            <GripVertical size={14} className="text-gray-300 shrink-0" />
+                            <span className="text-xs text-gray-400 w-5 shrink-0">{idx + 1}.</span>
+                            {/* Image preview / upload */}
+                            <label htmlFor={imgInputId} className="shrink-0 cursor-pointer" title="Ajouter une icône">
+                              {stage.image_url ? (
+                                <img src={stage.image_url} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 hover:border-indigo-400 hover:text-indigo-400 transition-colors">
+                                  <ImageIcon size={14} />
+                                </div>
+                              )}
+                              <input
+                                id={imgInputId}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleStageImage(stage.id, file);
+                                }}
+                              />
+                            </label>
+                            <input
+                              value={stage.label}
+                              onChange={(e) => updateStage(stage.id, "label", e.target.value)}
+                              placeholder="Nom de l'étape"
+                              className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            />
+                            <input
+                              type="number"
+                              value={stage.duration_days}
+                              onChange={(e) => updateStage(stage.id, "duration_days", Number(e.target.value))}
+                              min={1}
+                              className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 text-center"
+                            />
+                            <span className="text-xs text-gray-400 shrink-0">jours</span>
+                            {stage.image_url && (
+                              <button
+                                type="button"
+                                onClick={() => setSStages((p) => p.map((s) => s.id === stage.id ? { ...s, image_url: undefined } : s))}
+                                className="text-gray-300 hover:text-orange-400 transition-colors shrink-0"
+                                title="Supprimer l'icône"
+                              >
+                                <ImageIcon size={13} />
+                              </button>
+                            )}
+                            <button type="button" onClick={() => removeStage(stage.id)} className="text-gray-300 hover:text-red-400 transition-colors shrink-0">
+                              <X size={15} />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -484,7 +527,11 @@ export default function SettingsPage() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       {st.stages.map((s, i) => (
                         <span key={s.id} className="flex items-center gap-1.5 text-xs bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-full text-gray-600">
-                          <span className="text-gray-300">{i + 1}.</span>
+                          {s.image_url ? (
+                            <img src={s.image_url} alt="" className="w-4 h-4 rounded object-cover" />
+                          ) : (
+                            <span className="text-gray-300">{i + 1}.</span>
+                          )}
                           {s.label}
                           <span className="text-gray-400">· {s.duration_days}j</span>
                         </span>
