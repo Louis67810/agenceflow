@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   ArrowLeft, Send, CheckCircle2, Loader2, MessageSquare, AlertCircle,
-  Paperclip, ExternalLink, FolderOpen,
+  Paperclip, ExternalLink, FolderOpen, FileText,
 } from "lucide-react";
 
 interface Stage {
@@ -25,6 +25,7 @@ interface Project {
   current_stage_index: number;
   start_date: string | null;
   created_at: string;
+  form_data: Record<string, unknown>;
 }
 
 interface Message {
@@ -58,7 +59,7 @@ const FILE_ICONS: Record<string, string> = {
   other: "📎",
 };
 
-type Tab = "messages" | "fichiers";
+type Tab = "brief" | "messages" | "fichiers";
 
 export default function ClientProjectDetailPage({
   params,
@@ -75,7 +76,7 @@ export default function ClientProjectDetailPage({
   const [newMsg, setNewMsg]     = useState("");
   const [sending, setSending]   = useState(false);
   const [clientName, setClientName] = useState("Moi");
-  const [tab, setTab]           = useState<Tab>("messages");
+  const [tab, setTab]           = useState<Tab>("brief");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
@@ -221,24 +222,45 @@ export default function ClientProjectDetailPage({
         <div className="col-span-2 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden" style={{ height: "520px" }}>
           {/* Tab bar */}
           <div className="flex border-b border-gray-100 shrink-0">
-            <button
-              onClick={() => setTab("messages")}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${
-                tab === "messages" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <MessageSquare size={14} />Messages
-            </button>
-            <button
-              onClick={() => setTab("fichiers")}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${
-                tab === "fichiers" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              <Paperclip size={14} />
-              Fichiers{files.length > 0 ? ` (${files.length})` : ""}
-            </button>
+            {[
+              { key: "brief" as Tab, label: "Brief", icon: <FileText size={14} /> },
+              { key: "messages" as Tab, label: "Messages", icon: <MessageSquare size={14} /> },
+              { key: "fichiers" as Tab, label: `Fichiers${files.length > 0 ? ` (${files.length})` : ""}`, icon: <Paperclip size={14} /> },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${
+                  tab === t.key ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {t.icon}{t.label}
+              </button>
+            ))}
           </div>
+
+          {/* Brief */}
+          {tab === "brief" && (
+            <div className="flex-1 overflow-y-auto p-5">
+              {!project.form_data || Object.keys(project.form_data).length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                  <FileText size={32} className="mb-3 opacity-40" />
+                  <p className="text-sm">Aucun brief disponible</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {Object.entries(project.form_data).map(([k, v]) => (
+                    <div key={k} className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-xs font-medium text-gray-400 mb-1 capitalize">{k.replace(/_/g, " ")}</p>
+                      <p className="text-sm text-gray-800">
+                        {Array.isArray(v) ? v.join(", ") : String(v ?? "")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Messages */}
           {tab === "messages" && (

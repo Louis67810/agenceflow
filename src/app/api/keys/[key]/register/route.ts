@@ -19,21 +19,22 @@ export async function POST(
   if (!email || !password)
     return NextResponse.json({ error: "Champs manquants." }, { status: 400 });
 
-  // Vérifie que la clé existe
+  // Vérifie que la clé existe et récupère le rôle
   const { data: keyRecord } = await admin()
     .from("access_keys")
-    .select("id")
+    .select("id, role")
     .eq("key", key)
     .single();
 
   if (!keyRecord)
     return NextResponse.json({ error: "Lien invalide." }, { status: 404 });
 
-  // Crée le compte sans confirmation email
+  // Crée le compte sans confirmation email, avec le rôle en app_metadata
   const { error: createError } = await admin().auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    app_metadata: { role: keyRecord.role ?? "client" },
   });
 
   if (createError) {

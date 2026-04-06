@@ -16,6 +16,7 @@ interface Stage {
   duration_days: number;
   completed: boolean;
   completed_at: string | null;
+  assigned_to_designer?: boolean;
 }
 
 interface Designer {
@@ -204,6 +205,20 @@ export default function AdminProjectDetailPage({
       });
       setFiles((prev) => prev.filter((f) => f.id !== fileId));
     } catch { /* silent */ }
+  }
+
+  async function toggleStageDesigner(idx: number) {
+    if (!project) return;
+    const stages = project.stages.map((s, i) =>
+      i === idx ? { ...s, assigned_to_designer: !s.assigned_to_designer } : s
+    );
+    const r = await fetch(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stages }),
+    });
+    const d = await r.json();
+    if (r.ok) setProject(d.project);
   }
 
   async function handleAdvanceStage() {
@@ -411,6 +426,20 @@ export default function AdminProjectDetailPage({
                           </p>
                         )}
                       </div>
+                      {/* Assign stage to designer */}
+                      {project.designer_id && (
+                        <button
+                          onClick={() => toggleStageDesigner(idx)}
+                          title={stage.assigned_to_designer ? "Retirer du prestataire" : "Assigner au prestataire"}
+                          className={`shrink-0 mt-0.5 text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                            stage.assigned_to_designer
+                              ? "bg-purple-100 text-purple-700 border-purple-200"
+                              : "bg-gray-50 text-gray-300 border-gray-100 hover:border-purple-200 hover:text-purple-500"
+                          }`}
+                        >
+                          {stage.assigned_to_designer ? "★" : "☆"}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

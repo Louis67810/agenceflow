@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   ArrowLeft, CheckCircle2, Loader2, AlertCircle,
-  FileText, Paperclip, ExternalLink, FolderOpen,
+  FileText, Paperclip, ExternalLink, FolderOpen, ListChecks, Clock,
 } from "lucide-react";
 
 interface Stage {
@@ -15,6 +15,7 @@ interface Stage {
   completed: boolean;
   completed_at: string | null;
   image_url?: string;
+  assigned_to_designer?: boolean;
 }
 
 interface Project {
@@ -52,7 +53,7 @@ const FILE_ICONS: Record<string, string> = {
   other: "📎",
 };
 
-type Tab = "brief" | "fichiers";
+type Tab = "brief" | "taches" | "fichiers";
 
 export default function DesignerProjectDetailPage({
   params,
@@ -175,6 +176,7 @@ export default function DesignerProjectDetailPage({
           <div className="flex border-b border-gray-100">
             {[
               { key: "brief" as Tab, label: "Brief", icon: <FileText size={14} /> },
+              { key: "taches" as Tab, label: "Mes tâches", icon: <ListChecks size={14} /> },
               { key: "fichiers" as Tab, label: `Fichiers${files.length > 0 ? ` (${files.length})` : ""}`, icon: <Paperclip size={14} /> },
             ].map((t) => (
               <button
@@ -211,6 +213,78 @@ export default function DesignerProjectDetailPage({
               ) : (
                 <p className="text-sm text-gray-400">Aucune information de brief disponible.</p>
               )}
+            </div>
+          )}
+
+          {/* Tasks */}
+          {tab === "taches" && (
+            <div className="p-6">
+              {(() => {
+                const assignedStages = stages
+                  .map((s, idx) => ({ ...s, idx }))
+                  .filter((s) => s.assigned_to_designer);
+
+                if (assignedStages.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                      <ListChecks size={32} className="mb-3 opacity-40" />
+                      <p className="text-sm">Aucune tâche assignée</p>
+                      <p className="text-xs mt-1">L&apos;agence vous assignera des étapes prochainement.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {assignedStages.map((stage) => {
+                      const isCurrent = stage.idx === currentIdx;
+                      const isDone = stage.completed;
+                      const isUpcoming = stage.idx > currentIdx;
+
+                      return (
+                        <div
+                          key={stage.id ?? stage.idx}
+                          className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
+                            isDone
+                              ? "bg-green-50 border-green-200"
+                              : isCurrent
+                              ? "bg-purple-50 border-purple-200"
+                              : "bg-gray-50 border-gray-100"
+                          }`}
+                        >
+                          <div className="shrink-0">
+                            {stage.image_url ? (
+                              <img src={stage.image_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                            ) : isDone ? (
+                              <CheckCircle2 size={20} className="text-green-500" />
+                            ) : isCurrent ? (
+                              <div className="w-5 h-5 rounded-full bg-purple-500 animate-pulse" />
+                            ) : (
+                              <Clock size={20} className="text-gray-300" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className={`font-medium text-sm ${isDone ? "text-green-700" : isCurrent ? "text-purple-700" : "text-gray-500"}`}>
+                              {stage.label}
+                            </p>
+                            <p className="text-xs text-gray-400">{stage.duration_days} jour{stage.duration_days !== 1 ? "s" : ""}</p>
+                            {isDone && stage.completed_at && (
+                              <p className="text-xs text-green-500">Validé le {new Date(stage.completed_at).toLocaleDateString("fr-FR")}</p>
+                            )}
+                          </div>
+                          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                            isDone ? "bg-green-100 text-green-700"
+                            : isCurrent ? "bg-purple-100 text-purple-700"
+                            : "bg-gray-100 text-gray-400"
+                          }`}>
+                            {isDone ? "Terminé" : isCurrent ? "En cours" : "À venir"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
