@@ -34,6 +34,7 @@ export async function POST(
     email,
     password,
     email_confirm: true,
+    // Store role; "developer" maps to "designer" for routing but kept distinct for the designer record
     app_metadata: { role: keyRecord.role ?? "client" },
   });
 

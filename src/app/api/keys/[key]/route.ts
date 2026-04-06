@@ -60,8 +60,8 @@ export async function POST(
       .eq("key", key)
       .single();
 
-    // ── Designer role: create designer record, no project ──────────────────────
-    if (keyRow?.role === "designer") {
+    // ── Prestataire role (designer or developer): create designer record ────────
+    if (keyRow?.role === "designer" || keyRow?.role === "developer") {
       const { data: existing } = await admin()
         .from("designers")
         .select("id")
@@ -75,9 +75,10 @@ export async function POST(
             name: _client_name ?? keyRow.name ?? "Prestataire",
             email: _client_email ?? null,
             user_id: _user_id,
+            role: keyRow.role, // "designer" or "developer"
           });
       }
-      return NextResponse.json({ success: true, role: "designer" });
+      return NextResponse.json({ success: true, role: keyRow.role });
     }
 
     let stages: object[] = [];

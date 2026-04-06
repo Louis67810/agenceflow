@@ -37,7 +37,13 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await admin()
       .from("messages")
-      .insert({ project_id, sender_role, sender_name: sender_name ?? "Utilisateur", content })
+      .insert({
+        id: crypto.randomUUID(),
+        project_id,
+        sender_role,
+        sender_name: sender_name ?? "Utilisateur",
+        content,
+      })
       .select()
       .single();
 

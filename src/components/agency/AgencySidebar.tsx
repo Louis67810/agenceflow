@@ -14,6 +14,8 @@ import {
   Settings,
   LogOut,
   Briefcase,
+  PenLine,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -29,8 +31,10 @@ const adminNav: NavItem[] = [
   { href: "/admin/projects", label: "Projets", icon: <FolderKanban size={18} /> },
   { href: "/admin/clients", label: "Clients", icon: <Users size={18} /> },
   { href: "/admin/designers", label: "Prestataires", icon: <Palette size={18} /> },
+  { href: "/admin/copywriting", label: "Copywriting", icon: <PenLine size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
+  { href: "/admin/settings", label: "Paramètres", icon: <Settings size={18} /> },
 ];
 
 const clientNav: NavItem[] = [
@@ -42,8 +46,7 @@ const clientNav: NavItem[] = [
 const designerNav: NavItem[] = [
   { href: "/designer", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { href: "/designer/projects", label: "Mes projets", icon: <FolderKanban size={18} /> },
-  { href: "/designer/tasks", label: "Tâches", icon: <FileText size={18} /> },
-  { href: "/designer/messages", label: "Messages", icon: <MessageSquare size={18} /> },
+  { href: "/designer/tasks", label: "Mes tâches", icon: <CheckSquare size={18} /> },
 ];
 
 interface AgencySidebarProps {
@@ -102,13 +105,6 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
       {/* User + Actions */}
       <div className="px-3 py-4 border-t border-gray-700 space-y-1">
-        <Link
-          href={`/${role}/settings`}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-        >
-          <Settings size={18} />
-          Paramètres
-        </Link>
         <form action="/api/auth/signout" method="POST">
           <button type="submit" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-red-400 transition-colors">
             <LogOut size={18} />

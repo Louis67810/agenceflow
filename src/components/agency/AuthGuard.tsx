@@ -30,7 +30,7 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
           router.replace("/client");
           return;
         }
-      } else if (role === "designer") {
+      } else if (role === "designer" || role === "developer") {
         if (!pathname.startsWith("/designer")) {
           router.replace("/designer");
           return;

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   ArrowLeft, CheckCircle2, Loader2, AlertCircle,
   FileText, Paperclip, ExternalLink, FolderOpen, ListChecks, Clock,
+  MessageSquare, Send,
 } from "lucide-react";
 
 interface Stage {
@@ -53,7 +54,15 @@ const FILE_ICONS: Record<string, string> = {
   other: "📎",
 };
 
-type Tab = "brief" | "taches" | "fichiers";
+interface Message {
+  id: string;
+  sender_role: "admin" | "client" | "designer";
+  sender_name: string;
+  content: string;
+  created_at: string;
+}
+
+type Tab = "brief" | "taches" | "messages" | "fichiers";
 
 export default function DesignerProjectDetailPage({
   params,
@@ -63,23 +72,52 @@ export default function DesignerProjectDetailPage({
   const { id } = use(params);
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMsg, setNewMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [designerName, setDesignerName] = useState("Prestataire");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("brief");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newMsg.trim() || !project) return;
+    setSending(true);
+    const r = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: project.id,
+        sender_role: "designer",
+        sender_name: designerName,
+        content: newMsg.trim(),
+      }),
+    });
+    const d = await r.json();
+    if (r.ok && d.message) { setMessages((p) => [...p, d.message]); setNewMsg(""); }
+    setSending(false);
+  }
+
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { setError("Non connecté"); setLoading(false); return; }
 
-      const [pr, fr] = await Promise.all([
+      if (session.user.email) setDesignerName(session.user.email.split("@")[0]);
+
+      const [pr, fr, mr] = await Promise.all([
         fetch(`/api/projects/${id}`),
         fetch(`/api/files?project_id=${id}`),
+        fetch(`/api/messages?project_id=${id}`),
       ]);
 
       const pd = await pr.json();
@@ -88,6 +126,10 @@ export default function DesignerProjectDetailPage({
 
       const fd = await fr.json();
       setFiles(fd.files ?? []);
+
+      const md = await mr.json();
+      setMessages(md.messages ?? []);
+
       setLoading(false);
     }
     load();
@@ -176,7 +218,8 @@ export default function DesignerProjectDetailPage({
           <div className="flex border-b border-gray-100">
             {[
               { key: "brief" as Tab, label: "Brief", icon: <FileText size={14} /> },
-              { key: "taches" as Tab, label: "Mes tâches", icon: <ListChecks size={14} /> },
+              { key: "taches" as Tab, label: "Tâches", icon: <ListChecks size={14} /> },
+              { key: "messages" as Tab, label: "Messages", icon: <MessageSquare size={14} /> },
               { key: "fichiers" as Tab, label: `Fichiers${files.length > 0 ? ` (${files.length})` : ""}`, icon: <Paperclip size={14} /> },
             ].map((t) => (
               <button
@@ -285,6 +328,54 @@ export default function DesignerProjectDetailPage({
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* Messages */}
+          {tab === "messages" && (
+            <div className="flex flex-col" style={{ height: "340px" }}>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
+                    <MessageSquare size={28} className="mb-2 opacity-30" />
+                    <p>Aucun message pour l&apos;instant</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isMe = msg.sender_role === "designer";
+                    return (
+                      <div key={msg.id} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isMe ? "bg-purple-100 text-purple-600" : "bg-gray-100 text-gray-600"}`}>
+                          {msg.sender_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`flex flex-col max-w-xs ${isMe ? "items-end" : "items-start"}`}>
+                          <span className="text-xs text-gray-400 mb-1">{msg.sender_name}</span>
+                          <div className={`px-3 py-2 rounded-xl text-sm ${isMe ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+                            {msg.content}
+                          </div>
+                          <span className="text-xs text-gray-400 mt-1">
+                            {new Date(msg.created_at).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+              <form onSubmit={handleSend} className="p-3 border-t border-gray-100 flex gap-2">
+                <input
+                  type="text"
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  placeholder="Message à l'agence..."
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+                />
+                <button type="submit" disabled={sending || !newMsg.trim()}
+                  className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                  {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                </button>
+              </form>
             </div>
           )}
 

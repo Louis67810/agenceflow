@@ -175,8 +175,8 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     }
 
     setSubmitting(false);
-    // Designer → designer dashboard, client → project or client dashboard
-    if (data.role === "designer") {
+    // Prestataire → designer dashboard, client → project or client dashboard
+    if (data.role === "designer" || data.role === "developer") {
       router.push("/designer");
     } else if (data.project_id) {
       router.push(`/client/projects/${data.project_id}`);
@@ -272,7 +272,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         <h1 className="text-xl font-bold text-gray-900 mb-2">Formulaire déjà envoyé</h1>
         <p className="text-gray-500 text-sm mb-4">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
         <button
-          onClick={() => router.push(keyData?.role === "designer" ? "/designer" : "/client")}
+          onClick={() => router.push(keyData?.role === "designer" || keyData?.role === "developer" ? "/designer" : "/client")}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
         >
           Accéder à mon espace

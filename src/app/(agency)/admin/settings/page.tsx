@@ -21,7 +21,7 @@ interface Integration {
 }
 
 interface AccessKey {
-  id: string; key: string; name: string; role: "client" | "designer";
+  id: string; key: string; name: string; role: "client" | "designer" | "developer";
   form_fields: { id: string; label: string; required?: boolean }[];
   used_at: string | null; created_at: string;
 }
@@ -65,7 +65,7 @@ export default function SettingsPage() {
   const [keysLoading, setKeysLoading]       = useState(false);
   const [showCreate, setShowCreate]         = useState(false);
   const [newName, setNewName]               = useState("");
-  const [newRole, setNewRole]               = useState<"client" | "designer">("client");
+  const [newRole, setNewRole]               = useState<"client" | "designer" | "developer">("client");
   const [forms, setForms]                   = useState<FormTemplate[]>([]);
   const [selectedFormId, setSelectedFormId] = useState("");
   const [serviceTypes, setServiceTypes]     = useState<ServiceType[]>([]);
@@ -591,9 +591,10 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
-                    <select value={newRole} onChange={(e) => setNewRole(e.target.value as "client" | "designer")} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+                    <select value={newRole} onChange={(e) => setNewRole(e.target.value as "client" | "designer" | "developer")} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
                       <option value="client">Client</option>
-                      <option value="designer">Prestataire</option>
+                      <option value="designer">Prestataire — Designer</option>
+                      <option value="developer">Prestataire — Développeur</option>
                     </select>
                   </div>
                 </div>
@@ -691,8 +692,12 @@ export default function SettingsPage() {
                     <tr key={k.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3.5 font-medium text-gray-900 text-sm">{k.name}</td>
                       <td className="px-5 py-3.5">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${k.role === "client" ? "bg-blue-50 text-blue-700" : "bg-purple-50 text-purple-700"}`}>
-                          {k.role === "client" ? "Client" : "Prestataire"}
+                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          k.role === "client" ? "bg-blue-50 text-blue-700"
+                          : k.role === "developer" ? "bg-orange-50 text-orange-700"
+                          : "bg-purple-50 text-purple-700"
+                        }`}>
+                          {k.role === "client" ? "Client" : k.role === "developer" ? "Développeur" : "Designer"}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
