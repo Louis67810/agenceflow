@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   PenLine,
   Plus,
@@ -15,14 +15,16 @@ import {
   ExternalLink,
   Settings,
   X,
-  ChevronRight,
-  ChevronLeft,
   MessageSquare,
   Minus,
   GripVertical,
-  AlertCircle,
   RefreshCw,
   StickyNote,
+  Type,
+  AlignLeft,
+  Square,
+  List,
+  MousePointerClick,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -52,24 +54,42 @@ type SectionType =
   | "Comparatif"
   | "Contact";
 
+type ElementType = "title" | "subtitle" | "body" | "cta" | "items" | "image";
+
+interface SectionElement {
+  id: string;
+  type: ElementType;
+  content: string;
+  note?: string;
+  count?: number; // items only
+}
+
+interface Section {
+  id: string;
+  type: SectionType;
+  notes: string;
+  elements: SectionElement[];
+  generating: boolean;
+}
+
+interface Page {
+  id: string;
+  name: string;
+  sections: Section[];
+}
+
+interface SelectedElement {
+  sectionId: string;
+  elementId: string;
+  elementType: ElementType;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const SECTION_TYPES: SectionType[] = [
-  "Hero",
-  "À propos",
-  "Services",
-  "Réalisations",
-  "Cible",
-  "Processus",
-  "FAQ",
-  "Équipe",
-  "Fonctionnalités",
-  "Problématiques",
-  "Témoignages",
-  "Avantages",
-  "Tarifs",
-  "CTA Principal",
-  "Chiffres clés",
-  "Comparatif",
-  "Contact",
+  "Hero","À propos","Services","Réalisations","Cible","Processus","FAQ","Équipe",
+  "Fonctionnalités","Problématiques","Témoignages","Avantages","Tarifs",
+  "CTA Principal","Chiffres clés","Comparatif","Contact",
 ];
 
 const SECTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -93,8 +113,8 @@ const SECTION_COLORS: Record<string, { bg: string; text: string; border: string 
 };
 
 const DEFAULT_PROMPTS: Record<string, string> = {
-  Hero: "Écris un titre accrocheur et un sous-titre percutant pour la section Hero du site. Inclus un appel à l'action principal.",
-  "À propos": "Rédige un texte de présentation de l'entreprise, ses valeurs et sa mission.",
+  Hero: "Écris le contenu pour la section Hero du site. Titre accrocheur, sous-titre percutant.",
+  "À propos": "Rédige le contenu de présentation de l'entreprise, ses valeurs et sa mission.",
   Services: "Décris les services proposés avec leurs bénéfices clés pour le client.",
   Réalisations: "Rédige des descriptions courtes pour les projets/réalisations mis en avant.",
   Cible: "Décris le profil du client idéal et ses problématiques principales.",
@@ -112,56 +132,40 @@ const DEFAULT_PROMPTS: Record<string, string> = {
   Contact: "Rédige le texte d'invitation au contact avec les informations clés.",
 };
 
-const DEFAULT_ELEMENT_COUNTS: Record<string, number> = {
-  Hero: 1,
-  "À propos": 1,
-  Services: 3,
-  Réalisations: 4,
-  Cible: 3,
-  Processus: 4,
-  FAQ: 5,
-  Équipe: 3,
-  Fonctionnalités: 4,
-  Problématiques: 3,
-  Témoignages: 3,
-  Avantages: 4,
-  Tarifs: 3,
-  "CTA Principal": 1,
-  "Chiffres clés": 4,
-  Comparatif: 5,
-  Contact: 1,
+const ELEMENT_LABELS: Record<ElementType, string> = {
+  title: "Titre",
+  subtitle: "Sous-titre",
+  body: "Texte",
+  cta: "CTA",
+  items: "Éléments",
+  image: "Image",
 };
 
-const MULTI_ITEM_TYPES: SectionType[] = [
-  "Services",
-  "Réalisations",
-  "Processus",
-  "FAQ",
-  "Équipe",
-  "Fonctionnalités",
-  "Problématiques",
-  "Témoignages",
-  "Avantages",
-  "Tarifs",
-  "Chiffres clés",
-  "Comparatif",
-  "Cible",
-];
+// ─── Default elements per section type ───────────────────────────────────────
 
-interface Section {
-  id: string;
-  type: SectionType;
-  notes: string;
-  element_count: number;
-  generated: string;
-  generating: boolean;
+function el(type: ElementType, extras?: Partial<SectionElement>): SectionElement {
+  return { id: crypto.randomUUID(), type, content: "", ...extras };
 }
 
-interface Page {
-  id: string;
-  name: string;
-  sections: Section[];
-}
+const DEFAULT_ELEMENTS: Record<SectionType, () => SectionElement[]> = {
+  Hero: () => [el("title"), el("subtitle"), el("body"), el("cta"), el("image")],
+  "À propos": () => [el("title"), el("subtitle"), el("body"), el("image"), el("cta")],
+  Services: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  Réalisations: () => [el("title"), el("subtitle"), el("items", { count: 4 })],
+  Cible: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  Processus: () => [el("title"), el("subtitle"), el("items", { count: 4 })],
+  FAQ: () => [el("title"), el("subtitle"), el("items", { count: 5 })],
+  Équipe: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  Fonctionnalités: () => [el("title"), el("subtitle"), el("items", { count: 4 }), el("cta")],
+  Problématiques: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  Témoignages: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  Avantages: () => [el("title"), el("subtitle"), el("items", { count: 4 }), el("cta")],
+  Tarifs: () => [el("title"), el("subtitle"), el("items", { count: 3 }), el("cta")],
+  "CTA Principal": () => [el("title"), el("subtitle"), el("cta")],
+  "Chiffres clés": () => [el("title"), el("subtitle"), el("items", { count: 4 })],
+  Comparatif: () => [el("title"), el("subtitle"), el("items", { count: 5 }), el("cta")],
+  Contact: () => [el("title"), el("subtitle"), el("body"), el("cta")],
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -170,8 +174,7 @@ function makeSection(type: SectionType, notes = ""): Section {
     id: crypto.randomUUID(),
     type,
     notes,
-    element_count: DEFAULT_ELEMENT_COUNTS[type] ?? 3,
-    generated: "",
+    elements: DEFAULT_ELEMENTS[type]?.() ?? [],
     generating: false,
   };
 }
@@ -180,21 +183,15 @@ function makePage(name: string): Page {
   return { id: crypto.randomUUID(), name, sections: [] };
 }
 
-function isMultiItem(type: SectionType): boolean {
-  return MULTI_ITEM_TYPES.includes(type);
-}
-
-/** Parse KEY: value structured content into a map */
 function parseContent(raw: string): Record<string, string> {
   const result: Record<string, string> = {};
   if (!raw) return result;
-  const lines = raw.split("\n");
   let currentKey = "";
-  for (const line of lines) {
-    const m = line.match(/^([A-Z0-9_]+):\s*(.*)$/);
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^([A-Z][A-Z0-9_]*):\s*(.*)$/);
     if (m) {
       currentKey = m[1];
-      result[currentKey] = m[2];
+      result[currentKey] = m[2].trim();
     } else if (currentKey && line.trim()) {
       result[currentKey] = (result[currentKey] ?? "") + "\n" + line.trim();
     }
@@ -202,170 +199,278 @@ function parseContent(raw: string): Record<string, string> {
   return result;
 }
 
-/** Extract item fields: ITEM_1_TITLE, ITEM_1_DESC, etc. */
-function getItems(
-  parsed: Record<string, string>,
-  count: number,
-  fields: string[]
-): Record<string, string>[] {
-  return Array.from({ length: count }, (_, i) => {
-    const item: Record<string, string> = {};
-    for (const f of fields) {
-      item[f] = parsed[`ITEM_${i + 1}_${f}`] ?? "";
+function mapContentToElements(rawContent: string, elements: SectionElement[]): SectionElement[] {
+  const parsed = parseContent(rawContent);
+  return elements.map((e) => {
+    if (e.type === "image") return e;
+    switch (e.type) {
+      case "title":
+        return parsed["TITLE"] ? { ...e, content: parsed["TITLE"] } : e;
+      case "subtitle":
+        return parsed["SUBTITLE"] ? { ...e, content: parsed["SUBTITLE"] } : e;
+      case "body":
+        return parsed["BODY"] ? { ...e, content: parsed["BODY"] } : e;
+      case "cta":
+        return parsed["CTA"] ? { ...e, content: parsed["CTA"] } : e;
+      case "items": {
+        const itemLines = Object.entries(parsed)
+          .filter(([k]) => k.startsWith("ITEM_"))
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n");
+        return itemLines ? { ...e, content: itemLines } : e;
+      }
+      default:
+        return e;
     }
-    return item;
   });
 }
 
-// ─── Wireframe Slot ───────────────────────────────────────────────────────────
+function sectionIsGenerated(section: Section): boolean {
+  return section.elements.some((e) => e.type !== "image" && e.content !== "");
+}
 
-function Slot({
-  value,
-  h = "h-3",
-  w = "w-full",
-  className = "",
-  pulsing = false,
+// ─── Wireframe element components ────────────────────────────────────────────
+// Style: pill shapes (rounded-full), dark CTA, light image placeholder
+
+function PlaceholderBar({
+  w,
+  h = "h-4",
+  color = "bg-gray-300",
+  pulsing,
 }: {
-  value?: string;
+  w: string;
   h?: string;
-  w?: string;
-  className?: string;
-  pulsing?: boolean;
+  color?: string;
+  pulsing: boolean;
 }) {
-  if (value) {
-    return (
-      <span className={`text-gray-800 block text-xs leading-tight ${className}`}>
-        {value}
-      </span>
-    );
-  }
   return (
     <div
-      className={`bg-gray-200 rounded ${h} ${w} ${className} ${pulsing ? "animate-pulse" : ""}`}
+      className={`${h} ${color} rounded-full ${pulsing ? "animate-pulse" : ""}`}
+      style={{ width: w }}
     />
   );
 }
 
-// ─── Section Wireframe Layouts ────────────────────────────────────────────────
-
-function HeroWireframe({ parsed, pulsing }: { parsed: Record<string, string>; pulsing: boolean }) {
+function WireframeTitleEl({ content, pulsing }: { content: string; pulsing: boolean }) {
+  if (content)
+    return <p className="font-bold text-gray-900 text-sm leading-snug">{content}</p>;
   return (
-    <div className="space-y-2 py-2 text-center">
-      <Slot value={parsed.TITLE} h="h-6" w="w-3/4" className="mx-auto font-bold text-sm" pulsing={pulsing} />
-      <Slot value={parsed.SUBTITLE} h="h-4" w="w-1/2" className="mx-auto" pulsing={pulsing} />
-      <Slot value={parsed.BODY} h="h-3" w="w-2/3" className="mx-auto" pulsing={pulsing} />
-      <div className="flex justify-center pt-2">
-        {parsed.BUTTON_TEXT ? (
-          <span className="inline-block bg-indigo-100 text-indigo-700 text-xs px-4 py-1.5 rounded-lg font-medium">
-            {parsed.BUTTON_TEXT}
-          </span>
-        ) : (
-          <div className={`h-7 w-28 bg-gray-300 rounded-lg ${pulsing ? "animate-pulse" : ""}`} />
-        )}
-      </div>
+    <div className="space-y-2">
+      <PlaceholderBar w="76%" h="h-5" color="bg-gray-400" pulsing={pulsing} />
+      <PlaceholderBar w="58%" h="h-4" color="bg-gray-300" pulsing={pulsing} />
     </div>
   );
 }
 
-function AboutWireframe({ parsed, pulsing }: { parsed: Record<string, string>; pulsing: boolean }) {
+function WireframeSubtitleEl({ content, pulsing }: { content: string; pulsing: boolean }) {
+  if (content)
+    return <p className="text-gray-700 text-xs leading-relaxed">{content}</p>;
+  return <PlaceholderBar w="54%" h="h-3.5" color="bg-gray-300" pulsing={pulsing} />;
+}
+
+function WireframeBodyEl({ content, pulsing }: { content: string; pulsing: boolean }) {
+  if (content)
+    return <p className="text-gray-600 text-xs leading-relaxed line-clamp-4">{content}</p>;
   return (
-    <div className="grid grid-cols-3 gap-3 py-1">
-      <div className={`col-span-1 bg-gray-200 rounded-lg h-20 ${pulsing ? "animate-pulse" : ""}`} />
-      <div className="col-span-2 space-y-1.5">
-        <Slot value={parsed.TITLE} h="h-4" w="w-3/4" className="font-semibold" pulsing={pulsing} />
-        <Slot value={parsed.BODY} h="h-3" w="w-full" pulsing={pulsing} />
-        <Slot h="h-3" w="w-full" pulsing={pulsing} />
-        <Slot h="h-3" w="w-4/5" pulsing={pulsing} />
-      </div>
+    <div className="space-y-1.5">
+      <PlaceholderBar w="100%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+      <PlaceholderBar w="93%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+      <PlaceholderBar w="78%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
     </div>
   );
 }
 
-function CardsWireframe({
+function WireframeCTAEl({ content, pulsing }: { content: string; pulsing: boolean }) {
+  return (
+    <div className="flex items-center">
+      {content ? (
+        <span className="inline-flex items-center justify-center h-8 px-5 bg-gray-800 text-white text-xs font-semibold rounded-full whitespace-nowrap">
+          {content}
+        </span>
+      ) : (
+        <div
+          className={`h-8 bg-gray-800 rounded-full ${pulsing ? "animate-pulse opacity-60" : ""}`}
+          style={{ width: "7.5rem" }}
+        />
+      )}
+    </div>
+  );
+}
+
+function WireframeImageEl({ pulsing }: { pulsing: boolean }) {
+  return (
+    <div
+      className={`w-full h-28 bg-gray-100 rounded-2xl border border-gray-200 ${
+        pulsing ? "animate-pulse" : ""
+      }`}
+    />
+  );
+}
+
+// Items: per-section-type layouts
+
+function DefaultCardItems({
   parsed,
   count,
-  titleField = "TITLE",
-  descField = "DESC",
   pulsing,
 }: {
   parsed: Record<string, string>;
   count: number;
-  titleField?: string;
-  descField?: string;
   pulsing: boolean;
 }) {
-  const items = getItems(parsed, count, [titleField, descField]);
   const cols = count <= 2 ? count : count <= 4 ? 2 : 3;
   return (
     <div
-      className="py-1"
       style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "8px" }}
     >
-      {items.map((item, i) => (
-        <div key={i} className="border border-gray-200 rounded-lg p-2 space-y-1 bg-gray-50">
-          <Slot value={item[titleField]} h="h-3" w="w-4/5" className="font-medium" pulsing={pulsing} />
-          <Slot value={item[descField]} h="h-2.5" w="w-full" pulsing={pulsing} />
-          <Slot h="h-2.5" w="w-4/5" pulsing={pulsing} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function GridImagesWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["TITLE", "DESC"]);
-  return (
-    <div className="flex gap-2 overflow-x-auto py-1">
-      {items.map((item, i) => (
-        <div key={i} className="shrink-0 w-24 space-y-1">
-          <div className={`h-16 bg-gray-200 rounded-lg ${pulsing ? "animate-pulse" : ""}`} />
-          <Slot value={item.TITLE} h="h-3" w="w-full" className="font-medium text-center" pulsing={pulsing} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ProcessWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["TITLE", "DESC"]);
-  return (
-    <div className="py-2">
-      <div className="flex items-start gap-1">
-        {items.map((item, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center">
-            <div className="flex items-center w-full">
-              <div className="w-7 h-7 rounded-full bg-teal-100 border-2 border-teal-300 flex items-center justify-center shrink-0 text-xs font-bold text-teal-600">
-                {i + 1}
+      {Array.from({ length: count }, (_, i) => {
+        const title = parsed[`ITEM_${i + 1}_TITLE`];
+        const desc = parsed[`ITEM_${i + 1}_DESC`];
+        return (
+          <div key={i} className="border border-gray-100 rounded-xl p-2.5 bg-gray-50 space-y-1.5">
+            {title ? (
+              <p className="text-xs font-semibold text-gray-800 line-clamp-1">{title}</p>
+            ) : (
+              <PlaceholderBar w="80%" h="h-3" color="bg-gray-300" pulsing={pulsing} />
+            )}
+            {desc ? (
+              <p className="text-xs text-gray-600 line-clamp-2">{desc}</p>
+            ) : (
+              <div className="space-y-1">
+                <PlaceholderBar w="100%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+                <PlaceholderBar w="72%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
               </div>
-              {i < items.length - 1 && <div className="flex-1 h-0.5 bg-gray-200" />}
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FAQItems({
+  parsed,
+  count,
+  pulsing,
+}: {
+  parsed: Record<string, string>;
+  count: number;
+  pulsing: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      {Array.from({ length: count }, (_, i) => {
+        const q = parsed[`ITEM_${i + 1}_QUESTION`];
+        const a = parsed[`ITEM_${i + 1}_ANSWER`];
+        return (
+          <div key={i} className="border border-gray-100 rounded-lg px-2.5 py-2 bg-gray-50">
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-400 text-xs shrink-0">▶</span>
+              {q ? (
+                <p className="text-xs font-medium text-gray-800 line-clamp-1">{q}</p>
+              ) : (
+                <PlaceholderBar w="75%" h="h-3" color="bg-gray-300" pulsing={pulsing} />
+              )}
             </div>
-            <div className="mt-1 w-full space-y-1">
-              <Slot value={item.TITLE} h="h-3" w="w-full" className="font-medium text-center" pulsing={pulsing} />
+            {a && <p className="text-xs text-gray-500 mt-1 ml-4 line-clamp-2">{a}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TeamItems({
+  parsed,
+  count,
+  pulsing,
+}: {
+  parsed: Record<string, string>;
+  count: number;
+  pulsing: boolean;
+}) {
+  return (
+    <div className="flex gap-3">
+      {Array.from({ length: count }, (_, i) => {
+        const name = parsed[`ITEM_${i + 1}_NAME`];
+        const role = parsed[`ITEM_${i + 1}_ROLE`];
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center space-y-1.5">
+            <div
+              className={`w-10 h-10 rounded-full bg-gray-200 ${pulsing ? "animate-pulse" : ""}`}
+            />
+            {name ? (
+              <p className="text-xs font-semibold text-gray-800 text-center">{name}</p>
+            ) : (
+              <PlaceholderBar w="80%" h="h-3" color="bg-gray-300" pulsing={pulsing} />
+            )}
+            {role ? (
+              <p className="text-xs text-gray-500 text-center">{role}</p>
+            ) : (
+              <PlaceholderBar w="60%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TestimonialItems({
+  parsed,
+  count,
+  pulsing,
+}: {
+  parsed: Record<string, string>;
+  count: number;
+  pulsing: boolean;
+}) {
+  return (
+    <div className="flex gap-2 overflow-x-hidden">
+      {Array.from({ length: Math.min(count, 3) }, (_, i) => {
+        const quote = parsed[`ITEM_${i + 1}_QUOTE`];
+        const name = parsed[`ITEM_${i + 1}_NAME`];
+        const role = parsed[`ITEM_${i + 1}_ROLE`];
+        return (
+          <div
+            key={i}
+            className="flex-1 min-w-0 border border-gray-100 rounded-xl p-2.5 bg-purple-50/30 space-y-1.5"
+          >
+            <span className="text-purple-300 text-lg leading-none block">"</span>
+            {quote ? (
+              <p className="text-xs text-gray-700 line-clamp-3 italic">{quote}</p>
+            ) : (
+              <div className="space-y-1">
+                <PlaceholderBar w="100%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+                <PlaceholderBar w="85%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+                <PlaceholderBar w="70%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <div
+                className={`w-5 h-5 rounded-full bg-gray-200 shrink-0 ${
+                  pulsing ? "animate-pulse" : ""
+                }`}
+              />
+              <div className="min-w-0">
+                {name ? (
+                  <p className="text-xs font-semibold text-gray-800 truncate">{name}</p>
+                ) : (
+                  <PlaceholderBar w="4rem" h="h-2.5" color="bg-gray-300" pulsing={pulsing} />
+                )}
+                {role && (
+                  <p className="text-xs text-gray-400 truncate">{role}</p>
+                )}
+              </div>
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function FAQWireframe({
+function PricingItems({
   parsed,
   count,
   pulsing,
@@ -374,120 +479,143 @@ function FAQWireframe({
   count: number;
   pulsing: boolean;
 }) {
-  const items = getItems(parsed, count, ["QUESTION", "ANSWER"]);
   return (
-    <div className="space-y-1.5 py-1">
-      {items.map((item, i) => (
-        <div key={i} className="border border-gray-200 rounded px-2 py-1.5 bg-gray-50">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 text-gray-400 shrink-0 text-xs">▶</div>
-            <Slot value={item.QUESTION} h="h-3" w="w-full" className="font-medium" pulsing={pulsing} />
-          </div>
-          {item.ANSWER && (
-            <p className="text-xs text-gray-600 mt-1 ml-5 line-clamp-2">{item.ANSWER}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TeamWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["NAME", "ROLE", "BIO"]);
-  return (
-    <div className="flex gap-3 py-1">
-      {items.map((item, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center space-y-1">
-          <div className={`w-10 h-10 rounded-full bg-gray-200 ${pulsing ? "animate-pulse" : ""}`} />
-          <Slot value={item.NAME} h="h-3" w="w-4/5" className="font-semibold text-center" pulsing={pulsing} />
-          <Slot value={item.ROLE} h="h-2.5" w="w-3/5" className="text-center" pulsing={pulsing} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TestimonialsWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["QUOTE", "NAME", "ROLE"]);
-  return (
-    <div className="flex gap-2 py-1 overflow-x-auto">
-      {items.map((item, i) => (
-        <div key={i} className="shrink-0 flex-1 min-w-0 border border-gray-200 rounded-lg p-2 bg-purple-50/30 space-y-1">
-          <div className="text-purple-300 text-xs">"</div>
-          <Slot value={item.QUOTE} h="h-3" w="w-full" pulsing={pulsing} />
-          <Slot h="h-2.5" w="w-4/5" pulsing={pulsing} />
-          <div className="flex items-center gap-1 mt-1">
-            <div className={`w-5 h-5 rounded-full bg-gray-200 ${pulsing ? "animate-pulse" : ""}`} />
-            <Slot value={item.NAME} h="h-2.5" w="w-16" className="font-medium" pulsing={pulsing} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PricingWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["NAME", "PRICE", "FEATURES", "CTA"]);
-  return (
-    <div className="flex gap-2 py-1">
-      {items.map((item, i) => (
-        <div
-          key={i}
-          className={`flex-1 border rounded-lg p-2 space-y-1 ${
-            i === Math.floor(count / 2)
-              ? "border-amber-300 bg-amber-50/50 scale-105"
-              : "border-gray-200 bg-gray-50"
-          }`}
-        >
-          <Slot value={item.NAME} h="h-3.5" w="w-3/4" className="font-bold" pulsing={pulsing} />
-          <Slot value={item.PRICE} h="h-6" w="w-1/2" className="font-black text-base" pulsing={pulsing} />
-          {item.FEATURES
-            ? item.FEATURES.split(";")
+    <div className="flex gap-2">
+      {Array.from({ length: count }, (_, i) => {
+        const highlight = i === Math.floor(count / 2);
+        const name = parsed[`ITEM_${i + 1}_NAME`];
+        const price = parsed[`ITEM_${i + 1}_PRICE`];
+        const features = parsed[`ITEM_${i + 1}_FEATURES`];
+        const cta = parsed[`ITEM_${i + 1}_CTA`];
+        return (
+          <div
+            key={i}
+            className={`flex-1 rounded-xl p-2.5 space-y-1.5 ${
+              highlight
+                ? "border-2 border-amber-300 bg-amber-50/50 scale-105"
+                : "border border-gray-100 bg-gray-50"
+            }`}
+          >
+            {name ? (
+              <p className="text-xs font-bold text-gray-800">{name}</p>
+            ) : (
+              <PlaceholderBar w="65%" h="h-3" color="bg-gray-300" pulsing={pulsing} />
+            )}
+            {price ? (
+              <p className="text-sm font-black text-gray-900">{price}</p>
+            ) : (
+              <PlaceholderBar w="45%" h="h-5" color="bg-gray-400" pulsing={pulsing} />
+            )}
+            {features ? (
+              features
+                .split(";")
                 .slice(0, 3)
                 .map((f, j) => (
                   <p key={j} className="text-xs text-gray-600 flex items-center gap-1">
                     <span className="text-green-500">✓</span> {f.trim()}
                   </p>
                 ))
-            : [0, 1, 2].map((j) => <Slot key={j} h="h-2.5" w="w-full" pulsing={pulsing} />)}
-          {item.CTA ? (
-            <div className="bg-amber-100 text-amber-700 text-xs text-center py-1 rounded font-medium mt-1">
-              {item.CTA}
+            ) : (
+              [0, 1, 2].map((j) => (
+                <PlaceholderBar key={j} w="100%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+              ))
+            )}
+            {cta ? (
+              <div className="bg-gray-800 text-white text-xs text-center py-1.5 rounded-full font-medium mt-1">
+                {cta}
+              </div>
+            ) : (
+              <div
+                className={`h-6 w-full bg-gray-700 rounded-full ${
+                  pulsing ? "animate-pulse opacity-60" : ""
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatsItems({
+  parsed,
+  count,
+  pulsing,
+}: {
+  parsed: Record<string, string>;
+  count: number;
+  pulsing: boolean;
+}) {
+  return (
+    <div className="flex gap-2">
+      {Array.from({ length: count }, (_, i) => {
+        const num = parsed[`ITEM_${i + 1}_NUMBER`];
+        const label = parsed[`ITEM_${i + 1}_LABEL`];
+        return (
+          <div
+            key={i}
+            className="flex-1 text-center border border-gray-100 rounded-xl p-2 bg-sky-50/40 space-y-1"
+          >
+            {num ? (
+              <p className="text-base font-black text-sky-700">{num}</p>
+            ) : (
+              <div className="flex justify-center">
+                <PlaceholderBar w="3rem" h="h-6" color="bg-sky-200" pulsing={pulsing} />
+              </div>
+            )}
+            {label ? (
+              <p className="text-xs text-gray-600">{label}</p>
+            ) : (
+              <div className="flex justify-center">
+                <PlaceholderBar w="70%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProcessItems({
+  parsed,
+  count,
+  pulsing,
+}: {
+  parsed: Record<string, string>;
+  count: number;
+  pulsing: boolean;
+}) {
+  return (
+    <div className="flex items-start">
+      {Array.from({ length: count }, (_, i) => {
+        const title = parsed[`ITEM_${i + 1}_TITLE`];
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center">
+            <div className="flex items-center w-full">
+              <div className="w-7 h-7 rounded-full bg-teal-100 border-2 border-teal-300 flex items-center justify-center shrink-0 text-xs font-bold text-teal-600">
+                {i + 1}
+              </div>
+              {i < count - 1 && <div className="flex-1 h-0.5 bg-gray-200" />}
             </div>
-          ) : (
-            <div className={`h-6 w-full bg-gray-200 rounded ${pulsing ? "animate-pulse" : ""}`} />
-          )}
-        </div>
-      ))}
+            <div className="mt-1.5 w-full text-center">
+              {title ? (
+                <p className="text-xs font-medium text-gray-700 line-clamp-2">{title}</p>
+              ) : (
+                <div className="flex justify-center">
+                  <PlaceholderBar w="85%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function StatsWireframe({
+function ComparativeItems({
   parsed,
   count,
   pulsing,
@@ -496,179 +624,153 @@ function StatsWireframe({
   count: number;
   pulsing: boolean;
 }) {
-  const items = getItems(parsed, count, ["NUMBER", "LABEL"]);
   return (
-    <div className="flex gap-2 py-1">
-      {items.map((item, i) => (
-        <div key={i} className="flex-1 text-center border border-gray-100 rounded-lg p-2 bg-sky-50/40 space-y-1">
-          <Slot value={item.NUMBER} h="h-7" w="w-3/5" className="mx-auto font-black text-base text-sky-700" pulsing={pulsing} />
-          <Slot value={item.LABEL} h="h-2.5" w="w-4/5" className="mx-auto" pulsing={pulsing} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CtaWireframe({ parsed, pulsing }: { parsed: Record<string, string>; pulsing: boolean }) {
-  return (
-    <div className="bg-gray-800/5 rounded-xl py-4 px-4 text-center space-y-2">
-      <Slot value={parsed.TITLE} h="h-6" w="w-2/3" className="mx-auto font-bold text-sm" pulsing={pulsing} />
-      <Slot value={parsed.SUBTITLE} h="h-3.5" w="w-1/2" className="mx-auto" pulsing={pulsing} />
-      <div className="flex justify-center pt-1">
-        {parsed.BUTTON_TEXT ? (
-          <span className="bg-rose-100 text-rose-700 text-xs px-6 py-2 rounded-lg font-bold">
-            {parsed.BUTTON_TEXT}
-          </span>
-        ) : (
-          <div className={`h-8 w-36 bg-gray-300 rounded-lg ${pulsing ? "animate-pulse" : ""}`} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ComparativeWireframe({
-  parsed,
-  count,
-  pulsing,
-}: {
-  parsed: Record<string, string>;
-  count: number;
-  pulsing: boolean;
-}) {
-  const items = getItems(parsed, count, ["FEATURE", "COL1", "COL2"]);
-  return (
-    <div className="py-1">
-      <div className="flex gap-1 mb-1">
+    <div>
+      <div className="flex gap-1 mb-1.5 px-1">
         <div className="flex-1" />
-        <div className="w-16 text-center text-xs text-gray-500 font-medium">Option A</div>
-        <div className="w-16 text-center text-xs text-gray-500 font-medium">Option B</div>
+        <div className="w-16 text-center text-xs text-gray-400 font-medium">Option A</div>
+        <div className="w-16 text-center text-xs text-gray-400 font-medium">Option B</div>
       </div>
-      {items.map((item, i) => (
-        <div key={i} className={`flex gap-1 items-center py-1 ${i % 2 === 0 ? "bg-gray-50" : ""} rounded px-1`}>
-          <div className="flex-1">
-            <Slot value={item.FEATURE} h="h-3" w="w-full" pulsing={pulsing} />
+      {Array.from({ length: count }, (_, i) => {
+        const feature = parsed[`ITEM_${i + 1}_FEATURE`];
+        const col1 = parsed[`ITEM_${i + 1}_COL1`];
+        const col2 = parsed[`ITEM_${i + 1}_COL2`];
+        return (
+          <div
+            key={i}
+            className={`flex gap-1 items-center py-1.5 px-1 rounded ${
+              i % 2 === 0 ? "bg-gray-50" : ""
+            }`}
+          >
+            <div className="flex-1">
+              {feature ? (
+                <p className="text-xs text-gray-700">{feature}</p>
+              ) : (
+                <PlaceholderBar w="75%" h="h-2.5" color="bg-gray-200" pulsing={pulsing} />
+              )}
+            </div>
+            <div className="w-16 text-center text-xs text-gray-600">{col1 || "—"}</div>
+            <div className="w-16 text-center text-xs text-gray-600">{col2 || "—"}</div>
           </div>
-          <div className="w-16 text-center text-xs text-gray-600">{item.COL1 || "—"}</div>
-          <div className="w-16 text-center text-xs text-gray-600">{item.COL2 || "—"}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function ContactWireframe({ parsed, pulsing }: { parsed: Record<string, string>; pulsing: boolean }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 py-1">
-      <div className="space-y-1.5">
-        <Slot value={parsed.TITLE} h="h-4" w="w-3/4" className="font-semibold" pulsing={pulsing} />
-        <Slot value={parsed.SUBTITLE} h="h-3" w="w-full" pulsing={pulsing} />
-        <Slot value={parsed.BODY} h="h-3" w="w-4/5" pulsing={pulsing} />
-      </div>
-      <div className="space-y-1.5">
-        <div className={`h-6 w-full bg-gray-200 rounded ${pulsing ? "animate-pulse" : ""}`} />
-        <div className={`h-6 w-full bg-gray-200 rounded ${pulsing ? "animate-pulse" : ""}`} />
-        <div className={`h-10 w-full bg-gray-200 rounded ${pulsing ? "animate-pulse" : ""}`} />
-        {parsed.BUTTON_TEXT ? (
-          <div className="bg-slate-100 text-slate-700 text-xs text-center py-1.5 rounded font-medium">
-            {parsed.BUTTON_TEXT}
-          </div>
-        ) : (
-          <div className={`h-6 w-24 bg-gray-200 rounded ${pulsing ? "animate-pulse" : ""}`} />
-        )}
-      </div>
-    </div>
-  );
-}
+function WireframeItemsDispatch({
+  sectionType,
+  element,
+  pulsing,
+}: {
+  sectionType: SectionType;
+  element: SectionElement;
+  pulsing: boolean;
+}) {
+  const count = element.count ?? 3;
+  const parsed = element.content ? parseContent(element.content) : {};
+  const hasItems = Object.keys(parsed).length > 0;
 
-function SectionWireframe({ section }: { section: Section }) {
-  const parsed = parseContent(section.generated);
-  const pulsing = section.generating;
+  const common = { parsed: hasItems ? parsed : {}, count, pulsing };
 
-  switch (section.type) {
-    case "Hero":
-      return <HeroWireframe parsed={parsed} pulsing={pulsing} />;
-    case "À propos":
-      return <AboutWireframe parsed={parsed} pulsing={pulsing} />;
-    case "Services":
-      return (
-        <CardsWireframe
-          parsed={parsed}
-          count={section.element_count}
-          titleField="TITLE"
-          descField="DESC"
-          pulsing={pulsing}
-        />
-      );
-    case "Réalisations":
-      return <GridImagesWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
-    case "Cible":
-      return (
-        <CardsWireframe
-          parsed={parsed}
-          count={section.element_count}
-          titleField="TITLE"
-          descField="DESC"
-          pulsing={pulsing}
-        />
-      );
-    case "Processus":
-      return <ProcessWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
+  switch (sectionType) {
     case "FAQ":
-      return <FAQWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
+      return <FAQItems {...common} />;
     case "Équipe":
-      return <TeamWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
-    case "Fonctionnalités":
-      return (
-        <CardsWireframe
-          parsed={parsed}
-          count={section.element_count}
-          titleField="TITLE"
-          descField="DESC"
-          pulsing={pulsing}
-        />
-      );
-    case "Problématiques":
-      return (
-        <CardsWireframe
-          parsed={parsed}
-          count={section.element_count}
-          titleField="TITLE"
-          descField="DESC"
-          pulsing={pulsing}
-        />
-      );
+      return <TeamItems {...common} />;
     case "Témoignages":
-      return <TestimonialsWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
-    case "Avantages":
-      return (
-        <CardsWireframe
-          parsed={parsed}
-          count={section.element_count}
-          titleField="TITLE"
-          descField="DESC"
-          pulsing={pulsing}
-        />
-      );
+      return <TestimonialItems {...common} />;
     case "Tarifs":
-      return <PricingWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
-    case "CTA Principal":
-      return <CtaWireframe parsed={parsed} pulsing={pulsing} />;
+      return <PricingItems {...common} />;
     case "Chiffres clés":
-      return <StatsWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
+      return <StatsItems {...common} />;
+    case "Processus":
+      return <ProcessItems {...common} />;
     case "Comparatif":
-      return <ComparativeWireframe parsed={parsed} count={section.element_count} pulsing={pulsing} />;
-    case "Contact":
-      return <ContactWireframe parsed={parsed} pulsing={pulsing} />;
+      return <ComparativeItems {...common} />;
     default:
-      return (
-        <div className="space-y-2 py-1">
-          <Slot h="h-4" w="w-2/3" pulsing={pulsing} />
-          <Slot h="h-3" w="w-full" pulsing={pulsing} />
-          <Slot h="h-3" w="w-4/5" pulsing={pulsing} />
-        </div>
-      );
+      return <DefaultCardItems {...common} />;
   }
+}
+
+// ─── Add Element Inline UI ────────────────────────────────────────────────────
+
+const ADDABLE_ELEMENTS: { type: ElementType; label: string; icon: React.ReactNode }[] = [
+  { type: "title", label: "Titre", icon: <Type size={11} /> },
+  { type: "subtitle", label: "Sous-titre", icon: <AlignLeft size={11} /> },
+  { type: "body", label: "Texte", icon: <AlignLeft size={11} /> },
+  { type: "cta", label: "CTA", icon: <MousePointerClick size={11} /> },
+  { type: "items", label: "Éléments", icon: <List size={11} /> },
+  { type: "image", label: "Image", icon: <Square size={11} /> },
+];
+
+function AddElementInline({ onAdd }: { onAdd: (type: ElementType, note?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<ElementType>("body");
+  const [note, setNote] = useState("");
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"
+      >
+        <Plus size={11} /> Ajouter un élément
+      </button>
+    );
+  }
+
+  return (
+    <div className="border border-dashed border-indigo-200 rounded-xl p-2.5 bg-indigo-50/30 space-y-2">
+      <div className="flex flex-wrap gap-1">
+        {ADDABLE_ELEMENTS.map((e) => (
+          <button
+            key={e.type}
+            onClick={() => setSelectedType(e.type)}
+            className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-colors ${
+              selectedType === e.type
+                ? "bg-indigo-600 border-indigo-600 text-white"
+                : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+            }`}
+          >
+            {e.icon} {e.label}
+          </button>
+        ))}
+      </div>
+      <input
+        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+        placeholder="Note optionnelle (ex: focus sur l'urgence)..."
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            onAdd(selectedType, note.trim() || undefined);
+            setOpen(false);
+            setNote("");
+          }
+          if (e.key === "Escape") setOpen(false);
+        }}
+      />
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => {
+            onAdd(selectedType, note.trim() || undefined);
+            setOpen(false);
+            setNote("");
+          }}
+          className="flex-1 text-xs bg-indigo-600 text-white py-1.5 rounded-lg hover:bg-indigo-700 font-medium"
+        >
+          Ajouter
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="px-2.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
+        >
+          <X size={11} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -683,8 +785,10 @@ export default function CopywritingPage() {
   const [showNewPage, setShowNewPage] = useState(false);
   const [globalLanguage, setGlobalLanguage] = useState<"fr" | "en" | "es">("fr");
 
-  // Selection
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Section-level selection (click)
+  const [selectedSectionIds, setSelectedSectionIds] = useState<Set<string>>(new Set());
+  // Element-level selection (ctrl+click)
+  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
 
   // Right panel
   const [panelOpen, setPanelOpen] = useState(true);
@@ -706,13 +810,30 @@ export default function CopywritingPage() {
   // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Drag & drop
+  // Ctrl key tracking for visual affordance
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+
   const dragSrc = useRef<number | null>(null);
 
   const activePage = pages.find((p) => p.id === activePageId) ?? null;
-  const selectedSections = activePage?.sections.filter((s) => selectedIds.has(s.id)) ?? [];
 
-  // Load projects
+  const selectedSections = activePage?.sections.filter((s) =>
+    selectedSectionIds.has(s.id)
+  ) ?? [];
+
+  const selectedEl =
+    selectedElement && activePage
+      ? activePage.sections
+          .find((s) => s.id === selectedElement.sectionId)
+          ?.elements.find((e) => e.id === selectedElement.elementId)
+      : null;
+
+  const hasAITarget = selectedSectionIds.size > 0 || selectedElement !== null;
+  const ungeneratedCount =
+    activePage?.sections.filter((s) => !sectionIsGenerated(s)).length ?? 0;
+
+  // ── Effects ──
+
   useEffect(() => {
     fetch("/api/projects")
       .then((r) => r.json())
@@ -723,24 +844,65 @@ export default function CopywritingPage() {
       .catch(() => setLoadingProjects(false));
   }, []);
 
-  // Load saved prompts
   useEffect(() => {
     try {
       const stored = localStorage.getItem("copywriting_custom_prompts");
       if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, string>;
-        const merged = { ...DEFAULT_PROMPTS, ...parsed };
+        const p = JSON.parse(stored) as Record<string, string>;
+        const merged = { ...DEFAULT_PROMPTS, ...p };
         setCustomPrompts(merged);
         setDraftPrompts(merged);
       }
     } catch {}
   }, []);
 
+  // Persist pages to localStorage whenever they change
+  useEffect(() => {
+    if (!selectedProject || pages.length === 0) return;
+    try {
+      localStorage.setItem(
+        `copywriting_pages_${selectedProject.id}`,
+        JSON.stringify(pages)
+      );
+    } catch {}
+  }, [pages, selectedProject]);
+
+  // Track Ctrl key
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) setCtrlHeld(true);
+    };
+    const up = () => setCtrlHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", up);
+    };
+  }, []);
+
+  // ── Project & page helpers ──
+
   function handleSelectProject(projectId: string) {
     const proj = projects.find((p) => p.id === projectId) ?? null;
     setSelectedProject(proj);
-    setSelectedIds(new Set());
+    setSelectedSectionIds(new Set());
+    setSelectedElement(null);
+
     if (proj) {
+      try {
+        const saved = localStorage.getItem(`copywriting_pages_${proj.id}`);
+        if (saved) {
+          const savedPages = JSON.parse(saved) as Page[];
+          if (savedPages.length > 0) {
+            setPages(savedPages);
+            setActivePageId(savedPages[0].id);
+            return;
+          }
+        }
+      } catch {}
       const home = makePage("Page d'accueil");
       setPages([home]);
       setActivePageId(home.id);
@@ -793,33 +955,108 @@ export default function CopywritingPage() {
       ...p,
       sections: p.sections.filter((s) => s.id !== sectionId),
     }));
-    setSelectedIds((prev) => {
+    setSelectedSectionIds((prev) => {
       const next = new Set(prev);
       next.delete(sectionId);
       return next;
     });
+    if (selectedElement?.sectionId === sectionId) setSelectedElement(null);
   }
 
+  // ── Element management ──
+
+  function addElementToSection(
+    sectionId: string,
+    type: ElementType,
+    note?: string
+  ) {
+    if (!activePage) return;
+    const newEl: SectionElement = {
+      id: crypto.randomUUID(),
+      type,
+      content: "",
+      note,
+      count: type === "items" ? 3 : undefined,
+    };
+    updateSection(activePage.id, sectionId, (s) => ({
+      ...s,
+      elements: [...s.elements, newEl],
+    }));
+  }
+
+  function removeElement(sectionId: string, elementId: string) {
+    if (!activePage) return;
+    updateSection(activePage.id, sectionId, (s) => ({
+      ...s,
+      elements: s.elements.filter((e) => e.id !== elementId),
+    }));
+    if (selectedElement?.elementId === elementId) setSelectedElement(null);
+  }
+
+  function changeElementCount(sectionId: string, elementId: string, delta: number) {
+    if (!activePage) return;
+    updateSection(activePage.id, sectionId, (s) => ({
+      ...s,
+      elements: s.elements.map((e) =>
+        e.id === elementId
+          ? { ...e, count: Math.max(1, Math.min(10, (e.count ?? 3) + delta)) }
+          : e
+      ),
+    }));
+  }
+
+  // ── Selection ──
+
   function handleSectionClick(e: React.MouseEvent, sectionId: string) {
+    if (e.ctrlKey || e.metaKey) return;
+    setSelectedElement(null);
     if (e.shiftKey) {
-      setSelectedIds((prev) => {
+      setSelectedSectionIds((prev) => {
         const next = new Set(prev);
         if (next.has(sectionId)) next.delete(sectionId);
         else next.add(sectionId);
         return next;
       });
     } else {
-      setSelectedIds((prev) => {
+      setSelectedSectionIds((prev) => {
         if (prev.size === 1 && prev.has(sectionId)) return new Set();
         return new Set([sectionId]);
       });
     }
   }
 
-  async function generateSection(sectionId: string) {
+  function handleElementCtrlClick(
+    e: React.MouseEvent,
+    sectionId: string,
+    elementId: string,
+    elementType: ElementType
+  ) {
+    e.stopPropagation();
+    setSelectedSectionIds(new Set());
+    setSelectedElement((prev) =>
+      prev?.elementId === elementId ? null : { sectionId, elementId, elementType }
+    );
+  }
+
+  // ── Generation ──
+
+  async function generateSectionElements(
+    sectionId: string,
+    instruction?: string,
+    specificElementIds?: string[]
+  ) {
     if (!activePage || !selectedProject) return;
     const section = activePage.sections.find((s) => s.id === sectionId);
     if (!section) return;
+
+    const elementsToSend = section.elements.filter((e) => {
+      if (e.type === "image") return false;
+      if (specificElementIds) return specificElementIds.includes(e.id);
+      if (instruction) return true;
+      return e.content === "";
+    });
+
+    if (elementsToSend.length === 0) return;
 
     updateSection(activePage.id, sectionId, (s) => ({ ...s, generating: true }));
 
@@ -830,10 +1067,19 @@ export default function CopywritingPage() {
         body: JSON.stringify({
           sections: [
             {
-              id: section.id,
+              id: sectionId,
               type: section.type,
               notes: section.notes,
-              element_count: section.element_count,
+              elements: elementsToSend.map((e) => ({
+                id: e.id,
+                type: e.type,
+                note: e.note,
+                count: e.count,
+              })),
+              ai_instruction: instruction,
+              existing_elements: instruction
+                ? elementsToSend.map((e) => ({ id: e.id, type: e.type, content: e.content }))
+                : undefined,
             },
           ],
           language: globalLanguage,
@@ -841,33 +1087,29 @@ export default function CopywritingPage() {
           custom_prompts: customPrompts,
         }),
       });
+
       const data = await res.json();
+
       if (res.ok && data.results?.length > 0) {
+        const rawContent = data.results[0].content as string;
         updateSection(activePage.id, sectionId, (s) => ({
           ...s,
-          generated: data.results[0].content ?? "",
           generating: false,
+          elements: mapContentToElements(rawContent, s.elements),
         }));
       } else {
-        updateSection(activePage.id, sectionId, (s) => ({
-          ...s,
-          generating: false,
-          generated: `TITLE: Erreur de génération\nBODY: ${data.error ?? "Erreur inconnue"}`,
-        }));
+        updateSection(activePage.id, sectionId, (s) => ({ ...s, generating: false }));
       }
-    } catch (e) {
-      updateSection(activePage.id, sectionId, (s) => ({
-        ...s,
-        generating: false,
-        generated: `TITLE: Erreur\nBODY: ${String(e)}`,
-      }));
+    } catch {
+      updateSection(activePage.id, sectionId, (s) => ({ ...s, generating: false }));
     }
   }
 
   async function generateAll() {
     if (!activePage || !selectedProject) return;
-    const toGenerate = activePage.sections.filter((s) => !s.generated && !s.generating);
-    if (toGenerate.length === 0) return;
+
+    const sectionsToGen = activePage.sections.filter((s) => !sectionIsGenerated(s));
+    if (sectionsToGen.length === 0) return;
 
     setGeneratingAll(true);
 
@@ -875,7 +1117,7 @@ export default function CopywritingPage() {
     updatePage(activePage.id, (p) => ({
       ...p,
       sections: p.sections.map((s) =>
-        toGenerate.find((tg) => tg.id === s.id) ? { ...s, generating: true } : s
+        sectionsToGen.find((tg) => tg.id === s.id) ? { ...s, generating: true } : s
       ),
     }));
 
@@ -884,11 +1126,13 @@ export default function CopywritingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sections: toGenerate.map((s) => ({
+          sections: sectionsToGen.map((s) => ({
             id: s.id,
             type: s.type,
             notes: s.notes,
-            element_count: s.element_count,
+            elements: s.elements
+              .filter((e) => e.type !== "image" && e.content === "")
+              .map((e) => ({ id: e.id, type: e.type, note: e.note, count: e.count })),
           })),
           language: globalLanguage,
           form_data: selectedProject.form_data ?? null,
@@ -899,17 +1143,16 @@ export default function CopywritingPage() {
       const data = await res.json();
 
       if (res.ok && data.results) {
-        const resultsMap: Record<string, string> = {};
+        const map: Record<string, string> = {};
         for (const r of data.results as { id: string; content: string }[]) {
-          resultsMap[r.id] = r.content;
+          map[r.id] = r.content;
         }
-
         updatePage(activePage.id, (p) => ({
           ...p,
           sections: p.sections.map((s) => ({
             ...s,
             generating: false,
-            generated: resultsMap[s.id] !== undefined ? resultsMap[s.id] : s.generated,
+            elements: map[s.id] !== undefined ? mapContentToElements(map[s.id], s.elements) : s.elements,
           })),
         }));
       } else {
@@ -929,62 +1172,24 @@ export default function CopywritingPage() {
   }
 
   async function applyAIModification(mode: "modify" | "variant") {
-    if (!activePage || !selectedProject || selectedSections.length === 0) return;
+    if (!activePage || !selectedProject) return;
     if (mode === "modify" && !aiInstruction.trim()) return;
 
     setAiLoading(true);
+    const instruction =
+      mode === "variant" ? "Génère une variante alternative et créative" : aiInstruction;
 
-    // Mark selected as generating
-    for (const s of selectedSections) {
-      updateSection(activePage.id, s.id, (sec) => ({ ...sec, generating: true }));
-    }
-
-    try {
-      const res = await fetch("/api/copywriting/generate-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sections: selectedSections.map((s) => ({
-            id: s.id,
-            type: s.type,
-            notes: s.notes,
-            element_count: s.element_count,
-            ai_instruction:
-              mode === "variant"
-                ? "Génère une variante alternative et créative"
-                : aiInstruction,
-            existing_content: s.generated || undefined,
-          })),
-          language: globalLanguage,
-          form_data: selectedProject.form_data ?? null,
-          custom_prompts: customPrompts,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.results) {
-        const resultsMap: Record<string, string> = {};
-        for (const r of data.results as { id: string; content: string }[]) {
-          resultsMap[r.id] = r.content;
-        }
-
-        updatePage(activePage.id, (p) => ({
-          ...p,
-          sections: p.sections.map((s) => ({
-            ...s,
-            generating: false,
-            generated: resultsMap[s.id] !== undefined ? resultsMap[s.id] : s.generated,
-          })),
-        }));
-      } else {
-        for (const s of selectedSections) {
-          updateSection(activePage.id, s.id, (sec) => ({ ...sec, generating: false }));
-        }
+    if (selectedElement) {
+      // Single element operation
+      const section = activePage.sections.find((s) => s.id === selectedElement.sectionId);
+      const targetEl = section?.elements.find((e) => e.id === selectedElement.elementId);
+      if (section && targetEl) {
+        await generateSectionElements(section.id, instruction, [targetEl.id]);
       }
-    } catch {
-      for (const s of selectedSections) {
-        updateSection(activePage.id, s.id, (sec) => ({ ...sec, generating: false }));
+    } else {
+      // Section-level: operate on all selected sections
+      for (const section of selectedSections) {
+        await generateSectionElements(section.id, instruction);
       }
     }
 
@@ -992,10 +1197,15 @@ export default function CopywritingPage() {
     if (mode === "modify") setAiInstruction("");
   }
 
-  function copySection(sectionId: string) {
+  function copyContent(sectionId: string) {
     const section = activePage?.sections.find((s) => s.id === sectionId);
-    if (!section?.generated) return;
-    navigator.clipboard.writeText(section.generated).then(() => {
+    if (!section) return;
+    const text = section.elements
+      .filter((e) => e.content)
+      .map((e) => `[${ELEMENT_LABELS[e.type]}]\n${e.content}`)
+      .join("\n\n");
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
       setCopiedId(sectionId);
       setTimeout(() => setCopiedId(null), 2000);
     });
@@ -1006,8 +1216,11 @@ export default function CopywritingPage() {
     const lines: string[] = [`# ${activePage.name}\n`];
     activePage.sections.forEach((s, i) => {
       lines.push(`## ${i + 1}. ${s.type}`);
-      if (s.generated) lines.push(`\n${s.generated}\n`);
-      else lines.push("_(non généré)_\n");
+      s.elements.forEach((e) => {
+        if (e.content)
+          lines.push(`### ${ELEMENT_LABELS[e.type]}\n${e.content}`);
+      });
+      lines.push("");
     });
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -1026,7 +1239,6 @@ export default function CopywritingPage() {
     setSettingsOpen(false);
   }
 
-  // Drag & drop
   function handleDragStart(idx: number) {
     dragSrc.current = idx;
   }
@@ -1045,7 +1257,7 @@ export default function CopywritingPage() {
     dragSrc.current = null;
   }
 
-  const ungeneratedCount = activePage?.sections.filter((s) => !s.generated).length ?? 0;
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -1056,8 +1268,6 @@ export default function CopywritingPage() {
             <PenLine size={15} className="text-indigo-600" />
             <h2 className="font-semibold text-sm text-gray-900">Copywriting</h2>
           </div>
-
-          {/* Project selector */}
           {loadingProjects ? (
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <Loader2 size={12} className="animate-spin" /> Chargement...
@@ -1076,12 +1286,10 @@ export default function CopywritingPage() {
               ))}
             </select>
           )}
-
-          {/* Global language */}
           {selectedProject && (
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 mb-1">
-                <Globe size={11} /> Langue de la page
+              <label className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1">
+                <Globe size={10} /> Langue de la page
               </label>
               <select
                 className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
@@ -1096,10 +1304,11 @@ export default function CopywritingPage() {
           )}
         </div>
 
-        {/* Pages list */}
         {selectedProject && (
           <div className="flex-1 overflow-y-auto py-2">
-            <p className="px-4 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Pages</p>
+            <p className="px-4 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Pages
+            </p>
             {pages.map((page) => (
               <div
                 key={page.id}
@@ -1110,7 +1319,8 @@ export default function CopywritingPage() {
                 }`}
                 onClick={() => {
                   setActivePageId(page.id);
-                  setSelectedIds(new Set());
+                  setSelectedSectionIds(new Set());
+                  setSelectedElement(null);
                 }}
               >
                 <FileText size={13} className="shrink-0" />
@@ -1128,7 +1338,6 @@ export default function CopywritingPage() {
                 )}
               </div>
             ))}
-
             {showNewPage ? (
               <div className="px-3 py-2 flex gap-1">
                 <input
@@ -1160,7 +1369,6 @@ export default function CopywritingPage() {
           </div>
         )}
 
-        {/* Settings button */}
         <div className="border-t border-gray-100 p-3">
           <button
             onClick={() => {
@@ -1169,13 +1377,12 @@ export default function CopywritingPage() {
             }}
             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <Settings size={13} />
-            Prompts par défaut
+            <Settings size={13} /> Prompts par défaut
           </button>
         </div>
       </div>
 
-      {/* ── Main content ── */}
+      {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {!selectedProject ? (
           <div className="flex-1 flex items-center justify-center">
@@ -1201,12 +1408,18 @@ export default function CopywritingPage() {
                   {selectedProject.name} · {activePage.sections.length} section
                   {activePage.sections.length !== 1 ? "s" : ""}
                   {ungeneratedCount > 0 && (
-                    <span className="text-orange-500 ml-1">· {ungeneratedCount} non générée{ungeneratedCount > 1 ? "s" : ""}</span>
+                    <span className="text-orange-500 ml-1">
+                      · {ungeneratedCount} non générée{ungeneratedCount > 1 ? "s" : ""}
+                    </span>
                   )}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {/* Generate all */}
+                {ctrlHeld && (
+                  <span className="text-xs text-blue-500 font-medium animate-pulse">
+                    ⌃ Cliquer sur un élément pour le sélectionner
+                  </span>
+                )}
                 {ungeneratedCount > 0 && (
                   <button
                     onClick={generateAll}
@@ -1221,39 +1434,40 @@ export default function CopywritingPage() {
                     Générer tout ({ungeneratedCount})
                   </button>
                 )}
-
-                {/* Export */}
                 <button
                   onClick={exportPage}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
                 >
-                  <ExternalLink size={12} />
-                  Exporter
+                  <ExternalLink size={12} /> Exporter
                 </button>
-
-                {/* Toggle right panel */}
                 <button
                   onClick={() => setPanelOpen((v) => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                    panelOpen
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
                 >
-                  {panelOpen ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-                  Sections
+                  <Plus size={12} /> Sections
                 </button>
               </div>
             </div>
 
-            {/* Body: canvas + right panel */}
+            {/* Canvas + right panel */}
             <div className="flex flex-1 overflow-hidden">
               {/* Canvas */}
               <div
                 className="flex-1 overflow-y-auto p-5 pb-28"
                 onClick={(e) => {
-                  if (e.target === e.currentTarget) setSelectedIds(new Set());
+                  if (e.target === e.currentTarget) {
+                    setSelectedSectionIds(new Set());
+                    setSelectedElement(null);
+                  }
                 }}
               >
-                <div className="max-w-3xl mx-auto space-y-3">
+                <div className="max-w-2xl mx-auto space-y-4">
                   {activePage.sections.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-200">
+                    <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
                       <Layers size={32} className="text-gray-200 mx-auto mb-3" />
                       <p className="text-gray-500 font-medium">Aucune section</p>
                       <p className="text-gray-400 text-sm mt-1">
@@ -1275,8 +1489,8 @@ export default function CopywritingPage() {
                         text: "text-gray-600",
                         border: "border-gray-200",
                       };
-                      const isSelected = selectedIds.has(section.id);
-                      const isGenerated = !!section.generated;
+                      const isSectionSelected = selectedSectionIds.has(section.id);
+                      const isGenerated = sectionIsGenerated(section);
 
                       return (
                         <div
@@ -1286,29 +1500,30 @@ export default function CopywritingPage() {
                           onDragOver={(e) => handleDragOver(e, idx)}
                           onDragEnd={handleDragEnd}
                           onClick={(e) => handleSectionClick(e, section.id)}
-                          className={`bg-white rounded-xl border-2 cursor-pointer transition-all overflow-hidden ${
-                            isSelected
+                          className={`bg-white rounded-2xl border-2 transition-all overflow-hidden cursor-pointer ${
+                            isSectionSelected
                               ? "border-blue-500 shadow-lg shadow-blue-100"
-                              : "border-gray-200 hover:border-gray-300"
+                              : "border-gray-100 hover:border-gray-200"
                           }`}
                         >
                           {/* Section header */}
-                          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+                          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-50">
                             <div
                               className="text-gray-300 cursor-grab active:cursor-grabbing shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <GripVertical size={14} />
                             </div>
-                            <span className="text-xs text-gray-400 font-mono w-5 shrink-0">{idx + 1}</span>
+                            <span className="text-xs text-gray-400 font-mono w-4 shrink-0">
+                              {idx + 1}
+                            </span>
                             <span
                               className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${color.bg} ${color.text} ${color.border}`}
                             >
                               {section.type}
                             </span>
                             {section.notes && (
-                              <span className="text-xs text-gray-400 truncate italic flex items-center gap-1">
-                                <StickyNote size={10} />
+                              <span className="text-xs text-gray-400 truncate italic">
                                 {section.notes}
                               </span>
                             )}
@@ -1316,38 +1531,6 @@ export default function CopywritingPage() {
                               className="ml-auto flex items-center gap-1.5 shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {/* Element count stepper */}
-                              {isMultiItem(section.type) && (
-                                <div className="flex items-center gap-0.5 bg-gray-100 rounded-md px-1.5 py-0.5">
-                                  <button
-                                    onClick={() =>
-                                      updateSection(activePage.id, section.id, (s) => ({
-                                        ...s,
-                                        element_count: Math.max(1, s.element_count - 1),
-                                      }))
-                                    }
-                                    className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-800"
-                                  >
-                                    <Minus size={10} />
-                                  </button>
-                                  <span className="text-xs text-gray-700 w-4 text-center font-medium">
-                                    {section.element_count}
-                                  </span>
-                                  <button
-                                    onClick={() =>
-                                      updateSection(activePage.id, section.id, (s) => ({
-                                        ...s,
-                                        element_count: Math.min(10, s.element_count + 1),
-                                      }))
-                                    }
-                                    className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-800"
-                                  >
-                                    <Plus size={10} />
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* Status */}
                               {section.generating ? (
                                 <span className="flex items-center gap-1 text-xs text-indigo-500">
                                   <Loader2 size={11} className="animate-spin" /> Génération...
@@ -1357,10 +1540,8 @@ export default function CopywritingPage() {
                                   <Check size={11} /> Généré
                                 </span>
                               ) : null}
-
-                              {/* Generate button */}
                               <button
-                                onClick={() => generateSection(section.id)}
+                                onClick={() => generateSectionElements(section.id)}
                                 disabled={section.generating}
                                 title={isGenerated ? "Régénérer" : "Générer"}
                                 className="p-1 text-gray-400 hover:text-indigo-600 transition-colors disabled:opacity-40"
@@ -1373,13 +1554,11 @@ export default function CopywritingPage() {
                                   <Wand2 size={13} />
                                 )}
                               </button>
-
-                              {/* Copy */}
                               {isGenerated && (
                                 <button
-                                  onClick={() => copySection(section.id)}
-                                  title="Copier le contenu brut"
-                                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                                  onClick={() => copyContent(section.id)}
+                                  title="Copier"
+                                  className="p-1 text-gray-400 hover:text-gray-600"
                                 >
                                   {copiedId === section.id ? (
                                     <Check size={13} className="text-green-500" />
@@ -1388,8 +1567,6 @@ export default function CopywritingPage() {
                                   )}
                                 </button>
                               )}
-
-                              {/* Delete */}
                               <button
                                 onClick={() => removeSection(section.id)}
                                 className="p-1 text-gray-300 hover:text-red-500 transition-colors"
@@ -1399,9 +1576,129 @@ export default function CopywritingPage() {
                             </div>
                           </div>
 
-                          {/* Wireframe body */}
-                          <div className="px-4 py-3">
-                            <SectionWireframe section={section} />
+                          {/* Elements */}
+                          <div className="px-5 py-4 space-y-3.5">
+                            {section.elements.map((element) => {
+                              const isElSelected =
+                                selectedElement?.elementId === element.id;
+
+                              return (
+                                <div
+                                  key={element.id}
+                                  className={`relative group/el ${
+                                    ctrlHeld && !isElSelected
+                                      ? "hover:ring-1 hover:ring-blue-200 hover:rounded-lg cursor-pointer"
+                                      : ""
+                                  } ${
+                                    isElSelected
+                                      ? "ring-2 ring-blue-400 ring-offset-2 rounded-lg p-1 -m-1 bg-blue-50/30"
+                                      : ""
+                                  }`}
+                                  onClick={(e) =>
+                                    handleElementCtrlClick(
+                                      e,
+                                      section.id,
+                                      element.id,
+                                      element.type
+                                    )
+                                  }
+                                >
+                                  {/* Delete element on hover */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeElement(section.id, element.id);
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 z-10 opacity-0 group-hover/el:opacity-100 bg-white border border-red-200 text-red-400 hover:text-red-600 rounded-full w-4 h-4 flex items-center justify-center shadow-sm transition-opacity"
+                                  >
+                                    <X size={9} />
+                                  </button>
+
+                                  {/* Element visual */}
+                                  {element.type === "title" && (
+                                    <WireframeTitleEl
+                                      content={element.content}
+                                      pulsing={section.generating}
+                                    />
+                                  )}
+                                  {element.type === "subtitle" && (
+                                    <WireframeSubtitleEl
+                                      content={element.content}
+                                      pulsing={section.generating}
+                                    />
+                                  )}
+                                  {element.type === "body" && (
+                                    <WireframeBodyEl
+                                      content={element.content}
+                                      pulsing={section.generating}
+                                    />
+                                  )}
+                                  {element.type === "cta" && (
+                                    <WireframeCTAEl
+                                      content={element.content}
+                                      pulsing={section.generating}
+                                    />
+                                  )}
+                                  {element.type === "image" && (
+                                    <WireframeImageEl pulsing={section.generating} />
+                                  )}
+                                  {element.type === "items" && (
+                                    <div>
+                                      <div
+                                        className="flex items-center gap-2 mb-2"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <span className="text-xs text-gray-400 font-medium">
+                                          Éléments
+                                        </span>
+                                        <div className="flex items-center gap-0.5 bg-gray-100 rounded-md px-1.5 py-0.5 ml-auto">
+                                          <button
+                                            onClick={() =>
+                                              changeElementCount(section.id, element.id, -1)
+                                            }
+                                            className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-800"
+                                          >
+                                            <Minus size={9} />
+                                          </button>
+                                          <span className="text-xs text-gray-700 w-4 text-center font-medium">
+                                            {element.count ?? 3}
+                                          </span>
+                                          <button
+                                            onClick={() =>
+                                              changeElementCount(section.id, element.id, 1)
+                                            }
+                                            className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-800"
+                                          >
+                                            <Plus size={9} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <WireframeItemsDispatch
+                                        sectionType={section.type}
+                                        element={element}
+                                        pulsing={section.generating}
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Note badge */}
+                                  {element.note && (
+                                    <p className="text-xs text-gray-400 italic mt-1 flex items-center gap-0.5">
+                                      <StickyNote size={9} /> {element.note}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Add element button */}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <AddElementInline
+                                onAdd={(type, note) =>
+                                  addElementToSection(section.id, type, note)
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
                       );
@@ -1412,7 +1709,7 @@ export default function CopywritingPage() {
 
               {/* Right panel */}
               {panelOpen && (
-                <div className="w-60 border-l border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
+                <div className="w-56 border-l border-gray-200 bg-white flex flex-col shrink-0 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                     <p className="text-xs font-semibold text-gray-700">Ajouter une section</p>
                     <button
@@ -1422,8 +1719,7 @@ export default function CopywritingPage() {
                       <X size={14} />
                     </button>
                   </div>
-
-                  <div className="flex-1 overflow-y-auto py-2 px-2 space-y-1">
+                  <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
                     {SECTION_TYPES.map((type) => {
                       const color = SECTION_COLORS[type] ?? {
                         bg: "bg-gray-50",
@@ -1431,7 +1727,6 @@ export default function CopywritingPage() {
                         border: "border-gray-200",
                       };
                       const isExpanded = panelNoteTarget === type;
-
                       return (
                         <div key={type}>
                           <button
@@ -1452,18 +1747,17 @@ export default function CopywritingPage() {
                             } disabled:opacity-40`}
                           >
                             <span>{type}</span>
-                            <Plus size={12} className={isExpanded ? color.text : "text-gray-400"} />
+                            <Plus
+                              size={11}
+                              className={isExpanded ? color.text : "text-gray-400"}
+                            />
                           </button>
-
                           {isExpanded && (
                             <div className="mx-1 mt-1 mb-2 p-2 border border-gray-200 rounded-lg bg-gray-50 space-y-2">
-                              <label className="text-xs text-gray-500 flex items-center gap-1">
-                                <StickyNote size={10} /> Note (optionnelle)
-                              </label>
                               <input
                                 autoFocus
                                 className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
-                                placeholder="Ex: focus sur la qualité..."
+                                placeholder="Note optionnelle..."
                                 value={panelNote}
                                 onChange={(e) => setPanelNote(e.target.value)}
                                 onKeyDown={(e) => {
@@ -1501,59 +1795,72 @@ export default function CopywritingPage() {
               )}
             </div>
 
-            {/* AI modification bottom bar */}
-            {selectedIds.size > 0 && (
+            {/* AI modification bar */}
+            {hasAITarget && (
               <div className="fixed bottom-0 left-56 right-0 z-40 bg-white border-t border-gray-200 shadow-lg px-5 py-3 flex items-center gap-3">
-                <span className="text-xs font-medium text-blue-600 shrink-0">
-                  {selectedIds.size} section{selectedIds.size > 1 ? "s" : ""} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                <span
+                  className={`text-xs font-medium shrink-0 ${
+                    selectedElement ? "text-blue-600" : "text-indigo-600"
+                  }`}
+                >
+                  {selectedElement
+                    ? `${ELEMENT_LABELS[selectedElement.elementType]} sélectionné`
+                    : `${selectedSectionIds.size} section${
+                        selectedSectionIds.size > 1 ? "s" : ""
+                      } sélectionnée${selectedSectionIds.size > 1 ? "s" : ""}`}
                 </span>
                 <button
-                  onClick={() => setSelectedIds(new Set())}
+                  onClick={() => {
+                    setSelectedSectionIds(new Set());
+                    setSelectedElement(null);
+                  }}
                   className="text-gray-400 hover:text-gray-600 shrink-0"
                 >
                   <X size={14} />
                 </button>
                 <div className="w-px h-5 bg-gray-200 shrink-0" />
-                <div className="flex-1 flex items-center gap-2">
-                  <div className="flex-1 relative">
-                    <MessageSquare
-                      size={13}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                    />
-                    <input
-                      className="w-full text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                      placeholder="Instruction IA… ex : rends le texte plus percutant"
-                      value={aiInstruction}
-                      onChange={(e) => setAiInstruction(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && aiInstruction.trim()) applyAIModification("modify");
-                      }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => applyAIModification("modify")}
-                    disabled={!aiInstruction.trim() || aiLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
-                  >
-                    {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-                    Appliquer
-                  </button>
-                  <button
-                    onClick={() => applyAIModification("variant")}
-                    disabled={aiLoading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors shrink-0"
-                  >
-                    <RefreshCw size={12} />
-                    Variante
-                  </button>
+                <div className="flex-1 relative">
+                  <MessageSquare
+                    size={12}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                  />
+                  <input
+                    className="w-full text-sm border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    placeholder="Instruction IA… ex : rends le texte plus percutant"
+                    value={aiInstruction}
+                    onChange={(e) => setAiInstruction(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && aiInstruction.trim())
+                        applyAIModification("modify");
+                    }}
+                  />
                 </div>
+                <button
+                  onClick={() => applyAIModification("modify")}
+                  disabled={!aiInstruction.trim() || aiLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  {aiLoading ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Wand2 size={12} />
+                  )}
+                  Appliquer
+                </button>
+                <button
+                  onClick={() => applyAIModification("variant")}
+                  disabled={aiLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  <RefreshCw size={12} /> Variante
+                </button>
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* ── Prompt Settings Modal ── */}
+      {/* Prompt settings modal */}
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
@@ -1571,7 +1878,6 @@ export default function CopywritingPage() {
                 <X size={18} />
               </button>
             </div>
-
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {SECTION_TYPES.map((type) => {
                 const color = SECTION_COLORS[type] ?? {
@@ -1581,7 +1887,9 @@ export default function CopywritingPage() {
                 };
                 return (
                   <div key={type}>
-                    <label className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full border mb-1.5 ${color.bg} ${color.text} ${color.border}`}>
+                    <label
+                      className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full border mb-1.5 ${color.bg} ${color.text} ${color.border}`}
+                    >
                       {type}
                     </label>
                     <textarea
@@ -1596,7 +1904,6 @@ export default function CopywritingPage() {
                 );
               })}
             </div>
-
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
               <button
                 onClick={() => setDraftPrompts({ ...DEFAULT_PROMPTS })}

@@ -1,15 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+type ElementType = "title" | "subtitle" | "body" | "cta" | "items" | "image";
+
+interface ElementRequest {
+  id: string;
+  type: ElementType;
+  note?: string;
+  count?: number;
+}
+
+interface ExistingElement {
+  type: string;
+  content: string;
+}
+
 interface SectionRequest {
   id: string;
   type: string;
   notes?: string;
-  element_count?: number;
+  elements: ElementRequest[];
   ai_instruction?: string;
-  existing_content?: string;
+  existing_elements?: ExistingElement[];
 }
 
-interface BatchRequest {
+interface BatchRequestBody {
   sections: SectionRequest[];
   language: string;
   form_data?: Record<string, unknown> | null;
@@ -17,8 +31,8 @@ interface BatchRequest {
 }
 
 const DEFAULT_PROMPTS: Record<string, string> = {
-  Hero: "Écris un titre accrocheur et un sous-titre percutant pour la section Hero du site. Inclus un appel à l'action principal.",
-  "À propos": "Rédige un texte de présentation de l'entreprise, ses valeurs et sa mission.",
+  Hero: "Écris le contenu pour la section Hero du site. Titre accrocheur, sous-titre percutant.",
+  "À propos": "Rédige le contenu de présentation de l'entreprise, ses valeurs et sa mission.",
   Services: "Décris les services proposés avec leurs bénéfices clés pour le client.",
   Réalisations: "Rédige des descriptions courtes pour les projets/réalisations mis en avant.",
   Cible: "Décris le profil du client idéal et ses problématiques principales.",
@@ -36,47 +50,59 @@ const DEFAULT_PROMPTS: Record<string, string> = {
   Contact: "Rédige le texte d'invitation au contact avec les informations clés.",
 };
 
-function buildSectionPromptFormat(type: string): string {
-  switch (type) {
-    case "Hero":
-      return "Keys: TITLE, SUBTITLE, BODY (1-2 lines), BUTTON_TEXT";
-    case "À propos":
-      return "Keys: TITLE, BODY (3-4 lines of presentation text)";
-    case "Services":
-    case "Fonctionnalités":
-    case "Avantages":
-    case "Problématiques":
-      return "Keys: TITLE, ITEM_1_TITLE, ITEM_1_DESC, ITEM_2_TITLE, ITEM_2_DESC, ... (repeat for each item)";
-    case "Réalisations":
-      return "Keys: TITLE, ITEM_1_TITLE, ITEM_1_DESC, ITEM_2_TITLE, ITEM_2_DESC, ... (repeat for each item)";
-    case "Processus":
-      return "Keys: TITLE, ITEM_1_TITLE, ITEM_1_DESC, ITEM_2_TITLE, ITEM_2_DESC, ... (steps in order)";
+function getItemFormat(sectionType: string): string {
+  switch (sectionType) {
     case "FAQ":
-      return "Keys: TITLE, ITEM_1_QUESTION, ITEM_1_ANSWER, ITEM_2_QUESTION, ITEM_2_ANSWER, ... (repeat for each Q&A)";
+      return "ITEM_{n}_QUESTION and ITEM_{n}_ANSWER";
     case "Équipe":
-      return "Keys: TITLE, ITEM_1_NAME, ITEM_1_ROLE, ITEM_1_BIO, ITEM_2_NAME, ITEM_2_ROLE, ITEM_2_BIO, ... (repeat per member)";
+      return "ITEM_{n}_NAME, ITEM_{n}_ROLE, ITEM_{n}_BIO";
     case "Témoignages":
-      return "Keys: TITLE, ITEM_1_QUOTE, ITEM_1_NAME, ITEM_1_ROLE, ITEM_2_QUOTE, ITEM_2_NAME, ITEM_2_ROLE, ... (repeat per testimonial)";
+      return "ITEM_{n}_QUOTE, ITEM_{n}_NAME, ITEM_{n}_ROLE";
     case "Tarifs":
-      return "Keys: TITLE, ITEM_1_NAME, ITEM_1_PRICE, ITEM_1_FEATURES (semicolon-separated list), ITEM_1_CTA, ITEM_2_NAME, ... (repeat per plan)";
-    case "CTA Principal":
-      return "Keys: TITLE, SUBTITLE, BUTTON_TEXT";
+      return "ITEM_{n}_NAME, ITEM_{n}_PRICE, ITEM_{n}_FEATURES (semicolon-separated list), ITEM_{n}_CTA";
     case "Chiffres clés":
-      return "Keys: TITLE, ITEM_1_NUMBER, ITEM_1_LABEL, ITEM_2_NUMBER, ITEM_2_LABEL, ... (repeat per stat)";
+      return "ITEM_{n}_NUMBER, ITEM_{n}_LABEL";
     case "Comparatif":
-      return "Keys: TITLE, ITEM_1_FEATURE, ITEM_1_COL1 (✓ or ✗ or text), ITEM_1_COL2, ITEM_2_FEATURE, ... (repeat per row)";
-    case "Cible":
-      return "Keys: TITLE, SUBTITLE, ITEM_1_TITLE, ITEM_1_DESC, ITEM_2_TITLE, ITEM_2_DESC, ... (pain points or characteristics)";
-    case "Contact":
-      return "Keys: TITLE, SUBTITLE, BODY, BUTTON_TEXT";
+      return "ITEM_{n}_FEATURE, ITEM_{n}_COL1, ITEM_{n}_COL2";
     default:
-      return "Keys: TITLE, SUBTITLE, BODY, ITEM_1_TITLE, ITEM_1_DESC, ...";
+      return "ITEM_{n}_TITLE, ITEM_{n}_DESC";
   }
+}
+
+function buildElementInstructions(elements: ElementRequest[], sectionType: string): string {
+  const lines: string[] = [];
+  for (const el of elements) {
+    if (el.type === "image") continue;
+    const note = el.note ? ` (note: ${el.note})` : "";
+    switch (el.type) {
+      case "title":
+        lines.push(`- TITLE: Compelling main heading${note}`);
+        break;
+      case "subtitle":
+        lines.push(`- SUBTITLE: Supporting subtitle, 1 short line${note}`);
+        break;
+      case "body":
+        lines.push(`- BODY: 2-3 sentences of engaging body text${note}`);
+        break;
+      case "cta":
+        lines.push(`- CTA: 3-6 word button/call-to-action text, action-oriented${note}`);
+        break;
+      case "items": {
+        const n = el.count ?? 3;
+        const fmt = getItemFormat(sectionType).replace(/{n}/g, "n");
+        lines.push(
+          `- Items (${n} items): For each item index n from 1 to ${n}, generate: ${fmt}${note}`
+        );
+        break;
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as BatchRequest;
+    const body = (await req.json()) as BatchRequestBody;
     const { sections, language, form_data, custom_prompts } = body;
 
     if (!sections || !Array.isArray(sections) || sections.length === 0) {
@@ -88,48 +114,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "OPENROUTER_API_KEY non configurée" }, { status: 500 });
     }
 
-    const langLabel = language === "en" ? "English" : language === "es" ? "Spanish" : "French";
+    const langLabel =
+      language === "en" ? "English" : language === "es" ? "Spanish" : "French";
 
-    const systemPrompt = `You are an expert web copywriter generating structured content for multiple website sections.
-Always respond in ${langLabel}. Return ONLY the section blocks, no commentary.
+    const systemPrompt = `You are an expert web copywriter generating structured content for website sections.
+Always respond in ${langLabel}. Return ONLY the section blocks, no commentary outside them.
 
-For each section, output content using KEY: value format on separate lines.
-Wrap each section with ===SECTION:{id}=== and ===END=== markers.
+For each section, output key-value pairs using this exact format:
+KEY: value text here
+
+Wrap each section with:
+===SECTION:{id}===
+... key: value pairs ...
+===END===
 
 Key format rules:
-- One value per line: KEY: value text here
-- For multi-line values (like BODY), continue on next lines without a new KEY prefix
-- Use the exact keys specified for each section type
-- Write compelling, professional web copy`;
+- One value per line: KEY: value
+- For BODY that spans multiple lines: start with BODY: first line, then continue on next lines
+- Use TITLE, SUBTITLE, BODY, CTA as keys for those element types
+- For items, use ITEM_1_TITLE, ITEM_1_DESC, ITEM_2_TITLE, ITEM_2_DESC etc. (or the specific keys requested)
+- Write compelling, professional, conversion-focused copy`;
 
     const contextFromForm = form_data
       ? `\n\nClient & Project Context:\n${JSON.stringify(form_data, null, 2)}`
       : "";
 
-    const sectionsText = sections
+    // Filter out sections with no generatable elements
+    const generatableSections = sections.filter(
+      (s) => s.elements.some((e) => e.type !== "image")
+    );
+
+    if (generatableSections.length === 0) {
+      return NextResponse.json({ results: [] });
+    }
+
+    const sectionsText = generatableSections
       .map((s) => {
-        const prompt =
-          (custom_prompts?.[s.type] ?? DEFAULT_PROMPTS[s.type] ?? `Write content for ${s.type} section`);
-        const format = buildSectionPromptFormat(s.type);
+        const basePrompt =
+          custom_prompts?.[s.type] ?? DEFAULT_PROMPTS[s.type] ?? `Generate content for ${s.type}`;
+        const elementInstructions = buildElementInstructions(s.elements, s.type);
 
         let text = `Section ID: ${s.id}
-Type: ${s.type}
-Task: ${prompt}
-Format: ${format}
-Number of items/elements: ${s.element_count ?? 3}`;
+Section type: ${s.type}
+Task: ${basePrompt}
+${s.notes ? `Additional notes: ${s.notes}` : ""}
 
-        if (s.notes) text += `\nAdditional notes: ${s.notes}`;
+Elements to generate:
+${elementInstructions}`;
 
-        if (s.ai_instruction && s.existing_content) {
-          text += `\nModification instruction: ${s.ai_instruction}`;
-          text += `\nExisting content to modify:\n${s.existing_content}`;
+        if (s.ai_instruction && s.existing_elements && s.existing_elements.length > 0) {
+          const existingStr = s.existing_elements
+            .filter((e) => e.content)
+            .map((e) => `${e.type.toUpperCase()}: ${e.content}`)
+            .join("\n");
+          text += `\n\nModification instruction: ${s.ai_instruction}`;
+          if (existingStr) text += `\n\nExisting content to modify:\n${existingStr}`;
         }
 
         return text;
       })
       .join("\n\n---\n\n");
 
-    const userPrompt = `Generate copywriting for the following ${sections.length} website section(s).${contextFromForm}
+    const userPrompt = `Generate copywriting for the following ${generatableSections.length} website section(s).${contextFromForm}
 
 SECTIONS:
 ${sectionsText}`;
@@ -149,7 +195,7 @@ ${sectionsText}`;
           { role: "user", content: userPrompt },
         ],
         temperature: 0.75,
-        max_tokens: Math.min(8000, sections.length * 800 + 500),
+        max_tokens: Math.min(8000, generatableSections.length * 1000 + 500),
       }),
     });
 
@@ -161,7 +207,7 @@ ${sectionsText}`;
     const data = await response.json();
     const rawContent: string = data.choices?.[0]?.message?.content ?? "";
 
-    // Parse ===SECTION:{id}=== ... ===END=== blocks
+    // Parse ===SECTION:{id}===...===END=== blocks
     const results: { id: string; content: string }[] = [];
     const regex = /===SECTION:([a-zA-Z0-9_-]+)===([\s\S]*?)===END===/g;
     let match;
@@ -169,9 +215,9 @@ ${sectionsText}`;
       results.push({ id: match[1], content: match[2].trim() });
     }
 
-    // Fallback: if parsing failed, try to match sections by order
-    if (results.length === 0 && sections.length === 1) {
-      results.push({ id: sections[0].id, content: rawContent.trim() });
+    // Fallback for single section without delimiters
+    if (results.length === 0 && generatableSections.length === 1) {
+      results.push({ id: generatableSections[0].id, content: rawContent.trim() });
     }
 
     return NextResponse.json({ results });
