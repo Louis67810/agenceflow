@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,6 +17,7 @@ import {
   Briefcase,
   PenLine,
   CheckSquare,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -25,6 +27,14 @@ interface NavItem {
   label: string;
   icon: ReactNode;
 }
+
+const linkedInSubNav: NavItem[] = [
+  { href: "/admin/linkedin/posts", label: "Posts", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/linkedin/planification", label: "Planification", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/linkedin/style", label: "Style", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/linkedin/idees", label: "Idées", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/linkedin/prospection", label: "Prospection", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+];
 
 const adminNav: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
@@ -56,6 +66,8 @@ interface AgencySidebarProps {
 
 export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarProps) {
   const pathname = usePathname();
+  const isOnLinkedIn = pathname.startsWith("/admin/linkedin");
+  const [linkedInOpen, setLinkedInOpen] = useState(isOnLinkedIn);
 
   const navItems = role === "admin" ? adminNav : role === "client" ? clientNav : designerNav;
 
@@ -80,6 +92,70 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
+          // Insert LinkedIn group after copywriting
+          if (item.href === "/admin/calendar" && role === "admin") {
+            return (
+              <div key="linkedin-group">
+                {/* LinkedIn collapsible group */}
+                <button
+                  onClick={() => setLinkedInOpen((o) => !o)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    isOnLinkedIn
+                      ? "bg-[#0A66C2] text-white"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  )}
+                >
+                  <div className="w-[18px] h-[18px] bg-white rounded flex items-center justify-center shrink-0">
+                    <span className="text-[#0A66C2] text-[10px] font-black leading-none">in</span>
+                  </div>
+                  <span className="flex-1 text-left">LinkedIn</span>
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform ${linkedInOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {linkedInOpen && (
+                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
+                    {linkedInSubNav.map((sub) => {
+                      const subActive = pathname.startsWith(sub.href);
+                      return (
+                        <Link
+                          key={sub.href}
+                          href={sub.href}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                            subActive
+                              ? "text-white bg-gray-800"
+                              : "text-gray-400 hover:text-white hover:bg-gray-800"
+                          )}
+                        >
+                          {sub.icon}
+                          {sub.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Render the calendar item */}
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1",
+                    pathname.startsWith(item.href)
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  )}
+                >
+                  {item.icon}
+                  {item.label}
+                </Link>
+              </div>
+            );
+          }
+
           const isActive =
             item.href === `/${role}`
               ? pathname === item.href
