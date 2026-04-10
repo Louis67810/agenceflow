@@ -8,6 +8,10 @@ interface TopPost {
   styleName?: string;
 }
 
+interface StyleExample {
+  content: string;
+}
+
 interface GeneratePostRequest {
   sourceType: "manual" | "url" | "youtube" | "idea";
   sourceContent: string;
@@ -17,10 +21,15 @@ interface GeneratePostRequest {
     prompt: string;
     category: string;
   };
+  styleExamples?: StyleExample[];
   type: "post" | "carousel";
   carouselSlides?: number;
+  carouselTemplate?: string;
   topPosts?: TopPost[];
   language?: string;
+  // Settings from client
+  openrouterApiKey?: string;
+  model?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -31,15 +40,23 @@ export async function POST(req: NextRequest) {
       sourceContent,
       sourceTitle,
       style,
+      styleExamples = [],
       type,
       carouselSlides = 5,
+      carouselTemplate,
       topPosts = [],
       language = "fr",
+      openrouterApiKey,
+      model = "openai/gpt-4o-mini",
     } = body;
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    // Prefer client-provided key, fallback to server env
+    const apiKey = openrouterApiKey?.trim() || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "OPENROUTER_API_KEY non configurée" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Clé OpenRouter manquante. Configurez-la dans les paramètres LinkedIn." },
+        { status: 500 }
+      );
     }
 
     if (!sourceContent?.trim()) {
@@ -48,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     const langLabel = language === "en" ? "English" : "French";
 
-    // Build performance context
+    // Build performance context from top posts
     let performanceContext = "";
     if (topPosts.length > 0) {
       const topExamples = topPosts
@@ -58,10 +75,20 @@ export async function POST(req: NextRequest) {
             `Top post ${i + 1} (${p.likes} likes, ${p.comments} commentaires):\n"${p.content.slice(0, 300)}..."`
         )
         .join("\n\n");
-      performanceContext = `\n\n## Vos meilleurs posts (à utiliser comme référence de style et ton) :\n${topExamples}`;
+      performanceContext = `\n\n## Vos meilleurs posts (référence de style et ton) :\n${topExamples}`;
     }
 
-    // Source context
+    // Build style examples context
+    let styleExamplesContext = "";
+    if (styleExamples.length > 0) {
+      const exs = styleExamples
+        .slice(0, 3)
+        .map((e, i) => `Exemple ${i + 1}:\n"${e.content.slice(0, 400)}"`)
+        .join("\n\n");
+      styleExamplesContext = `\n\n## Exemples de posts avec ce style (respectez rigoureusement ce format et ce ton) :\n${exs}`;
+    }
+
+    // Source label
     const sourceLabel =
       sourceType === "url"
         ? `Article web${sourceTitle ? ` "${sourceTitle}"` : ""}`
@@ -88,25 +115,37 @@ Key rules:
     let userPrompt: string;
 
     if (type === "carousel") {
+      const template = carouselTemplate?.trim()
+        ? carouselTemplate
+        : `Pour chaque slide, génère exactement ce format :
+
+TITRE: [3-5 mots — accroche courte et percutante]
+SOUS-TITRE: [8-12 mots — développe et complète le titre]
+TEXTE: [2-4 phrases — contenu principal du slide, concret et actionnable]
+VISUEL: [1 phrase — description précise du visuel ou image idéale pour ce slide]`;
+
       userPrompt = `Create a LinkedIn carousel with exactly ${carouselSlides} slides based on this content.
 
 ## Source (${sourceLabel}):
-${sourceContent}${styleInstruction}${performanceContext}
+${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
 
-## Instructions for carousel:
-- Slide 1: Hook slide — powerful statement or question that makes people want to swipe
-- Slides 2 to ${carouselSlides - 1}: One key point per slide, with title and 2-3 lines of explanation
-- Last slide: Summary/CTA — encourage to save, share or follow
+## Template obligatoire pour chaque slide :
+${template}
 
-Format your response with exactly ${carouselSlides} slides, each separated by:
+## Structure narrative :
+- Slide 1 : Accroche / problématique principale — fait stopper le scroll
+- Slides 2 à ${carouselSlides - 1} : Une idée clé par slide, concrète et actionnable
+- Slide ${carouselSlides} : Résumé + CTA fort (suivre, sauvegarder, commenter)
+
+Sépare chaque slide par exactement :
 ---SLIDE---
 
-Each slide content: write the full text for that slide (title + body if needed).`;
+Génère les ${carouselSlides} slides en ${langLabel}, prêts à utiliser dans Figma.`;
     } else {
       userPrompt = `Create a LinkedIn post based on this content.
 
 ## Source (${sourceLabel}):
-${sourceContent}${styleInstruction}${performanceContext}
+${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
 
 ## Instructions:
 - Length: 150-300 words ideal
@@ -126,13 +165,13 @@ ${sourceContent}${styleInstruction}${performanceContext}
         "X-Title": "AgenceFlow LinkedIn",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.85,
-        max_tokens: type === "carousel" ? carouselSlides * 200 : 800,
+        max_tokens: type === "carousel" ? carouselSlides * 300 : 800,
       }),
     });
 

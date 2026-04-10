@@ -18,16 +18,18 @@ interface GenerateIdeasRequest {
   topPosts?: PostSummary[];
   styles?: StyleSummary[];
   language?: string;
+  openrouterApiKey?: string;
+  model?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as GenerateIdeasRequest;
-    const { count = 9, topPosts = [], styles = [], language = "fr" } = body;
+    const { count = 9, topPosts = [], styles = [], language = "fr", openrouterApiKey, model = "openai/gpt-4o-mini" } = body;
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = openrouterApiKey?.trim() || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "OPENROUTER_API_KEY non configurée" }, { status: 500 });
+      return NextResponse.json({ error: "Clé OpenRouter manquante. Configurez-la dans les paramètres LinkedIn." }, { status: 500 });
     }
 
     const langLabel = language === "en" ? "English" : "French";
@@ -90,7 +92,7 @@ Return ONLY the JSON array, no markdown, no explanation.`;
         "X-Title": "AgenceFlow LinkedIn Ideas",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

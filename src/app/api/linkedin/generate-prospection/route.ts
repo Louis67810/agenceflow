@@ -12,20 +12,22 @@ interface GenerateProspectionRequest {
   context?: string;
   learningData?: ProspectData[];
   language?: string;
+  openrouterApiKey?: string;
+  model?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as GenerateProspectionRequest;
-    const { name, actionType, context, learningData = [], language = "fr" } = body;
+    const { name, actionType, context, learningData = [], language = "fr", openrouterApiKey, model = "openai/gpt-4o-mini" } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Nom du prospect requis" }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = openrouterApiKey?.trim() || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "OPENROUTER_API_KEY non configurée" }, { status: 500 });
+      return NextResponse.json({ error: "Clé OpenRouter manquante. Configurez-la dans les paramètres LinkedIn." }, { status: 500 });
     }
 
     const langLabel = language === "en" ? "English" : "French";
@@ -95,7 +97,7 @@ Write the message directly, ready to send.`;
         "X-Title": "AgenceFlow LinkedIn Prospection",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

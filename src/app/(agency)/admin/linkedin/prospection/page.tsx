@@ -21,6 +21,7 @@ import {
   PROSPECT_STATUS_LABELS,
   PROSPECT_STATUS_COLORS,
 } from "@/types/linkedin";
+import { loadLinkedInSettings } from "../layout";
 
 const ACTION_OPTIONS: { value: LinkedInProspect["actionType"]; label: string; icon: React.ReactNode }[] = [
   { value: "liked", label: "A liké votre post", icon: <ThumbsUp size={14} /> },
@@ -98,6 +99,7 @@ export default function LinkedInProspectionPage() {
     setGenerating(true);
     try {
       const learningData = getLearningData();
+      const s = loadLinkedInSettings();
       const res = await fetch("/api/linkedin/generate-prospection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,6 +109,8 @@ export default function LinkedInProspectionPage() {
           context: form.context,
           learningData,
           language,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.model,
         }),
       });
       if (!res.ok) throw new Error("Erreur génération");

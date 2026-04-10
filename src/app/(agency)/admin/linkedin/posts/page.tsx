@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus, Wand2, Loader2, X, Check, Copy, Trash2, Link2,
+  Wand2, Loader2, X, Check, Copy, Trash2, Link2,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
-  ThumbsUp, MessageCircle, Eye, Calendar, Tag, RefreshCw,
-  ChevronDown, BarChart2, Clock,
+  ThumbsUp, MessageCircle, Eye, Calendar, Tag,
+  BarChart2, Clock, Layers, Info,
 } from "lucide-react";
 import type { LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
-import { DEFAULT_STYLES, STYLE_CATEGORY_COLORS } from "@/types/linkedin";
+import { DEFAULT_STYLES } from "@/types/linkedin";
+import { loadLinkedInSettings, type LinkedInSettings } from "../layout";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type FilterTab = "all" | "draft" | "scheduled" | "published";
@@ -81,10 +82,25 @@ export default function PostsPage() {
   // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Settings (OpenRouter key, model, carousel template)
+  const [settings, setSettings] = useState<LinkedInSettings | null>(null);
+
   useEffect(() => {
     setPosts(loadPosts());
     setStyles(loadStyles());
     setIdeas(loadIdeas());
+    setSettings(loadLinkedInSettings());
+
+    // Prefill from idea page redirect
+    const prefill = sessionStorage.getItem("linkedin_idea_prefill");
+    if (prefill) {
+      try {
+        const idea = JSON.parse(prefill);
+        setSourceTab("idea");
+        setManualIdea(`${idea.title}\n\n${idea.description}`);
+        sessionStorage.removeItem("linkedin_idea_prefill");
+      } catch {}
+    }
   }, []);
 
   const filteredPosts = posts
@@ -155,6 +171,7 @@ export default function PostsPage() {
     setGeneratedContent("");
     setGeneratedSlides([]);
 
+    const currentSettings = settings ?? loadLinkedInSettings();
     const selectedStyle = styles.find((s) => s.id === selectedStyleId);
     const selectedIdea = ideas.find((i) => i.id === selectedIdeaId);
 
@@ -182,6 +199,18 @@ export default function PostsPage() {
       return;
     }
 
+    // Fetch style examples from Supabase if a style is selected
+    let styleExamples: { content: string }[] = [];
+    if (selectedStyleId) {
+      try {
+        const exRes = await fetch(
+          `/api/linkedin/style-examples?styleId=${encodeURIComponent(selectedStyleId)}`
+        );
+        const exData = await exRes.json();
+        styleExamples = (exData.examples ?? []).slice(0, 3);
+      } catch {}
+    }
+
     try {
       const res = await fetch("/api/linkedin/generate-post", {
         method: "POST",
@@ -193,9 +222,14 @@ export default function PostsPage() {
           style: selectedStyle
             ? { name: selectedStyle.name, prompt: selectedStyle.prompt, category: selectedStyle.category }
             : undefined,
+          styleExamples,
           type: postType,
           carouselSlides,
+          carouselTemplate: postType === "carousel" ? currentSettings.carouselTemplate : undefined,
           topPosts,
+          language: currentSettings.language,
+          openrouterApiKey: currentSettings.openrouterApiKey || undefined,
+          model: currentSettings.model,
         }),
       });
       const data = await res.json();
@@ -476,16 +510,26 @@ export default function PostsPage() {
               </button>
             </div>
             {postType === "carousel" && (
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs text-gray-500">Slides :</span>
-                <input
-                  type="number"
-                  min={3}
-                  max={15}
-                  value={carouselSlides}
-                  onChange={(e) => setCarouselSlides(Number(e.target.value))}
-                  className="w-16 text-sm border border-gray-200 rounded px-2 py-1 text-center"
-                />
+              <div className="space-y-2 mt-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Slides :</span>
+                  <input
+                    type="number"
+                    min={3}
+                    max={20}
+                    value={carouselSlides}
+                    onChange={(e) => setCarouselSlides(Number(e.target.value))}
+                    className="w-16 text-sm border border-gray-200 rounded px-2 py-1 text-center"
+                  />
+                </div>
+                <div className="flex items-start gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <Info size={12} className="text-blue-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-600">
+                    Le contenu de chaque slide suivra le template défini dans les{" "}
+                    <span className="font-medium">Paramètres LinkedIn</span>
+                    {" "}(TITRE, SOUS-TITRE, TEXTE, VISUEL...)
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -512,10 +556,11 @@ export default function PostsPage() {
               {postType === "carousel" && generatedSlides.length > 0 ? (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-600">
+                    <p className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                      <Layers size={12} />
                       Carrousel — {generatedSlides.length} slides
                     </p>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap justify-end">
                       {generatedSlides.map((_, i) => (
                         <button
                           key={i}
@@ -531,13 +576,14 @@ export default function PostsPage() {
                       ))}
                     </div>
                   </div>
-                  <textarea
-                    rows={8}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none"
-                    value={generatedSlides[activeSlide] ?? ""}
-                    onChange={(e) => {
+                  {/* Structured slide preview */}
+                  <SlidePreview
+                    content={generatedSlides[activeSlide] ?? ""}
+                    slideNum={activeSlide + 1}
+                    totalSlides={generatedSlides.length}
+                    onChange={(val) => {
                       const updated = [...generatedSlides];
-                      updated[activeSlide] = e.target.value;
+                      updated[activeSlide] = val;
                       setGeneratedSlides(updated);
                     }}
                   />
@@ -834,6 +880,121 @@ export default function PostsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// --- Slide preview component ---
+// Parses the structured KEY: value format and renders it beautifully
+// Falls back to raw textarea if format is not detected
+
+const SLIDE_FIELD_LABELS: Record<string, { label: string; color: string }> = {
+  TITRE: { label: "Titre", color: "text-gray-900 font-semibold" },
+  "SOUS-TITRE": { label: "Sous-titre", color: "text-gray-700 font-medium" },
+  TEXTE: { label: "Texte", color: "text-gray-600" },
+  VISUEL: { label: "Visuel suggéré", color: "text-indigo-600" },
+  CTA: { label: "CTA", color: "text-[#0A66C2] font-medium" },
+  EXEMPLE: { label: "Exemple", color: "text-teal-600" },
+  STAT: { label: "Statistique", color: "text-orange-600 font-semibold" },
+  PROBLEMATIQUE: { label: "Problématique", color: "text-red-600" },
+  ACCROCHE: { label: "Accroche", color: "text-gray-900 font-semibold" },
+};
+
+function parseSlideFields(content: string): { key: string; value: string }[] | null {
+  // Detect if content has KEY: value structure
+  const lines = content.split("\n");
+  const fields: { key: string; value: string }[] = [];
+  let currentKey = "";
+  let currentValue: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^([A-ZÀ-Ü\-]+)\s*:\s*(.*)/);
+    if (match) {
+      if (currentKey) {
+        fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
+      }
+      currentKey = match[1];
+      currentValue = [match[2]];
+    } else if (currentKey) {
+      currentValue.push(line);
+    }
+  }
+  if (currentKey) {
+    fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
+  }
+
+  return fields.length >= 2 ? fields : null;
+}
+
+function SlidePreview({
+  content,
+  slideNum,
+  totalSlides,
+  onChange,
+}: {
+  content: string;
+  slideNum: number;
+  totalSlides: number;
+  onChange: (val: string) => void;
+}) {
+  const [rawMode, setRawMode] = useState(false);
+  const fields = parseSlideFields(content);
+
+  if (rawMode || !fields) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-gray-400">Slide {slideNum}/{totalSlides} — mode brut</span>
+          {fields && (
+            <button
+              onClick={() => setRawMode(false)}
+              className="text-xs text-[#0A66C2] hover:underline"
+            >
+              Vue structurée
+            </button>
+          )}
+        </div>
+        <textarea
+          rows={8}
+          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none font-mono"
+          value={content}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      {/* Slide header */}
+      <div className="flex items-center justify-between bg-gray-50 px-3 py-2 border-b border-gray-200">
+        <span className="text-xs font-medium text-gray-500">
+          Slide {slideNum} / {totalSlides}
+        </span>
+        <button
+          onClick={() => setRawMode(true)}
+          className="text-xs text-gray-400 hover:text-gray-600"
+        >
+          Éditer brut
+        </button>
+      </div>
+
+      {/* Fields */}
+      <div className="p-3 space-y-2.5 bg-white">
+        {fields.map((f) => {
+          const meta = SLIDE_FIELD_LABELS[f.key];
+          return (
+            <div key={f.key} className="space-y-0.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                {meta?.label || f.key}
+              </p>
+              <p className={`text-sm leading-snug ${meta?.color || "text-gray-700"}`}>
+                {f.value || <span className="italic text-gray-300">—</span>}
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Clock } from "lucide-react";
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES, STYLE_CATEGORY_COLORS } from "@/types/linkedin";
+import { loadLinkedInSettings } from "../layout";
 
 const CATEGORIES = [
   { value: "all", label: "Toutes" },
@@ -103,6 +104,7 @@ export default function LinkedInIdeesPage() {
         styleName: p.styleName,
       }));
 
+      const s = loadLinkedInSettings();
       const res = await fetch("/api/linkedin/generate-ideas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -111,6 +113,8 @@ export default function LinkedInIdeesPage() {
           topPosts: postSummaries,
           styles: stylesSummary,
           language,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.model,
         }),
       });
 
