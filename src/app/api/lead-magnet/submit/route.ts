@@ -24,8 +24,9 @@ export async function POST(req: NextRequest) {
 
     const email: string = data.email || data.mail || "";
     const firstname: string = data.firstname || data.prenom || data.nom || "";
+    const phone: string = data.phone || data.telephone || data.tel || "";
 
-    // Store lead
+    // Store lead in lead_magnet_leads
     const { error: insertError } = await supabase
       .from("lead_magnet_leads")
       .insert({
@@ -33,6 +34,38 @@ export async function POST(req: NextRequest) {
         data,
         email: email || null,
       });
+
+    // Also upsert into central leads table (dedup by email)
+    if (email) {
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from("leads").insert({
+          email: email || null,
+          name: firstname || null,
+          phone: phone || null,
+          source: "lead_magnet",
+          source_ref: leadMagnetId,
+          channel_preference: "email",
+          metadata: { ...data, lead_magnet_title: magnet.title },
+          status: "new",
+        });
+      }
+    } else {
+      // No email — still track with available data
+      await supabase.from("leads").insert({
+        name: firstname || null,
+        source: "lead_magnet",
+        source_ref: leadMagnetId,
+        channel_preference: "email",
+        metadata: { ...data, lead_magnet_title: magnet.title },
+        status: "new",
+      });
+    }
 
     if (insertError) {
       console.error("Insert lead error:", insertError);

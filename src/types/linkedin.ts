@@ -42,6 +42,7 @@ export interface LinkedInIdea {
 
 export interface LinkedInProspect {
   id: string;
+  leadId?: string; // ID dans la table centrale leads (Supabase)
   name: string;
   profileUrl?: string;
   actionType: "liked" | "commented" | "visited_profile";
@@ -61,6 +62,18 @@ export interface LinkedInProspect {
   createdAt: string;
   notes?: string;
 }
+
+// Mapping statut LinkedIn → statut CRM leads
+export const PROSPECT_TO_LEAD_STATUS: Record<string, string> = {
+  draft: "new",
+  sent: "contacted",
+  accepted: "responded",
+  replied: "responded",
+  conversation: "responded",
+  deal_closed: "converted",
+  rejected: "lost",
+  deal_lost: "lost",
+};
 
 export const DEFAULT_STYLES: LinkedInStyle[] = [
   {

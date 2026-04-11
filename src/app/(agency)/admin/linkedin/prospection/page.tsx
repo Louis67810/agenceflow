@@ -20,6 +20,7 @@ import {
   ACTION_LABELS,
   PROSPECT_STATUS_LABELS,
   PROSPECT_STATUS_COLORS,
+  PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 
@@ -124,10 +125,50 @@ export default function LinkedInProspectionPage() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!generatedMessage.trim() || !form.name.trim()) return;
+
+    // Créer dans Supabase leads
+    let leadId: string | undefined;
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          source: "linkedin",
+          source_ref: form.profileUrl || null,
+          channel_preference: "linkedin_dm",
+          metadata: {
+            action_type: form.actionType,
+            context: form.context || null,
+            profile_url: form.profileUrl || null,
+          },
+          status: "new",
+        }),
+      });
+      const data = await res.json();
+      leadId = data.lead?.id;
+    } catch {}
+
+    // Enregistrer l'outreach attempt si un leadId a été créé
+    if (leadId) {
+      try {
+        await fetch(`/api/leads/${leadId}/outreach`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "send",
+            channel: "linkedin_dm",
+            content: generatedMessage,
+          }),
+        });
+      } catch {}
+    }
+
     const newProspect: LinkedInProspect = {
       id: `prospect_${Date.now()}`,
+      leadId,
       name: form.name,
       profileUrl: form.profileUrl || undefined,
       actionType: form.actionType,
@@ -143,7 +184,8 @@ export default function LinkedInProspectionPage() {
     setShowForm(false);
   };
 
-  const updateStatus = (id: string, status: LinkedInProspect["status"]) => {
+  const updateStatus = async (id: string, status: LinkedInProspect["status"]) => {
+    const prospect = prospects.find((p) => p.id === id);
     const updated = prospects.map((p) => {
       if (p.id !== id) return p;
       return {
@@ -154,6 +196,21 @@ export default function LinkedInProspectionPage() {
     });
     saveProspects(updated);
     setStatusDropdown(null);
+
+    // Sync vers leads Supabase
+    if (prospect?.leadId) {
+      const leadStatus = PROSPECT_TO_LEAD_STATUS[status] ?? "contacted";
+      try {
+        await fetch(`/api/leads/${prospect.leadId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: leadStatus,
+            last_contact_at: new Date().toISOString(),
+          }),
+        });
+      } catch {}
+    }
   };
 
   const updateMessage = (id: string, msg: string) => {

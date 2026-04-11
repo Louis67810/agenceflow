@@ -6,8 +6,8 @@ import {
   Mail, MessageSquare, Linkedin, Globe, Zap,
   ChevronDown, Check, X, ExternalLink, Trash2,
   TrendingUp, Users, MousePointerClick, Calendar,
-  Sparkles, Send, BarChart2, ArrowLeft, Copy,
-  Eye, EyeOff,
+  Sparkles, Send, BarChart2, Copy,
+  Eye, EyeOff, ArrowDownToLine,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -148,6 +148,10 @@ export default function LeadsPage() {
   // Confirm delete
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Sync
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number } | null>(null);
+
   // Load stored API key
   useEffect(() => {
     try {
@@ -175,6 +179,19 @@ export default function LeadsPage() {
     } catch {}
     setLoading(false);
   }, [search, filterSource, filterStatus]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/leads/sync", { method: "POST" });
+      const data = await res.json();
+      setSyncResult({ imported: data.imported ?? 0, skipped: data.skipped ?? 0 });
+      if (data.imported > 0) fetchLeads();
+      setTimeout(() => setSyncResult(null), 5000);
+    } catch {}
+    setSyncing(false);
+  }
 
   const fetchFullStats = useCallback(async () => {
     setStatsLoading(true);
@@ -368,6 +385,20 @@ export default function LeadsPage() {
                 <RefreshCw size={13} />
                 Rafraîchir
               </button>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                title="Importer les leads des lead magnets et de LinkedIn dans le CRM"
+                className="flex items-center gap-1.5 text-xs text-purple-600 border border-purple-200 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <ArrowDownToLine size={13} className={syncing ? "animate-bounce" : ""} />
+                {syncing ? "Sync..." : "Importer"}
+              </button>
+              {syncResult && (
+                <span className="text-xs text-emerald-600 font-medium">
+                  {syncResult.imported > 0 ? `+${syncResult.imported} importé${syncResult.imported > 1 ? "s" : ""}` : "Déjà à jour"}
+                </span>
+              )}
               <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
                 <Plus size={14} />
                 Ajouter
