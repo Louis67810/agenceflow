@@ -7,7 +7,8 @@ import {
   ChevronDown, Check, X, ExternalLink, Trash2,
   TrendingUp, Users, MousePointerClick, Calendar,
   Sparkles, Send, BarChart2, Copy,
-  Eye, EyeOff, ArrowDownToLine,
+  Eye, EyeOff, ArrowDownToLine, BrainCircuit,
+  FlaskConical, Settings2, ChevronRight, AlertCircle,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +50,26 @@ interface FullStats {
   rates: { openRate: number; responseRate: number; contactRate: number; conversionRate: number; meetingRate: number };
   totalAttempts: number;
   totalSent: number;
+}
+
+interface MessageTemplate {
+  id: string;
+  variant_label: string;
+  sent_count: number;
+  score: number;
+  is_exploration: boolean;
+  ai_hypothesis: string | null;
+}
+
+interface AnalysisRun {
+  id: string;
+  triggered_at: string;
+  insights: string | null;
+  hypotheses: string | null;
+  templates_created: number;
+  total_leads: number;
+  model_used: string | null;
+  status: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -152,6 +173,26 @@ export default function LeadsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number } | null>(null);
 
+  // Analyse IA
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
+  const [analysisTemplates, setAnalysisTemplates] = useState<Record<string, unknown>[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<{ insights: string; hypotheses: string; templatesCreated: number } | null>(null);
+  const [aiConfig, setAiConfig] = useState({ threshold: "10", exploration: "0.20", minSamples: "5", autoEnabled: true });
+  const [showAiConfig, setShowAiConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // Modal "Contacter" (template pré-généré)
+  const [contactLead, setContactLead] = useState<Lead | null>(null);
+  const [contactChannel, setContactChannel] = useState<Channel>("email");
+  const [contactTemplate, setContactTemplate] = useState<MessageTemplate | null>(null);
+  const [contactSubject, setContactSubject] = useState("");
+  const [contactContent, setContactContent] = useState("");
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSent, setContactSent] = useState(false);
+  const [contactError, setContactError] = useState("");
+
   // Load stored API key
   useEffect(() => {
     try {
@@ -179,6 +220,146 @@ export default function LeadsPage() {
     } catch {}
     setLoading(false);
   }, [search, filterSource, filterStatus]);
+
+  // Charger les données d'analyse (runs + templates)
+  const fetchAnalysisData = useCallback(async () => {
+    try {
+      const [runsRes, templatesRes, configRes] = await Promise.all([
+        fetch("/api/leads/analysis-runs"),
+        fetch("/api/leads/templates"),
+        fetch("/api/leads/config"),
+      ]);
+      if (runsRes.ok) { const d = await runsRes.json(); setAnalysisRuns(d.runs ?? []); }
+      if (templatesRes.ok) { const d = await templatesRes.json(); setAnalysisTemplates(d.templates ?? []); }
+      if (configRes.ok) {
+        const d = await configRes.json();
+        setAiConfig({
+          threshold: d.analysis_threshold ?? "10",
+          exploration: d.exploration_rate ?? "0.20",
+          minSamples: d.min_sample_size ?? "5",
+          autoEnabled: d.auto_analysis_enabled !== "false",
+        });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (view === "stats") fetchAnalysisData();
+  }, [view, fetchAnalysisData]);
+
+  async function handleAnalyze() {
+    if (!apiKey) { setShowApiKeyInput(true); return; }
+    setAnalyzing(true);
+    setAnalysisResult(null);
+    try {
+      const res = await fetch("/api/leads/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: apiKey }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAnalysisResult({
+        insights: data.insights ?? "",
+        hypotheses: data.hypotheses ?? "",
+        templatesCreated: data.templatesCreated ?? 0,
+      });
+      fetchAnalysisData();
+    } catch (e) {
+      setAnalysisResult({ insights: `Erreur : ${e}`, hypotheses: "", templatesCreated: 0 });
+    }
+    setAnalyzing(false);
+  }
+
+  async function handleSaveConfig() {
+    setSavingConfig(true);
+    try {
+      await fetch("/api/leads/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysis_threshold: aiConfig.threshold,
+          exploration_rate: aiConfig.exploration,
+          min_sample_size: aiConfig.minSamples,
+          auto_analysis_enabled: aiConfig.autoEnabled ? "true" : "false",
+        }),
+      });
+      setShowAiConfig(false);
+    } catch {}
+    setSavingConfig(false);
+  }
+
+  async function openContact(lead: Lead) {
+    setContactLead(lead);
+    setContactChannel(lead.channel_preference);
+    setContactTemplate(null);
+    setContactSubject("");
+    setContactContent("");
+    setContactSent(false);
+    setContactError("");
+    setContactLoading(true);
+
+    const key = apiKey;
+    const params = new URLSearchParams({
+      leadId: lead.id,
+      channel: lead.channel_preference,
+    });
+    if (key) params.set("openrouterApiKey", key);
+
+    try {
+      const res = await fetch(`/api/leads/template?${params}`);
+      const data = await res.json();
+      if (data.noTemplates) {
+        setContactError("Aucun template disponible. Lancez une analyse IA dans l'onglet Statistiques.");
+      } else if (data.error) {
+        setContactError(data.error);
+      } else {
+        setContactTemplate(data.template);
+        setContactSubject(data.adapted?.subject ?? "");
+        setContactContent(data.adapted?.content ?? "");
+      }
+    } catch {
+      setContactError("Erreur lors du chargement du template.");
+    }
+    setContactLoading(false);
+  }
+
+  async function handleContactSend() {
+    if (!contactLead || !contactContent) return;
+    setContactSending(true);
+    try {
+      await fetch(`/api/leads/${contactLead.id}/outreach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send",
+          channel: contactChannel,
+          subject: contactSubject,
+          content: contactContent,
+        }),
+      });
+
+      // Tracker la performance du template
+      if (contactTemplate) {
+        fetch("/api/leads/template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ templateId: contactTemplate.id, event: "sent" }),
+        }).catch(() => {});
+      }
+
+      setContactSent(true);
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === contactLead.id
+            ? { ...l, status: l.status === "new" ? "contacted" : l.status }
+            : l
+        )
+      );
+      setTimeout(() => { setContactLead(null); setContactSent(false); }, 1800);
+    } catch {}
+    setContactSending(false);
+  }
 
   async function handleSync() {
     setSyncing(true);
@@ -545,11 +726,11 @@ export default function LeadsPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => openOutreach(lead)}
+                            onClick={() => openContact(lead)}
                             className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
                           >
-                            <Sparkles size={12} />
-                            Générer
+                            <Send size={12} />
+                            Contacter
                           </button>
                           <button
                             onClick={() => setDeleteId(lead.id)}
@@ -740,6 +921,182 @@ export default function LeadsPage() {
                   <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-500 rounded-sm inline-block" /> Leads contactés</span>
                 </div>
               </div>
+
+              {/* ── Analyse IA ── */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <BrainCircuit size={18} className="text-indigo-600" />
+                    <h3 className="text-sm font-semibold text-gray-800">Boucle d'amélioration IA</h3>
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
+                      {analysisTemplates.length} templates actifs
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAiConfig(!showAiConfig)}
+                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg"
+                    >
+                      <Settings2 size={12} />
+                      Config
+                    </button>
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={analyzing}
+                      className="flex items-center gap-1.5 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    >
+                      <BrainCircuit size={14} className={analyzing ? "animate-pulse" : ""} />
+                      {analyzing ? "Analyse en cours..." : "Lancer une analyse"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Config panel */}
+                {showAiConfig && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-600 mb-3">Configuration de la boucle</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Seuil déclenchement</label>
+                        <div className="flex items-center gap-1">
+                          <input type="number" min="5" max="100" value={aiConfig.threshold}
+                            onChange={(e) => setAiConfig((p) => ({ ...p, threshold: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
+                          <span className="text-xs text-gray-400 shrink-0">leads</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Taux exploration</label>
+                        <div className="flex items-center gap-1">
+                          <input type="number" min="0.05" max="0.5" step="0.05" value={aiConfig.exploration}
+                            onChange={(e) => setAiConfig((p) => ({ ...p, exploration: e.target.value }))}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
+                          <span className="text-xs text-gray-400 shrink-0">(0-1)</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Échantillon minimum</label>
+                        <input type="number" min="3" max="50" value={aiConfig.minSamples}
+                          onChange={(e) => setAiConfig((p) => ({ ...p, minSamples: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Analyse auto</label>
+                        <button
+                          onClick={() => setAiConfig((p) => ({ ...p, autoEnabled: !p.autoEnabled }))}
+                          className={`w-full py-1.5 rounded-lg text-sm border transition-all ${
+                            aiConfig.autoEnabled ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-gray-50 text-gray-500 border-gray-200"
+                          }`}
+                        >
+                          {aiConfig.autoEnabled ? "Activée" : "Désactivée"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-3">
+                      <button onClick={handleSaveConfig} disabled={savingConfig}
+                        className="text-xs bg-gray-900 text-white px-4 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                        {savingConfig ? "Sauvegarde..." : "Enregistrer"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Résultat dernier run */}
+                {analysisResult && (
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Check size={14} className="text-indigo-600" />
+                      <p className="text-sm font-semibold text-indigo-700">
+                        Analyse terminée — {analysisResult.templatesCreated} nouveau{analysisResult.templatesCreated > 1 ? "x" : ""} template{analysisResult.templatesCreated > 1 ? "s" : ""} créé{analysisResult.templatesCreated > 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    {analysisResult.insights && (
+                      <p className="text-xs text-indigo-700 mb-2"><strong>Observations :</strong> {analysisResult.insights}</p>
+                    )}
+                    {analysisResult.hypotheses && (
+                      <p className="text-xs text-indigo-600"><strong>Hypothèses testées :</strong> {analysisResult.hypotheses}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Historique des runs */}
+                {analysisRuns.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Historique des analyses</p>
+                    <div className="space-y-2">
+                      {analysisRuns.slice(0, 3).map((run) => (
+                        <div key={run.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-medium text-gray-700">
+                              {new Date(run.triggered_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-indigo-600">{run.templates_created} templates créés</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${run.status === "completed" ? "bg-green-100 text-green-700" : run.status === "failed" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
+                                {run.status}
+                              </span>
+                            </div>
+                          </div>
+                          {run.insights && <p className="text-xs text-gray-500 line-clamp-2">{run.insights}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Templates actifs */}
+                {analysisTemplates.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Templates A/B actifs</p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {analysisTemplates.map((t: Record<string, unknown>) => {
+                        const sent = t.sent_count as number;
+                        const score = t.score as number;
+                        return (
+                          <div key={t.id as string} className="border border-gray-100 rounded-xl p-3 flex items-start gap-3">
+                            <div className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shrink-0 ${
+                              t.is_exploration ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
+                            }`}>
+                              {t.variant_label as string}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-xs font-medium text-gray-700">
+                                  {(t.source_filter as string) || "Toutes sources"} · {(t.channel as string)} · {(t.sector_filter as string) || "Tous secteurs"}
+                                </span>
+                                {t.is_exploration && (
+                                  <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                    <FlaskConical size={9} />
+                                    Test
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-400 truncate">{t.content as string}</p>
+                              {t.ai_hypothesis && (
+                                <p className="text-xs text-indigo-400 mt-0.5 truncate">💡 {t.ai_hypothesis as string}</p>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs font-bold text-gray-700">{sent} envois</p>
+                              <p className={`text-xs ${score > 0.3 ? "text-emerald-600" : score > 0.1 ? "text-amber-600" : "text-gray-400"}`}>
+                                score {(score * 100).toFixed(0)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {analysisTemplates.length === 0 && !analyzing && (
+                  <div className="text-center py-8 text-gray-400">
+                    <AlertCircle size={24} className="mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Aucun template généré pour l'instant</p>
+                    <p className="text-xs mt-1">Lancez une première analyse pour démarrer la boucle d'apprentissage</p>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -905,6 +1262,119 @@ export default function LeadsPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Contacter (template pré-généré) ────────────────────────────── */}
+      {contactLead && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setContactLead(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 shrink-0">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Contacter</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {contactLead.name || contactLead.email || "Ce lead"}
+                    {contactLead.company && ` — ${contactLead.company}`}
+                  </p>
+                </div>
+                <button onClick={() => setContactLead(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              {/* Canal selector */}
+              <div className="flex gap-2 mt-3">
+                {(["email", "whatsapp", "linkedin_dm"] as Channel[]).map((ch) => (
+                  <button key={ch} onClick={() => { setContactChannel(ch); openContact({ ...contactLead, channel_preference: ch }); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      contactChannel === ch ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-500 hover:border-gray-400"
+                    }`}
+                  >
+                    {CHANNEL_ICONS[ch]}
+                    {CHANNEL_LABELS[ch]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {contactLoading ? (
+                <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span className="text-sm">Sélection du meilleur template...</span>
+                </div>
+              ) : contactError ? (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-center">
+                  <AlertCircle size={20} className="mx-auto mb-2 text-amber-500" />
+                  <p className="text-sm text-amber-700">{contactError}</p>
+                  <button onClick={() => { setView("stats"); setContactLead(null); }}
+                    className="mt-3 text-xs text-amber-600 underline flex items-center gap-1 mx-auto">
+                    Aller dans Statistiques → Lancer une analyse <ChevronRight size={11} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {contactTemplate && (
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                        contactTemplate.is_exploration ? "bg-amber-200 text-amber-800" : "bg-indigo-200 text-indigo-800"
+                      }`}>
+                        {contactTemplate.variant_label}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-indigo-700 font-medium">
+                          Template {contactTemplate.is_exploration ? "(en test)" : `— score ${(contactTemplate.score * 100).toFixed(0)}`}
+                          {" · "}{contactTemplate.sent_count} envois
+                        </p>
+                        {contactTemplate.ai_hypothesis && (
+                          <p className="text-xs text-indigo-500 mt-0.5">💡 {contactTemplate.ai_hypothesis}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {contactChannel === "email" && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block">Objet</label>
+                      <input type="text" value={contactSubject} onChange={(e) => setContactSubject(e.target.value)}
+                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-medium text-gray-500">Message</label>
+                      <button onClick={() => navigator.clipboard.writeText(contactContent)}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+                        <Copy size={11} />Copier
+                      </button>
+                    </div>
+                    <textarea value={contactContent} onChange={(e) => setContactContent(e.target.value)}
+                      rows={contactChannel === "linkedin_dm" ? 5 : 9}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900/20 resize-none leading-relaxed" />
+                    {contactChannel === "linkedin_dm" && (
+                      <p className={`text-xs mt-1 ${contactContent.length > 300 ? "text-red-500" : "text-gray-400"}`}>
+                        {contactContent.length}/300 caractères
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!contactError && !contactLoading && (
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end shrink-0">
+                {contactSent ? (
+                  <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+                    <Check size={16} />Message envoyé !
+                  </div>
+                ) : (
+                  <button onClick={handleContactSend} disabled={contactSending || !contactContent}
+                    className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                    <Send size={13} />
+                    {contactSending ? "Envoi..." : contactChannel === "email" ? "Envoyer l'email" : "Enregistrer"}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
