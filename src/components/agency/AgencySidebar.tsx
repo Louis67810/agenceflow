@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Zap,
   UserCheck,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -29,6 +30,18 @@ interface NavItem {
   label: string;
   icon: ReactNode;
 }
+
+const agendaSubNav: NavItem[] = [
+  { href: "/admin/agenda", label: "Dashboard", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/calendar", label: "Calendrier", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/tasks", label: "Tâches", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/objectives", label: "Objectifs", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/habits", label: "Habitudes", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/recap", label: "Récap du jour", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/stats", label: "Statistiques", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/pomodoro", label: "Pomodoro", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda/settings", label: "Paramètres", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+];
 
 const linkedInSubNav: NavItem[] = [
   { href: "/admin/linkedin/posts", label: "Posts", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
@@ -47,6 +60,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
   { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={18} /> },
+  { href: "/admin/agenda", label: "Agenda", icon: <CalendarDays size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
   { href: "/admin/settings", label: "Paramètres", icon: <Settings size={18} /> },
 ];
@@ -71,7 +85,9 @@ interface AgencySidebarProps {
 export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarProps) {
   const pathname = usePathname();
   const isOnLinkedIn = pathname.startsWith("/admin/linkedin");
+  const isOnAgenda = pathname.startsWith("/admin/agenda");
   const [linkedInOpen, setLinkedInOpen] = useState(isOnLinkedIn);
+  const [agendaOpen, setAgendaOpen] = useState(isOnAgenda);
 
   const navItems = role === "admin" ? adminNav : role === "client" ? clientNav : designerNav;
 
@@ -156,6 +172,54 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                   {item.icon}
                   {item.label}
                 </Link>
+              </div>
+            );
+          }
+
+          // Insert Agenda collapsible group
+          if (item.href === "/admin/agenda" && role === "admin") {
+            return (
+              <div key="agenda-group">
+                <button
+                  onClick={() => setAgendaOpen((o) => !o)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    isOnAgenda
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  )}
+                >
+                  <CalendarDays size={18} />
+                  <span className="flex-1 text-left">Agenda</span>
+                  <ChevronDown
+                    size={15}
+                    className={`transition-transform ${agendaOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {agendaOpen && (
+                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
+                    {agendaSubNav.map((sub) => {
+                      const subActive = sub.href === "/admin/agenda"
+                        ? pathname === sub.href
+                        : pathname.startsWith(sub.href);
+                      return (
+                        <Link
+                          key={sub.href}
+                          href={sub.href}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                            subActive
+                              ? "text-white bg-gray-800"
+                              : "text-gray-400 hover:text-white hover:bg-gray-800"
+                          )}
+                        >
+                          {sub.icon}
+                          {sub.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           }
