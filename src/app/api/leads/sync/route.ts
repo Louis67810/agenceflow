@@ -32,7 +32,7 @@ export async function POST() {
       (existingLeads ?? []).filter((l) => l.email).map((l) => l.email as string)
     );
 
-    const toInsert = [];
+    const toInsert: Record<string, unknown>[] = [];
 
     for (const lml of lmLeads) {
       const data = lml.data ?? {};
