@@ -1,11 +1,32 @@
 import type { AgendaTask, AgendaHabit, AgendaDailyRecap } from "@/types/agenda";
 
+/**
+ * Points pour une tâche individuelle (indicatif, affiché dans l'UI).
+ * La vraie récompense est calculée en pondérant par rapport aux autres tâches du jour.
+ */
 export function taskPoints(task: AgendaTask): number {
   return task.importance * 10;
 }
 
 export function habitPoints(habit: AgendaHabit): number {
   return habit.points;
+}
+
+/**
+ * Calcule les points pondérés pour une tâche complétée,
+ * en fonction de son poids relatif parmi toutes les tâches du jour.
+ *
+ * Ex : 6 tâches, tâche complétée avec importance 5, total_importance = 10
+ * → points = (5/10) × pool = 50% × pool
+ */
+export function computeWeightedTaskPoints(
+  taskImportance: number,
+  allTasksImportances: number[],
+  dailyPool: number = 100
+): number {
+  const totalImportance = allTasksImportances.reduce((s, i) => s + i, 0);
+  if (totalImportance === 0) return Math.round(dailyPool / Math.max(1, allTasksImportances.length));
+  return Math.max(1, Math.round((taskImportance / totalImportance) * dailyPool));
 }
 
 export function recapBonusPoints(recap: Partial<AgendaDailyRecap>): number {
@@ -44,25 +65,21 @@ export function getLevelFromPoints(totalPoints: number): {
     "Expert", "Maître", "Grand Maître", "Légende", "Mythique", "Transcendant"
   ];
 
+  const pts = totalPoints ?? 0;
   let level = 0;
   for (let i = thresholds.length - 1; i >= 0; i--) {
-    if (totalPoints >= thresholds[i]) {
-      level = i;
-      break;
-    }
+    if (pts >= thresholds[i]) { level = i; break; }
   }
 
   const currentThreshold = thresholds[level];
   const nextThreshold = thresholds[level + 1] ?? currentThreshold + 5000;
-  const progress = Math.round(
-    ((totalPoints - currentThreshold) / (nextThreshold - currentThreshold)) * 100
-  );
+  const progress = Math.round(((pts - currentThreshold) / (nextThreshold - currentThreshold)) * 100);
 
   return {
     level: level + 1,
     label: labels[level],
-    nextLevelPoints: nextThreshold - totalPoints,
-    progress: Math.min(100, progress),
+    nextLevelPoints: Math.max(0, nextThreshold - pts),
+    progress: Math.min(100, Math.max(0, progress)),
   };
 }
 

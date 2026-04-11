@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star } from "lucide-react";
 import type { AgendaTask, AgendaObjective } from "@/types/agenda";
+import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 
 type SortBy = "date" | "importance" | "status";
 
@@ -14,6 +15,8 @@ export default function TasksPage() {
   const [objectives, setObjectives] = useState<AgendaObjective[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [formError, setFormError] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("date");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
@@ -36,17 +39,21 @@ export default function TasksPage() {
   }, []);
 
   async function load() {
-    const [tasksRes, objRes] = await Promise.all([
-      fetch("/api/agenda/tasks").then(r => r.json()),
-      fetch("/api/agenda/objectives").then(r => r.json()),
-    ]);
-    setTasks(tasksRes.tasks ?? []);
-    setObjectives(objRes.flat ?? []);
+    try {
+      const [tasksRes, objRes] = await Promise.all([
+        fetch("/api/agenda/tasks").then(r => r.json()),
+        fetch("/api/agenda/objectives").then(r => r.json()),
+      ]);
+      if (tasksRes.error) { setPageError(tasksRes.error); setLoading(false); return; }
+      setTasks(tasksRes.tasks ?? []);
+      setObjectives(objRes.flat ?? []);
+    } catch (e) { setPageError(String(e)); }
     setLoading(false);
   }
 
   async function handleCreate() {
     if (!form.title.trim()) return;
+    setFormError("");
     const payload = {
       ...form,
       tags: form.tags ? form.tags.split(",").map(t => t.trim()) : [],
@@ -55,17 +62,20 @@ export default function TasksPage() {
       recurrence: form.recurrence || null,
       start_time: form.start_time || null,
     };
-    const res = await fetch("/api/agenda/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.task) {
-      setTasks(prev => [data.task, ...prev]);
-      setForm(f => ({ ...f, title: "", description: "" }));
-      setShowForm(false);
-    }
+    try {
+      const res = await fetch("/api/agenda/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.error) { setFormError(data.error); return; }
+      if (data.task) {
+        setTasks(prev => [data.task, ...prev]);
+        setForm(f => ({ ...f, title: "", description: "" }));
+        setShowForm(false);
+      }
+    } catch (e) { setFormError(String(e)); }
   }
 
   async function handleToggle(task: AgendaTask) {
@@ -113,6 +123,7 @@ export default function TasksPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      {pageError && <SqlMissingBanner error={pageError} />}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Tâches</h1>
         <div className="flex items-center gap-2">
@@ -283,9 +294,10 @@ export default function TasksPage() {
               onClick={handleCreate}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
             >
-              Créer la tâche (+{form.importance * 10} pts)
+              Créer la tâche
             </button>
           </div>
+          {formError && <p className="text-red-500 text-xs mt-2 px-1">{formError}</p>}
         </div>
       )}
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Flame, CheckCircle2, Circle, Repeat } from "lucide-react";
 import type { AgendaHabit } from "@/types/agenda";
+import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 
 type HabitWithMeta = AgendaHabit & { done_today: boolean; done_this_week: number };
 
@@ -19,6 +20,8 @@ export default function HabitsPage() {
   const [habits, setHabits] = useState<HabitWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [formError, setFormError] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -35,8 +38,11 @@ export default function HabitsPage() {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const res = await fetch("/api/agenda/habits").then(r => r.json());
-    setHabits(res.habits ?? []);
+    try {
+      const res = await fetch("/api/agenda/habits").then(r => r.json());
+      if (res.error) { setPageError(res.error); setLoading(false); return; }
+      setHabits(res.habits ?? []);
+    } catch (e) { setPageError(String(e)); }
     setLoading(false);
   }
 
@@ -56,17 +62,21 @@ export default function HabitsPage() {
 
   async function handleCreate() {
     if (!form.title.trim()) return;
-    const res = await fetch("/api/agenda/habits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    if (data.habit) {
-      load();
-      setForm({ title: "", description: "", frequency: "daily", points: 10, color: "#10b981", icon: "⚡", target_per_period: 1 });
-      setShowForm(false);
-    }
+    setFormError("");
+    try {
+      const res = await fetch("/api/agenda/habits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.error) { setFormError(data.error); return; }
+      if (data.habit) {
+        load();
+        setForm({ title: "", description: "", frequency: "daily", points: 10, color: "#10b981", icon: "⚡", target_per_period: 1 });
+        setShowForm(false);
+      }
+    } catch (e) { setFormError(String(e)); }
   }
 
   async function handleDelete(id: string) {
@@ -81,6 +91,7 @@ export default function HabitsPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
+      {pageError && <SqlMissingBanner error={pageError} />}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Habitudes</h1>
@@ -144,6 +155,7 @@ export default function HabitsPage() {
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">Annuler</button>
             <button onClick={handleCreate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium">Créer (+{form.points} pts/jour)</button>
           </div>
+          {formError && <p className="text-red-500 text-xs mt-2">{formError}</p>}
         </div>
       )}
 

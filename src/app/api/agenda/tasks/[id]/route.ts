@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { computeWeightedTaskPoints } from "@/lib/agenda/points";
 
 export async function PATCH(
   req: NextRequest,
@@ -29,11 +30,31 @@ export async function PATCH(
 
     if (error) throw error;
 
-    // If completing a task, log points
+    // If completing a task → compute weighted points
     if (body.status === "done" && data) {
+      const taskDate = data.date ?? new Date().toISOString().split("T")[0];
+
+      // Fetch all tasks for that day to compute relative weight
+      const { data: dayTasks } = await supabase
+        .from("agenda_tasks")
+        .select("importance")
+        .eq("user_id", user.id)
+        .eq("date", taskDate);
+
+      // Fetch daily pool from settings
+      const { data: settingsData } = await supabase
+        .from("agenda_settings")
+        .select("daily_points_pool")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const pool = (settingsData as { daily_points_pool?: number } | null)?.daily_points_pool ?? 100;
+      const allImportances = (dayTasks ?? []).map((t: { importance: number }) => t.importance);
+      const pts = computeWeightedTaskPoints(data.importance, allImportances, pool);
+
       await supabase.from("agenda_points_log").insert({
         user_id: user.id,
-        points: data.points,
+        points: pts,
         reason: `Tâche complétée: ${data.title}`,
         entity_type: "task",
         entity_id: data.id,
