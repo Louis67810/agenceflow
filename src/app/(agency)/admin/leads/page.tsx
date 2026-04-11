@@ -1064,7 +1064,7 @@ export default function LeadsPage() {
                                 <span className="text-xs font-medium text-gray-700">
                                   {(t.source_filter as string) || "Toutes sources"} · {(t.channel as string)} · {(t.sector_filter as string) || "Tous secteurs"}
                                 </span>
-                                {t.is_exploration && (
+                                {!!t.is_exploration && (
                                   <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
                                     <FlaskConical size={9} />
                                     Test
