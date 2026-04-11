@@ -8,14 +8,14 @@ const PHONE_KEYS = ["phone", "telephone", "téléphone", "tel", "mobile", "phone
 const COMPANY_KEYS = ["company", "entreprise", "societe", "société", "organization", "organisation"];
 const SECTOR_KEYS = ["sector", "secteur", "industry", "industrie", "activite", "activité", "domaine"];
 
-function findField(data: Record<string, string>, keys: string[]): string {
+function findField(data: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
-    const val = data[key] || data[key.toLowerCase()] || data[key.toUpperCase()];
-    if (val) return val;
+    const val = data[key] ?? data[key.toLowerCase()] ?? data[key.toUpperCase()];
+    if (val && typeof val === "string") return val;
   }
   // Recherche partielle (ex: "secteur_activite" contient "secteur")
   for (const [k, v] of Object.entries(data)) {
-    if (keys.some((key) => k.toLowerCase().includes(key.toLowerCase())) && v) return v;
+    if (keys.some((key) => k.toLowerCase().includes(key.toLowerCase())) && v && typeof v === "string") return v;
   }
   return "";
 }
@@ -26,7 +26,8 @@ function buildSegmentKey(source: string, channel: string, sector: string): strin
 
 export async function POST(req: NextRequest) {
   try {
-    const { leadMagnetId, data } = await req.json();
+    const { leadMagnetId, data: rawData } = await req.json();
+    const data: Record<string, unknown> = rawData ?? {};
 
     if (!leadMagnetId || !data) {
       return NextResponse.json({ error: "leadMagnetId et data requis" }, { status: 400 });
@@ -54,8 +55,8 @@ export async function POST(req: NextRequest) {
 
     // Champs "extras" : tout ce qui n'est pas un champ connu
     const knownKeys = new Set([...EMAIL_KEYS, ...NAME_KEYS, ...PHONE_KEYS, ...COMPANY_KEYS, ...SECTOR_KEYS]);
-    const extraFields: Record<string, string> = {};
-    for (const [k, v] of Object.entries(data)) {
+    const extraFields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       if (!knownKeys.has(k.toLowerCase()) && v) {
         extraFields[k] = v;
       }
