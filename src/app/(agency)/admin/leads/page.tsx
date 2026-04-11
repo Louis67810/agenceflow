@@ -1072,7 +1072,7 @@ export default function LeadsPage() {
                                 )}
                               </div>
                               <p className="text-xs text-gray-400 truncate">{t.content as string}</p>
-                              {t.ai_hypothesis && (
+                              {!!t.ai_hypothesis && (
                                 <p className="text-xs text-indigo-400 mt-0.5 truncate">💡 {t.ai_hypothesis as string}</p>
                               )}
                             </div>
