@@ -19,6 +19,7 @@ import {
   CheckSquare,
   ChevronDown,
   Zap,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -44,6 +45,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/designers", label: "Prestataires", icon: <Palette size={18} /> },
   { href: "/admin/copywriting", label: "Copywriting", icon: <PenLine size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
+  { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
   { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
   { href: "/admin/settings", label: "Paramètres", icon: <Settings size={18} /> },
