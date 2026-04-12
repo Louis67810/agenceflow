@@ -52,7 +52,19 @@ interface ServiceType {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<"integrations" | "keys" | "services">("integrations");
+  const [tab, setTab] = useState<"integrations" | "keys" | "services" | "ia">("integrations");
+
+  // ── IA settings state ──
+  const [businessContext, setBusinessContext] = useState("");
+  const [aiModels, setAiModels] = useState({
+    copywriting: "openai/gpt-4o-mini",
+    linkedin_posts: "openai/gpt-4o-mini",
+    linkedin_ideas: "openai/gpt-4o-mini",
+    leads: "openai/gpt-4o-mini",
+    coach: "openai/gpt-4o-mini",
+  });
+  const [iaSaving, setIaSaving] = useState(false);
+  const [iaSaved, setIaSaved] = useState(false);
 
   // ── Integrations state ──
   const [savedKeys, setSavedKeys]     = useState<Record<string, string>>({});
@@ -88,6 +100,16 @@ export default function SettingsPage() {
   const [sError, setSError]             = useState<string | null>(null);
 
   useEffect(() => {
+    if (tab === "ia") {
+      import("@/lib/agenda/fetchWithAuth").then(({ agendaFetch }) => {
+        agendaFetch("/api/app-settings").then(r => r.json()).then(d => {
+          if (d.settings) {
+            setBusinessContext(d.settings.business_context ?? "");
+            if (d.settings.ai_models) setAiModels(d.settings.ai_models);
+          }
+        });
+      });
+    }
     if (tab === "keys") {
       loadKeys();
       fetch("/api/forms").then((r) => r.json()).then((d) => {
@@ -287,6 +309,7 @@ export default function SettingsPage() {
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-8 w-fit">
         {([
           ["integrations", "Intégrations"],
+          ["ia", "IA & Modèles"],
           ["services", "Prestations"],
           ["keys", "Clés d'accès"],
         ] as const).map(([id, label]) => (
@@ -355,6 +378,95 @@ export default function SettingsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── IA Tab ── */}
+      {tab === "ia" && (
+        <div className="space-y-6">
+          {/* Mémoire business */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-2.5 rounded-xl bg-purple-100 text-purple-600"><Sparkles size={20} /></div>
+              <div>
+                <h2 className="font-semibold text-gray-900">Mémoire business globale</h2>
+                <p className="text-sm text-gray-500 mt-1">Ce contexte est injecté dans tous vos prompts IA (coach, copywriting, LinkedIn, leads). Décrivez votre agence, vos cibles, vos valeurs.</p>
+              </div>
+            </div>
+            <textarea
+              value={businessContext}
+              onChange={e => setBusinessContext(e.target.value)}
+              rows={6}
+              placeholder={`Ex: Je dirige une agence de design web pour PME françaises. Mes services sont : sites vitrine (3 500€), e-commerce (6 500€), identité visuelle (2 000€). Ma cible : entrepreneurs 30-50 ans dans le secteur B2B. Mon positionnement : haut de gamme, design épuré, livraison rapide.`}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none text-gray-700 leading-relaxed"
+            />
+          </div>
+
+          {/* Modèles IA par fonctionnalité */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="font-semibold text-gray-900 mb-1">Modèles IA par fonctionnalité</h2>
+            <p className="text-sm text-gray-500 mb-5">Choisissez le modèle via OpenRouter pour chaque fonctionnalité IA de l'app.</p>
+            <div className="space-y-4">
+              {([
+                ["copywriting", "Copywriting web"],
+                ["linkedin_posts", "Posts LinkedIn"],
+                ["linkedin_ideas", "Idées LinkedIn"],
+                ["leads", "Analyse Leads"],
+                ["coach", "Coach IA"],
+              ] as const).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <label className="text-sm font-medium text-gray-700 w-40 shrink-0">{label}</label>
+                  <div className="relative flex-1">
+                    <select
+                      value={aiModels[key]}
+                      onChange={e => setAiModels(m => ({ ...m, [key]: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
+                    >
+                      <optgroup label="OpenAI">
+                        <option value="openai/gpt-4o">GPT-4o (puissant)</option>
+                        <option value="openai/gpt-4o-mini">GPT-4o Mini (rapide & éco)</option>
+                      </optgroup>
+                      <optgroup label="Anthropic (Claude)">
+                        <option value="anthropic/claude-opus-4">Claude Opus 4 (très puissant)</option>
+                        <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5 (équilibré)</option>
+                        <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (rapide)</option>
+                      </optgroup>
+                      <optgroup label="Google (Gemini)">
+                        <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (rapide)</option>
+                        <option value="google/gemini-pro-1.5">Gemini Pro 1.5 (puissant)</option>
+                      </optgroup>
+                      <optgroup label="Mistral AI">
+                        <option value="mistralai/mistral-large-2411">Mistral Large (FR natif)</option>
+                        <option value="mistralai/mistral-small-3.1-24b-instruct">Mistral Small (rapide)</option>
+                      </optgroup>
+                      <optgroup label="Meta">
+                        <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B (open source)</option>
+                      </optgroup>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={async () => {
+              setIaSaving(true);
+              const { agendaFetch } = await import("@/lib/agenda/fetchWithAuth");
+              await agendaFetch("/api/app-settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ business_context: businessContext, ai_models: aiModels }),
+              });
+              setIaSaving(false);
+              setIaSaved(true);
+              setTimeout(() => setIaSaved(false), 2500);
+            }}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-medium transition-all ${iaSaved ? "bg-green-600 text-white" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
+          >
+            {iaSaved ? <><CheckCircle2 size={15} />Sauvegardé !</> : iaSaving ? "Sauvegarde..." : "Sauvegarder"}
+          </button>
         </div>
       )}
 

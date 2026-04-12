@@ -21,6 +21,9 @@ import {
   Zap,
   UserCheck,
   CalendarDays,
+  Lightbulb,
+  ClipboardList,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -60,7 +63,10 @@ const adminNav: NavItem[] = [
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
   { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={18} /> },
-  { href: "/admin/agenda", label: "Agenda", icon: <CalendarDays size={18} /> },
+  { href: "/admin/agenda", label: "Habits", icon: <CalendarDays size={18} /> },
+  { href: "/admin/notes", label: "Notes & Idées", icon: <Lightbulb size={18} /> },
+  { href: "/admin/tests", label: "Tests Prestataires", icon: <ClipboardList size={18} /> },
+  { href: "/admin/coach", label: "Coach IA", icon: <Bot size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
   { href: "/admin/settings", label: "Paramètres", icon: <Settings size={18} /> },
 ];
@@ -75,6 +81,7 @@ const designerNav: NavItem[] = [
   { href: "/designer", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
   { href: "/designer/projects", label: "Mes projets", icon: <FolderKanban size={18} /> },
   { href: "/designer/tasks", label: "Mes tâches", icon: <CheckSquare size={18} /> },
+  { href: "/designer/tests", label: "Tests", icon: <ClipboardList size={18} /> },
 ];
 
 interface AgencySidebarProps {
@@ -190,7 +197,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                   )}
                 >
                   <CalendarDays size={18} />
-                  <span className="flex-1 text-left">Agenda</span>
+                  <span className="flex-1 text-left">Habits</span>
                   <ChevronDown
                     size={15}
                     className={`transition-transform ${agendaOpen ? "rotate-180" : ""}`}

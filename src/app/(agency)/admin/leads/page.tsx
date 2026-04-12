@@ -438,6 +438,27 @@ export default function LeadsPage() {
     if (selectedLead?.id === id) setSelectedLead(null);
   }
 
+  async function handleEnrichGoogleMaps(lead: Lead) {
+    if (!lead.company) return;
+    try {
+      const res = await fetch("/api/leads/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_id: lead.id, company: lead.company }),
+      });
+      const data = await res.json();
+      if (data.enriched) {
+        setLeads(prev => prev.map(l => l.id === lead.id
+          ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } }
+          : l
+        ));
+        if (selectedLead?.id === lead.id) {
+          setSelectedLead(l => l ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } } : l);
+        }
+      }
+    } catch {}
+  }
+
   // ── Outreach ──────────────────────────────────────────────────────────────
 
   function openOutreach(lead: Lead) {
@@ -1460,6 +1481,14 @@ export default function LeadsPage() {
                   </span>
                 } />
                 <InfoItem label="Ajouté le" value={new Date(selectedLead.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} />
+                {selectedLead.company && (
+                  <button
+                    onClick={() => handleEnrichGoogleMaps(selectedLead)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors mt-1 px-2 py-1 rounded-lg hover:bg-indigo-50"
+                  >
+                    <span>📍</span>Enrichir via Google Maps
+                  </button>
+                )}
               </div>
 
               <div>

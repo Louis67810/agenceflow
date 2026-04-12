@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { AgencySidebar } from "./AgencySidebar";
+import OnboardingTutorial from "./OnboardingTutorial";
 import type { AgencyRole } from "@/types/agency";
 
 export function RoleAwareSidebar() {
@@ -12,5 +13,10 @@ export function RoleAwareSidebar() {
     ? "designer"
     : "admin";
 
-  return <AgencySidebar role={role} />;
+  return (
+    <>
+      <AgencySidebar role={role} />
+      <OnboardingTutorial role={role} />
+    </>
+  );
 }

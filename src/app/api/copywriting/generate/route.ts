@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { section_type, prompt, notes, language, element_count, form_data } = body;
+    const { section_type, prompt, notes, language, element_count, form_data, model: bodyModel, business_context } = body;
 
     if (!prompt) {
       return NextResponse.json({ error: "Prompt requis" }, { status: 400 });
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are an expert copywriter for websites. You write clear, compelling, conversion-focused web copy.
 Always respond in ${langLabel}. Return ONLY the copywriting content, no explanations or meta-commentary.
-Format the output as clean, ready-to-use copy with proper structure.`;
+Format the output as clean, ready-to-use copy with proper structure.${business_context ? `\n\n## Agency Context\n${business_context}` : ""}`;
 
     const contextFromForm = form_data
       ? `\n\n## Client & Project Context\n${JSON.stringify(form_data, null, 2)}`
@@ -41,7 +41,7 @@ Generate the copywriting for this website section now.`;
         "X-Title": "AgenceFlow Copywriting",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model: bodyModel ?? "openai/gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
