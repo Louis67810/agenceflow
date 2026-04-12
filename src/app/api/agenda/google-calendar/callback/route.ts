@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
 
     // Save tokens to settings
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return NextResponse.redirect(`${settingsUrl}?gcal=error`);
 
     await supabase.from("agenda_settings").upsert({
