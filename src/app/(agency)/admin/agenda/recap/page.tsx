@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
 import { CheckCircle2, ChevronRight, Star, Flame, Trophy } from "lucide-react";
 import { computeDayScore, recapBonusPoints } from "@/lib/agenda/points";
@@ -38,9 +39,9 @@ export default function RecapPage() {
 
   async function load() {
     const [tasksRes, habitsRes, recapRes] = await Promise.all([
-      fetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()),
-      fetch("/api/agenda/habits").then(r => r.json()),
-      fetch(`/api/agenda/recap?date=${today}`).then(r => r.json()),
+      agendaFetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()),
+      agendaFetch("/api/agenda/habits").then(r => r.json()),
+      agendaFetch(`/api/agenda/recap?date=${today}`).then(r => r.json()),
     ]);
 
     const loadedTasks: AgendaTask[] = tasksRes.tasks ?? [];
@@ -74,7 +75,7 @@ export default function RecapPage() {
     const doneTasks = tasks.filter(t => t.status === "done").length;
     const doneHabits = habits.filter(h => h.done_today).length;
 
-    await fetch("/api/agenda/recap", {
+    await agendaFetch("/api/agenda/recap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

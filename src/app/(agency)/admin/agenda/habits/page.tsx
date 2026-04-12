@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Flame, CheckCircle2, Circle, Repeat } from "lucide-react";
 import type { AgendaHabit } from "@/types/agenda";
@@ -39,7 +40,7 @@ export default function HabitsPage() {
 
   async function load() {
     try {
-      const res = await fetch("/api/agenda/habits").then(r => r.json());
+      const res = await agendaFetch("/api/agenda/habits").then(r => r.json());
       if (res.error) { setPageError(res.error); setLoading(false); return; }
       setHabits(res.habits ?? []);
     } catch (e) { setPageError(String(e)); }
@@ -48,7 +49,7 @@ export default function HabitsPage() {
 
   async function handleToggle(habit: HabitWithMeta) {
     const method = habit.done_today ? "DELETE" : "POST";
-    await fetch(`/api/agenda/habits/${habit.id}/log`, {
+    await agendaFetch(`/api/agenda/habits/${habit.id}/log`, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: today }),
@@ -64,7 +65,7 @@ export default function HabitsPage() {
     if (!form.title.trim()) return;
     setFormError("");
     try {
-      const res = await fetch("/api/agenda/habits", {
+      const res = await agendaFetch("/api/agenda/habits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -80,7 +81,7 @@ export default function HabitsPage() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/agenda/habits/${id}`, { method: "DELETE" });
+    await agendaFetch(`/api/agenda/habits/${id}`, { method: "DELETE" });
     setHabits(prev => prev.filter(h => h.id !== id));
   }
 

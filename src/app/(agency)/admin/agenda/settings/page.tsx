@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState, type ReactNode } from "react";
 import { Save, Clock, Timer, Target, Bell, Calendar, ExternalLink, RefreshCw } from "lucide-react";
 import type { AgendaSettings } from "@/types/agenda";
@@ -32,7 +33,7 @@ export default function AgendaSettingsPage() {
   const [gcalMessage, setGcalMessage] = useState("");
 
   useEffect(() => {
-    fetch("/api/agenda/settings")
+    agendaFetch("/api/agenda/settings")
       .then(r => r.json())
       .then(d => {
         if (d.settings) setSettings(d.settings);
@@ -52,7 +53,7 @@ export default function AgendaSettingsPage() {
 
   async function handleSave() {
     setSaving(true);
-    await fetch("/api/agenda/settings", {
+    await agendaFetch("/api/agenda/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
@@ -63,14 +64,14 @@ export default function AgendaSettingsPage() {
   }
 
   async function handleGoogleConnect() {
-    const res = await fetch("/api/agenda/google-calendar").then(r => r.json());
+    const res = await agendaFetch("/api/agenda/google-calendar").then(r => r.json());
     if (res.url) window.location.href = res.url;
   }
 
   async function handleGoogleSync() {
     setGcalSyncing(true);
     setGcalMessage("");
-    const res = await fetch("/api/agenda/google-calendar/sync", {
+    const res = await agendaFetch("/api/agenda/google-calendar/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days: 14 }),

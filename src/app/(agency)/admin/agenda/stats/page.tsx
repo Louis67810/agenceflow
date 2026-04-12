@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState, type ReactNode } from "react";
 import { TrendingUp, Star, Flame, CheckSquare, Target, BarChart2, AlertCircle } from "lucide-react";
 import { getLevelFromPoints } from "@/lib/agenda/points";
@@ -26,7 +27,7 @@ export default function StatsPage() {
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    fetch("/api/agenda/stats")
+    agendaFetch("/api/agenda/stats")
       .then(r => r.json())
       .then(data => {
         if (data.error) {

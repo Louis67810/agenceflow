@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getLevelFromPoints } from "@/lib/agenda/points";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
+    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+    const { data: { user } } = await supabase.auth.getUser(token ?? undefined);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const today = new Date().toISOString().split("T")[0];

@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { CheckSquare, Flame, Star, TrendingUp, ChevronRight, Circle, CheckCircle2, Zap } from "lucide-react";
@@ -23,10 +24,10 @@ export default function AgendaDashboard() {
   useEffect(() => {
     async function load() {
       const [tasksRes, habitsRes, statsRes, settingsRes] = await Promise.all([
-        fetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()),
-        fetch("/api/agenda/habits").then(r => r.json()),
-        fetch("/api/agenda/stats").then(r => r.json()),
-        fetch("/api/agenda/settings").then(r => r.json()),
+        agendaFetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()),
+        agendaFetch("/api/agenda/habits").then(r => r.json()),
+        agendaFetch("/api/agenda/stats").then(r => r.json()),
+        agendaFetch("/api/agenda/settings").then(r => r.json()),
       ]);
 
       setData({
@@ -44,7 +45,7 @@ export default function AgendaDashboard() {
 
   const handleToggleTask = async (task: AgendaTask) => {
     const newStatus = task.status === "done" ? "todo" : "done";
-    await fetch(`/api/agenda/tasks/${task.id}`, {
+    await agendaFetch(`/api/agenda/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -57,13 +58,13 @@ export default function AgendaDashboard() {
 
   const handleToggleHabit = async (habit: AgendaHabit & { done_today: boolean }) => {
     if (habit.done_today) {
-      await fetch(`/api/agenda/habits/${habit.id}/log`, {
+      await agendaFetch(`/api/agenda/habits/${habit.id}/log`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today }),
       });
     } else {
-      await fetch(`/api/agenda/habits/${habit.id}/log`, {
+      await agendaFetch(`/api/agenda/habits/${habit.id}/log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today }),

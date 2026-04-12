@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Lock } from "lucide-react";
 import type { AgendaTask, AgendaBlockedSlot } from "@/types/agenda";
@@ -125,8 +126,8 @@ export default function CalendarPage() {
   async function load() {
     try {
       const [tasksRes, slotsRes] = await Promise.all([
-        fetch(`/api/agenda/tasks?week_start=${weekStart}&week_end=${weekEnd}`).then(r => r.json()),
-        fetch(`/api/agenda/blocked-slots?week_start=${weekStart}&week_end=${weekEnd}`).then(r => r.json()),
+        agendaFetch(`/api/agenda/tasks?week_start=${weekStart}&week_end=${weekEnd}`).then(r => r.json()),
+        agendaFetch(`/api/agenda/blocked-slots?week_start=${weekStart}&week_end=${weekEnd}`).then(r => r.json()),
       ]);
       if (tasksRes.error) { setError(tasksRes.error); return; }
       setTasks(tasksRes.tasks ?? []);
@@ -186,7 +187,7 @@ export default function CalendarPage() {
       await Promise.all(updates.map(([taskId, startMins]) => {
         const task = tasks.find(t => t.id === taskId);
         const dur = task?.duration_minutes ?? 30;
-        return fetch(`/api/agenda/tasks/${taskId}`, {
+        return agendaFetch(`/api/agenda/tasks/${taskId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -219,7 +220,7 @@ export default function CalendarPage() {
 
   async function handleCreateSlot() {
     if (!slotForm.title || !slotForm.date || !slotForm.start_time || !slotForm.end_time) return;
-    const res = await fetch("/api/agenda/blocked-slots", {
+    const res = await agendaFetch("/api/agenda/blocked-slots", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(slotForm),
     });
     const data = await res.json();
@@ -234,7 +235,7 @@ export default function CalendarPage() {
       start_time: startTime, end_time: addMins(startTime, taskForm.duration_minutes),
       duration_minutes: taskForm.duration_minutes, importance: taskForm.importance, status: "todo",
     };
-    const res = await fetch("/api/agenda/tasks", {
+    const res = await agendaFetch("/api/agenda/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -244,14 +245,14 @@ export default function CalendarPage() {
 
   async function handleToggleTask(task: AgendaTask) {
     const newStatus = task.status === "done" ? "todo" : "done";
-    await fetch(`/api/agenda/tasks/${task.id}`, {
+    await agendaFetch(`/api/agenda/tasks/${task.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }),
     });
     setTasks(p => p.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
   }
 
   async function handleDeleteSlot(id: string) {
-    await fetch(`/api/agenda/blocked-slots/${id}`, { method: "DELETE" });
+    await agendaFetch(`/api/agenda/blocked-slots/${id}`, { method: "DELETE" });
     setSlots(p => p.filter(s => s.id !== id));
   }
 

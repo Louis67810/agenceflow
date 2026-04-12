@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Coffee, Zap, CheckCircle2 } from "lucide-react";
 import type { AgendaTask, AgendaSettings, PomodoroSessionType } from "@/types/agenda";
@@ -45,13 +46,13 @@ export default function PomodoroPage() {
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
-    fetch("/api/agenda/settings").then(r => r.json()).then(d => {
+    agendaFetch("/api/agenda/settings").then(r => r.json()).then(d => {
       if (d.settings) {
         setSettings(d.settings);
         setTimeLeft((d.settings.pomodoro_work_minutes ?? 25) * 60);
       }
     });
-    fetch(`/api/agenda/tasks?date=${today}&status=todo`).then(r => r.json()).then(d => {
+    agendaFetch(`/api/agenda/tasks?date=${today}&status=todo`).then(r => r.json()).then(d => {
       setTasks(d.tasks ?? []);
     });
   }, [today]);
@@ -81,7 +82,7 @@ export default function PomodoroPage() {
     startTimeRef.current = new Date();
 
     // Create session in DB
-    const res = await fetch("/api/agenda/pomodoro", {
+    const res = await agendaFetch("/api/agenda/pomodoro", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -107,7 +108,7 @@ export default function PomodoroPage() {
   async function handleSessionComplete() {
     // Mark session completed in DB
     if (sessionId) {
-      await fetch(`/api/agenda/pomodoro/${sessionId}`, {
+      await agendaFetch(`/api/agenda/pomodoro/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: true, ended_at: new Date().toISOString() }),

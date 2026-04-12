@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight, Circle, CheckCircle2, Target } from "lucide-react";
 import type { AgendaObjective } from "@/types/agenda";
@@ -22,7 +23,7 @@ export default function ObjectivesPage() {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const res = await fetch("/api/agenda/objectives").then(r => r.json());
+    const res = await agendaFetch("/api/agenda/objectives").then(r => r.json());
     setObjectives(res.objectives ?? []);
     setFlat(res.flat ?? []);
     setLoading(false);
@@ -30,7 +31,7 @@ export default function ObjectivesPage() {
 
   async function handleCreate() {
     if (!form.title.trim()) return;
-    const res = await fetch("/api/agenda/objectives", {
+    const res = await agendaFetch("/api/agenda/objectives", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, parent_id: form.parent_id || null, target_date: form.target_date || null }),
@@ -44,12 +45,12 @@ export default function ObjectivesPage() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/agenda/objectives/${id}`, { method: "DELETE" });
+    await agendaFetch(`/api/agenda/objectives/${id}`, { method: "DELETE" });
     load();
   }
 
   async function handleUpdateProgress(id: string, progress: number) {
-    await fetch(`/api/agenda/objectives/${id}`, {
+    await agendaFetch(`/api/agenda/objectives/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ progress }),
@@ -59,7 +60,7 @@ export default function ObjectivesPage() {
   }
 
   async function handleComplete(id: string) {
-    await fetch(`/api/agenda/objectives/${id}`, {
+    await agendaFetch(`/api/agenda/objectives/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed", progress: 100 }),

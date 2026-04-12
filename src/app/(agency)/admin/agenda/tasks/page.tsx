@@ -1,5 +1,6 @@
 "use client";
 
+import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star } from "lucide-react";
 import type { AgendaTask, AgendaObjective } from "@/types/agenda";
@@ -41,8 +42,8 @@ export default function TasksPage() {
   async function load() {
     try {
       const [tasksRes, objRes] = await Promise.all([
-        fetch("/api/agenda/tasks").then(r => r.json()),
-        fetch("/api/agenda/objectives").then(r => r.json()),
+        agendaFetch("/api/agenda/tasks").then(r => r.json()),
+        agendaFetch("/api/agenda/objectives").then(r => r.json()),
       ]);
       if (tasksRes.error) { setPageError(tasksRes.error); setLoading(false); return; }
       setTasks(tasksRes.tasks ?? []);
@@ -63,7 +64,7 @@ export default function TasksPage() {
       start_time: form.start_time || null,
     };
     try {
-      const res = await fetch("/api/agenda/tasks", {
+      const res = await agendaFetch("/api/agenda/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -80,7 +81,7 @@ export default function TasksPage() {
 
   async function handleToggle(task: AgendaTask) {
     const newStatus = task.status === "done" ? "todo" : "done";
-    await fetch(`/api/agenda/tasks/${task.id}`, {
+    await agendaFetch(`/api/agenda/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),
@@ -89,13 +90,13 @@ export default function TasksPage() {
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/agenda/tasks/${id}`, { method: "DELETE" });
+    await agendaFetch(`/api/agenda/tasks/${id}`, { method: "DELETE" });
     setTasks(prev => prev.filter(t => t.id !== id));
   }
 
   async function handleAutoSchedule() {
     const today = new Date().toISOString().split("T")[0];
-    const res = await fetch("/api/agenda/auto-schedule", {
+    const res = await agendaFetch("/api/agenda/auto-schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: today }),
