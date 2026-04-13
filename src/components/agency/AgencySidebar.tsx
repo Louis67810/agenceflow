@@ -72,9 +72,9 @@ const adminNav: NavItem[] = [
 ];
 
 const clientNav: NavItem[] = [
-  { href: "/client", label: "Mon espace", icon: <LayoutDashboard size={18} /> },
-  { href: "/client/projects", label: "Mes projets", icon: <FolderKanban size={18} /> },
-  { href: "/client/messages", label: "Messages", icon: <MessageSquare size={18} /> },
+  { href: "/client", label: "Mon Projet", icon: <LayoutDashboard size={18} /> },
+  { href: "/client/messages", label: "Conversation", icon: <MessageSquare size={18} /> },
+  { href: "/client/projects", label: "Ressources", icon: <FolderKanban size={18} /> },
 ];
 
 const designerNav: NavItem[] = [
@@ -253,6 +253,19 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
           );
         })}
       </nav>
+
+      {/* Client bottom links */}
+      {role === "client" && (
+        <div className="px-3 pb-2 space-y-0.5">
+          <Link href="/client/onboarding"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              pathname === "/client/onboarding" ? "bg-indigo-600 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+            }`}>
+            <MessageSquare size={18} />
+            Aide
+          </Link>
+        </div>
+      )}
 
       {/* User + Actions */}
       <div className="px-3 py-4 border-t border-gray-700 space-y-1">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   Briefcase, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
-  ShieldCheck, ChevronRight, ChevronLeft,
+  ShieldCheck, ChevronRight, ChevronLeft, ArrowRight,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,11 +35,11 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   const [userId, setUserId]   = useState<string | null>(null);
 
   // Register
-  const [email, setEmail]           = useState("");
-  const [password, setPassword]     = useState("");
-  const [confirmPwd, setConfirmPwd] = useState("");
-  const [showPwd, setShowPwd]       = useState(false);
-  const [registering, setRegistering]   = useState(false);
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
+  const [confirmPwd, setConfirmPwd]   = useState("");
+  const [showPwd, setShowPwd]         = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
   // Form (multi-page)
@@ -72,9 +72,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     return [];
   })();
 
-  const totalPages   = pages.length;
-  const currentPage  = pages[pageIndex];
-  const isLastPage   = pageIndex === totalPages - 1;
+  const totalPages  = pages.length;
+  const currentPage = pages[pageIndex];
+  const isLastPage  = pageIndex === totalPages - 1;
 
   function validatePage() {
     const missing = (currentPage?.fields ?? []).filter(
@@ -142,7 +142,6 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     setSubmitting(true);
     setFormError(null);
 
-    // Get user ID from live session (more reliable than state after re-renders)
     let uid = userId;
     if (!uid) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -175,7 +174,6 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     }
 
     setSubmitting(false);
-    // Prestataire → designer dashboard, client → project or client dashboard
     if (data.role === "designer" || data.role === "developer") {
       router.push("/designer");
     } else if (data.project_id) {
@@ -188,7 +186,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   // ── Field renderer ─────────────────────────────────────────────────────────
 
   function renderField(field: FormField) {
-    const base = "w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300";
+    const base = "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 focus:bg-white transition-all";
     const val = (values[field.id] ?? "") as string;
     const setVal = (v: string) => setValues((p) => ({ ...p, [field.id]: v }));
 
@@ -198,7 +196,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           placeholder={field.placeholder} rows={3} className={`${base} resize-none`} />;
       case "select":
         return (
-          <select value={val} onChange={(e) => setVal(e.target.value)} required={field.required} className={`${base} bg-white`}>
+          <select value={val} onChange={(e) => setVal(e.target.value)} required={field.required} className={`${base} bg-gray-50`}>
             <option value="">-- Choisir --</option>
             {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
@@ -207,7 +205,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         return (
           <div className="flex flex-wrap gap-2 mt-1">
             {field.options?.map((o) => (
-              <label key={o} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${val === o ? "bg-indigo-50 border-indigo-300 text-indigo-800" : "border-gray-200 text-gray-600"}`}>
+              <label key={o} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm cursor-pointer transition-all ${val === o ? "bg-indigo-50 border-indigo-300 text-indigo-800 font-medium" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
                 <input type="radio" name={field.id} value={o} checked={val === o} onChange={() => setVal(o)} className="accent-indigo-600" />
                 {o}
               </label>
@@ -223,7 +221,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         return (
           <div className="flex flex-wrap gap-2 mt-1">
             {field.options?.map((o) => (
-              <label key={o} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors ${checked.includes(o) ? "bg-indigo-50 border-indigo-300 text-indigo-800" : "border-gray-200 text-gray-600"}`}>
+              <label key={o} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm cursor-pointer transition-all ${checked.includes(o) ? "bg-indigo-50 border-indigo-300 text-indigo-800 font-medium" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
                 <input type="checkbox" checked={checked.includes(o)} onChange={() => toggle(o)} className="accent-indigo-600 rounded" />
                 {o}
               </label>
@@ -238,108 +236,157 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     }
   }
 
-  // ── Screens ────────────────────────────────────────────────────────────────
+  // ── Shared Layout ──────────────────────────────────────────────────────────
 
-  const Logo = () => (
-    <div className="flex items-center gap-3 mb-8">
-      <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
-        <Briefcase size={18} className="text-white" />
+  const BrandPanel = () => (
+    <div className="hidden lg:flex flex-col justify-between bg-gray-900 text-white p-10 w-[420px] shrink-0">
+      <div>
+        <div className="flex items-center gap-3 mb-12">
+          <div className="w-9 h-9 bg-indigo-500 rounded-xl flex items-center justify-center">
+            <Briefcase size={16} />
+          </div>
+          <span className="text-lg font-bold">AgenceFlow</span>
+        </div>
+        <h2 className="text-3xl font-bold leading-snug mb-4">
+          Bienvenue dans votre espace client.
+        </h2>
+        <p className="text-gray-400 text-sm leading-relaxed">
+          Suivez l&apos;avancement de votre projet, échangez avec votre agence et accédez à tous vos fichiers en un seul endroit.
+        </p>
       </div>
-      <span className="text-xl font-bold text-gray-900">AgenceFlow</span>
+      <div className="space-y-3">
+        {["Suivi en temps réel de votre projet", "Communication directe avec l'équipe", "Accès à tous vos fichiers"].map((item) => (
+          <div key={item} className="flex items-center gap-3 text-sm text-gray-300">
+            <div className="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center shrink-0">
+              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+            </div>
+            {item}
+          </div>
+        ))}
+      </div>
     </div>
   );
+
+  const inputCls = "w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 focus:bg-white transition-all";
+
+  // ── Loading ────────────────────────────────────────────────────────────────
 
   if (step === "loading") return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <Loader2 className="animate-spin text-indigo-600" size={32} />
+      <Loader2 className="animate-spin text-indigo-600" size={28} />
     </div>
   );
 
+  // ── Not found ──────────────────────────────────────────────────────────────
+
   if (step === "not_found") return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="text-center max-w-sm px-4">
-        <AlertCircle size={40} className="text-red-400 mx-auto mb-4" />
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 px-4">
+      <div className="text-center max-w-sm">
+        <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <AlertCircle size={24} className="text-red-500" />
+        </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Lien invalide</h1>
         <p className="text-gray-500 text-sm">Ce lien est invalide ou a expiré. Contactez votre agence.</p>
       </div>
     </div>
   );
 
+  // ── Already done ───────────────────────────────────────────────────────────
+
   if (step === "already_done") return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="text-center max-w-sm px-4">
-        <CheckCircle2 size={40} className="text-green-500 mx-auto mb-4" />
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 px-4">
+      <div className="text-center max-w-sm">
+        <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <CheckCircle2 size={24} className="text-green-500" />
+        </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Formulaire déjà envoyé</h1>
-        <p className="text-gray-500 text-sm mb-4">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
+        <p className="text-gray-500 text-sm mb-6">Vous avez déjà rempli ce formulaire. Votre agence a bien reçu vos informations.</p>
         <button
           onClick={() => router.push(keyData?.role === "designer" || keyData?.role === "developer" ? "/designer" : "/client")}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"
         >
-          Accéder à mon espace
+          Accéder à mon espace <ArrowRight size={15} />
         </button>
       </div>
     </div>
   );
 
+  // ── Done ───────────────────────────────────────────────────────────────────
+
   if (step === "done") return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="text-center max-w-sm px-4">
-        <CheckCircle2 size={40} className="text-green-500 mx-auto mb-4" />
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 px-4">
+      <div className="text-center max-w-sm">
+        <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <CheckCircle2 size={24} className="text-green-500" />
+        </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Merci {keyData?.name.split(" ")[0]} !</h1>
         <p className="text-gray-500 text-sm">Vos informations ont bien été transmises. Nous vous contacterons très prochainement.</p>
       </div>
     </div>
   );
 
+  // ── Register ───────────────────────────────────────────────────────────────
+
   if (step === "register") return (
-    <div className="min-h-screen bg-gray-50 flex items-start justify-center py-12 px-4">
-      <div className="w-full max-w-md">
-        <Logo />
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 mb-6">
-            <ShieldCheck size={14} className="text-indigo-500" />
-            <span className="text-xs text-indigo-700 font-medium">Invitation de votre agence</span>
+    <div className="min-h-screen bg-gray-50 flex items-stretch">
+      <BrandPanel />
+
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+        <div className="w-full max-w-md">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2.5 mb-8 lg:hidden">
+            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center">
+              <Briefcase size={15} className="text-white" />
+            </div>
+            <span className="font-bold text-gray-900">AgenceFlow</span>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-1">Bienvenue, {keyData?.name} !</h1>
-          <p className="text-sm text-gray-500 mb-6">
-            {keyData?.role === "designer"
-              ? "Créez votre accès prestataire pour rejoindre l'agence."
-              : "Créez votre accès pour remplir le formulaire."}
-          </p>
+
+          <div className="mb-8">
+            <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-full px-3 py-1.5 mb-5">
+              <ShieldCheck size={13} className="text-indigo-500" />
+              <span className="text-xs text-indigo-700 font-medium">Invitation de votre agence</span>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Bienvenue, {keyData?.name} !</h1>
+            <p className="text-gray-500 text-sm">
+              {keyData?.role === "designer"
+                ? "Créez votre accès prestataire pour rejoindre l'agence."
+                : "Créez votre accès pour remplir le formulaire de démarrage."}
+            </p>
+          </div>
 
           {registerError && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
-              <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl mb-6">
+              <AlertCircle size={15} className="text-red-500 mt-0.5 shrink-0" />
               <p className="text-sm text-red-700">{registerError}</p>
             </div>
           )}
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="votre@email.com" required
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Adresse email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="votre@email.com" required className={inputCls} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Mot de passe</label>
               <div className="relative">
                 <input type={showPwd ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 6 caractères" required minLength={6}
-                  className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+                  placeholder="Minimum 6 caractères" required minLength={6} className={`${inputCls} pr-11`} />
+                <button type="button" onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">
+                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmer le mot de passe</label>
               <input type={showPwd ? "text" : "password"} value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)}
-                placeholder="Répétez votre mot de passe" required
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                placeholder="Répétez votre mot de passe" required className={inputCls} />
             </div>
             <button type="submit" disabled={registering}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 mt-1">
-              {registering ? <><Loader2 size={14} className="animate-spin" />Création...</> : "Créer mon accès"}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors mt-2">
+              {registering
+                ? <><Loader2 size={15} className="animate-spin" />Création en cours...</>
+                : <>Créer mon accès <ArrowRight size={15} /></>}
             </button>
           </form>
         </div>
@@ -352,40 +399,49 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   const fields = currentPage?.fields ?? [];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-start justify-center py-12 px-4">
-      <div className="w-full max-w-lg">
-        <Logo />
+    <div className="min-h-screen bg-gray-50 flex items-stretch">
+      <BrandPanel />
 
-        {/* Progress bar */}
-        {totalPages > 1 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-              <span>{currentPage?.title}</span>
-              <span>{pageIndex + 1} / {totalPages}</span>
+      <div className="flex-1 flex items-start justify-center p-6 lg:p-12 overflow-y-auto">
+        <div className="w-full max-w-lg py-4">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2.5 mb-8 lg:hidden">
+            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center">
+              <Briefcase size={15} className="text-white" />
             </div>
-            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                style={{ width: `${((pageIndex + 1) / totalPages) * 100}%` }}
-              />
-            </div>
+            <span className="font-bold text-gray-900">AgenceFlow</span>
           </div>
-        )}
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+          {/* Progress bar */}
           {totalPages > 1 && (
-            <h2 className="text-lg font-bold text-gray-900 mb-5">{currentPage?.title}</h2>
+            <div className="mb-8">
+              <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                <span className="font-medium text-gray-600">{currentPage?.title}</span>
+                <span>{pageIndex + 1} / {totalPages}</span>
+              </div>
+              <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                  style={{ width: `${((pageIndex + 1) / totalPages) * 100}%` }}
+                />
+              </div>
+            </div>
           )}
-          {totalPages === 1 && (
-            <>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">Votre formulaire</h1>
-              <p className="text-gray-500 text-sm mb-8">Remplissez ces informations pour démarrer votre projet.</p>
-            </>
-          )}
+
+          <div className="mb-6">
+            {totalPages > 1
+              ? <h2 className="text-2xl font-bold text-gray-900">{currentPage?.title}</h2>
+              : (
+                <>
+                  <h1 className="text-2xl font-bold text-gray-900 mb-2">Votre formulaire</h1>
+                  <p className="text-gray-500 text-sm">Remplissez ces informations pour démarrer votre projet.</p>
+                </>
+              )}
+          </div>
 
           {(pageError || formError) && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-5">
-              <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl mb-5">
+              <AlertCircle size={15} className="text-red-500 mt-0.5 shrink-0" />
               <p className="text-sm text-red-700">{pageError ?? formError}</p>
             </div>
           )}
@@ -395,23 +451,25 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <div key={field.id}>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   {field.label}
-                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                  {field.required && <span className="text-red-400 ml-1">*</span>}
                 </label>
                 {renderField(field)}
               </div>
             ))}
 
-            <div className={`flex gap-3 pt-2 ${pageIndex > 0 ? "justify-between" : "justify-end"}`}>
+            <div className={`flex gap-3 pt-3 ${pageIndex > 0 ? "justify-between" : "justify-end"}`}>
               {pageIndex > 0 && (
                 <button type="button" onClick={handlePrev}
-                  className="flex items-center gap-2 px-5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                  className="flex items-center gap-2 px-5 py-3 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors font-medium">
                   <ChevronLeft size={15} />Précédent
                 </button>
               )}
               <button type="submit" disabled={submitting}
-                className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 ml-auto">
-                {submitting ? <><Loader2 size={14} className="animate-spin" />Envoi...</>
-                  : isLastPage ? "Envoyer mon formulaire"
+                className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors ml-auto">
+                {submitting
+                  ? <><Loader2 size={14} className="animate-spin" />Envoi...</>
+                  : isLastPage
+                  ? <>Envoyer mon formulaire <ArrowRight size={15} /></>
                   : <>Suivant <ChevronRight size={15} /></>}
               </button>
             </div>
