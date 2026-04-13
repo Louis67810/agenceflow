@@ -22,10 +22,10 @@ interface ProjectFile {
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
-// Logos — on n'utilise plus les URLs Figma MCP (expirées), on les retire si les assets ne sont pas dispo
-const GDOCS_ICON  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%234285F4' d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z'/%3E%3Cpath fill='%23fff' d='M14 2v6h6M8 13h8M8 17h5'/%3E%3C/svg%3E";
-const FIGMA_ICON  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23F24E1E'/%3E%3Cpath fill='%23fff' d='M8 7h8v4a4 4 0 0 1-4 4 4 4 0 0 1-4-4V7z'/%3E%3C/svg%3E";
-const FRAMER_ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%230075FF' d='M4 4h16v8h-8zM4 12h8l8 8H4z'/%3E%3C/svg%3E";
+// Icônes de marque — data URIs SVG propres
+const GDOCS_ICON  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 22' fill='none'%3E%3Cpath fill='%234285F4' d='M2 0h10l6 6v14a2 2 0 01-2 2H2a2 2 0 01-2-2V2a2 2 0 012-2z'/%3E%3Cpath fill='%231565C0' d='M12 0l6 6h-6V0z'/%3E%3Crect fill='white' x='3' y='9' width='12' height='1.8' rx='.9'/%3E%3Crect fill='white' x='3' y='12.5' width='12' height='1.8' rx='.9'/%3E%3Crect fill='white' x='3' y='16' width='7' height='1.8' rx='.9'/%3E%3C/svg%3E";
+const FIGMA_ICON  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 20' fill='none'%3E%3Crect fill='%23F24E1E' x='0' y='0' width='6.5' height='6.5' rx='3.25'/%3E%3Crect fill='%23FF7262' x='6.5' y='0' width='6.5' height='6.5' rx='3.25'/%3E%3Crect fill='%23A259FF' x='0' y='6.5' width='6.5' height='6.5' rx='3.25'/%3E%3Ccircle fill='%231ABCFE' cx='9.75' cy='9.75' r='3.25'/%3E%3Crect fill='%230ACF83' x='0' y='13' width='6.5' height='6.5' rx='3.25'/%3E%3C/svg%3E";
+const FRAMER_ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 20' fill='none'%3E%3Cpath fill='%230075FF' d='M1 0h14v8H8zM1 8h7l7 12H1z'/%3E%3C/svg%3E";
 
 export default function ClientRessourcesPage() {
   const [project, setProject]       = useState<Project | null>(null);

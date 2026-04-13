@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
-  ChevronRight, ChevronLeft, Briefcase,
+  ChevronRight, ChevronLeft,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,45 +63,62 @@ function Card({ children }: { children: ReactNode }) {
       position: "relative",
       overflow: "hidden",
     }}>
-      {/* Formes décoratives */}
-      <div style={{
-        position: "fixed", top: -120, left: -120,
-        width: 450, height: 450,
-        background: "radial-gradient(circle, rgba(78,126,250,0.09) 0%, transparent 70%)",
-        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
-      }} />
-      <div style={{
-        position: "fixed", bottom: -120, right: -120,
-        width: 550, height: 550,
-        background: "radial-gradient(circle, rgba(1,71,255,0.07) 0%, transparent 70%)",
-        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
-      }} />
-      <div style={{
-        position: "fixed", top: "40%", right: -80,
-        width: 280, height: 280,
-        background: "radial-gradient(circle, rgba(98,54,170,0.06) 0%, transparent 70%)",
-        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
-      }} />
+      {/* Formes vectorielles décoratives */}
+      <div style={{ position: "fixed", top: -80, left: -80, pointerEvents: "none", zIndex: 0, opacity: 1 }}>
+        <svg width="536" height="381" viewBox="0 0 536 381" fill="none">
+          <path d="M-105.779 298.796L-16.318 200.598C19.5701 161.204 67.5899 134.929 120.117 125.944L165.562 118.171C239.925 105.451 307.961 162.424 308.498 237.865L308.59 250.76C308.852 287.596 288.962 321.63 256.739 339.481C164.916 390.35 66.3265 284.243 123.794 196.399L226.048 40.0931C231.006 32.5132 236.656 25.4082 242.923 18.869L515.967 -266" stroke="black" strokeOpacity="0.04" strokeWidth="54.8704"/>
+        </svg>
+      </div>
+      <div style={{ position: "fixed", bottom: -120, right: -150, pointerEvents: "none", zIndex: 0, opacity: 1 }}>
+        <svg width="639" height="523" viewBox="0 0 639 523" fill="none">
+          <path d="M886.172 190.892L755.943 274.388C703.7 307.884 641.765 322.966 579.971 317.241L526.508 312.287C439.026 304.182 379.667 219.588 401.801 134.566L405.584 120.033C416.392 78.5181 449.024 46.2292 490.651 35.8613C609.272 6.31655 688.19 155.388 597.071 236.881L434.937 381.884C427.074 388.915 418.578 395.205 409.557 400.671L16.5576 638.814" stroke="black" strokeOpacity="0.04" strokeWidth="63.8992"/>
+        </svg>
+      </div>
 
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 560 }}>
         {/* Logo */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "8px 18px",
-            background: "#121a2e",
-            borderRadius: 10,
-            boxShadow: "0px 4px 12px rgba(18,26,46,0.15)",
-          }}>
-            <Briefcase size={15} color="#fff" />
-            <span style={{
-              ...jakartaSans,
-              fontSize: 16, fontWeight: 700,
-              letterSpacing: "-0.3px", color: "#fff",
-            }}>
-              Ruff
-            </span>
-          </div>
+          <svg width="94" height="71" viewBox="0 0 141 106" fill="none">
+            <defs>
+              <filter id="logo_filter" x="0" y="0" width="140.428" height="105.921" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dx="-1.42326" dy="1.42326"/><feGaussianBlur stdDeviation="2.37209"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0"/>
+                <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dx="-5.2186" dy="6.64186"/><feGaussianBlur stdDeviation="4.26977"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.09 0"/>
+                <feBlend mode="normal" in2="effect1_dropShadow" result="effect2_dropShadow"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dx="-11.8605" dy="14.707"/><feGaussianBlur stdDeviation="5.69302"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0"/>
+                <feBlend mode="normal" in2="effect2_dropShadow" result="effect3_dropShadow"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dx="-21.3488" dy="26.093"/><feGaussianBlur stdDeviation="6.87907"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.01 0"/>
+                <feBlend mode="normal" in2="effect3_dropShadow" result="effect4_dropShadow"/>
+                <feBlend mode="normal" in="SourceGraphic" in2="effect4_dropShadow" result="shape"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dy="2.37209"/><feGaussianBlur stdDeviation="1.82651"/>
+                <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.2 0"/>
+                <feBlend mode="normal" in2="shape" result="effect5_innerShadow"/>
+                <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                <feOffset dy="-1.42326"/><feGaussianBlur stdDeviation="1.66047"/>
+                <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>
+                <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"/>
+                <feBlend mode="normal" in2="effect5_innerShadow" result="effect6_innerShadow"/>
+              </filter>
+            </defs>
+            <g filter="url(#logo_filter)">
+              <path d="M35.1074 23.2284C35.1074 19.6945 37.7007 16.696 41.1976 16.1865L128.965 3.39741C133.258 2.77181 137.107 6.10068 137.107 10.4393V58.9532C137.107 63.1877 133.432 66.4853 129.222 66.0278L41.4547 56.4878C37.8434 56.0953 35.1074 53.0458 35.1074 49.4132V23.2284Z" fill="#1A1A1A"/>
+            </g>
+            <path d="M110.839 36.5656L110.902 56.8713L114.848 57.4017L118.803 57.9326V43.3015L118.846 40.5358H123.239H127.675V36.3154V33.5001L123.304 33.4584L118.911 33.3958L118.846 31.8735L118.803 20.8691C118.803 20.8691 121.98 20.2718 124.023 19.9289C125.77 19.6357 128.504 19.2237 128.504 19.2237L128.974 19.1658V12.5581L119.665 13.8082L110.839 14.9936V36.5656Z" fill="white"/>
+            <path d="M90.8359 35.3848V54.1769L94.7851 54.7065L98.7996 55.2461V42.1207L98.8428 39.355H103.236H107.672V35.1346V32.3193L103.301 32.2776L98.9078 32.215L98.8428 30.6927L98.7996 22.2574L104.023 21.3608L108.47 20.5514L108.971 20.4576V15.2453L99.8538 16.4701L90.7959 17.687L90.8359 35.3848Z" fill="white"/>
+            <path d="M67.6309 20.7996V24.1488V33.5693V44.6388C67.6309 47.9069 69.6669 51.3068 71.7685 51.6169L81.6776 52.9475C86.6583 53.6166 88.1961 48.3788 88.1961 44.9637V43.8288V33.4487V18.037L84.6818 18.5085L80.7304 19.039L80.7942 32.8436V44.3788C80.3974 46.1958 76.0976 46.1455 75.3095 44.3788C75.2259 44.1771 75.179 32.7392 75.179 32.7392V19.7859L72.0285 20.2086L67.6309 20.7996Z" fill="white"/>
+            <path d="M44.3438 36.0216V47.9313L48.1736 48.445L51.0821 48.8352V44.2121V40.6183H52.6805C53.5854 40.5594 53.9176 40.6183 54.6489 41.3496C55.249 41.9448 55.1313 42.2115 55.8887 44.2121L57.1153 49.6462L61.2271 50.1982L66.0476 50.8457L64.0104 45.3456L61.9785 40.9317L61.2263 39.4691L62.1456 38.508C63.9007 36.7111 64.6529 33.9949 64.2142 31.1115C63.6709 27.3923 61.5549 22.8986 57.8984 22.1046L50.5337 23.0933L44.3438 23.9234V36.0216ZM55.705 30.2234C56.384 30.9025 56.3109 32.9919 55.705 33.7441C55.3498 34.1829 54.7386 34.3292 53.276 34.3918H51.0821V32.5949V29.5183H53.276C54.5088 29.5183 55.3132 29.8317 55.705 30.2234Z" fill="white"/>
+          </svg>
         </div>
 
         {/* Card body */}

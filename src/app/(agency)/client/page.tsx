@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Loader2, Send, FolderOpen, ExternalLink } from "lucide-react";
+import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare } from "lucide-react";
 import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -172,9 +172,41 @@ export default function ClientDashboard() {
   const framerUrl     = (project.form_data?.framer_url ?? "") as string;
 
   const toolLinks = [
-    { label: "Projet Google Docs", url: googleDocsUrl },
-    { label: "Projet Figma",       url: figmaUrl      },
-    { label: "Projet Framer",      url: framerUrl     },
+    {
+      label: "Projet Google Docs",
+      url: googleDocsUrl,
+      icon: (
+        <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
+          <path fill="#4285F4" d="M2 0h10l6 6v14a2 2 0 01-2 2H2a2 2 0 01-2-2V2a2 2 0 012-2z"/>
+          <path fill="#1565C0" d="M12 0l6 6h-6V0z"/>
+          <rect fill="white" x="3" y="9" width="12" height="1.8" rx=".9"/>
+          <rect fill="white" x="3" y="12.5" width="12" height="1.8" rx=".9"/>
+          <rect fill="white" x="3" y="16" width="7" height="1.8" rx=".9"/>
+        </svg>
+      ),
+    },
+    {
+      label: "Projet Figma",
+      url: figmaUrl,
+      icon: (
+        <svg width="13" height="20" viewBox="0 0 13 20" fill="none">
+          <rect fill="#F24E1E" x="0" y="0" width="6.5" height="6.5" rx="3.25"/>
+          <rect fill="#FF7262" x="6.5" y="0" width="6.5" height="6.5" rx="3.25"/>
+          <rect fill="#A259FF" x="0" y="6.5" width="6.5" height="6.5" rx="3.25"/>
+          <circle fill="#1ABCFE" cx="9.75" cy="9.75" r="3.25"/>
+          <rect fill="#0ACF83" x="0" y="13" width="6.5" height="6.5" rx="3.25"/>
+        </svg>
+      ),
+    },
+    {
+      label: "Projet Framer",
+      url: framerUrl,
+      icon: (
+        <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
+          <path fill="#0075FF" d="M1 0h14v8H8zM1 8h7l7 12H1z"/>
+        </svg>
+      ),
+    },
   ];
 
   // Médias pour le ticker : fichiers images/vidéos uploadés par l'utilisateur
@@ -342,9 +374,20 @@ export default function ClientDashboard() {
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       padding: "10px 4px",
                     }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.45px", color: link.url ? "#121a2e" : "rgba(18,26,46,0.35)" }}>
-                        {link.label}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8,
+                          background: "#f7f7f7",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0,
+                          opacity: link.url ? 1 : 0.4,
+                        }}>
+                          {link.icon}
+                        </div>
+                        <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.45px", color: link.url ? "#121a2e" : "rgba(18,26,46,0.35)" }}>
+                          {link.label}
+                        </span>
+                      </div>
                       {link.url ? (
                         <a href={link.url} target="_blank" rel="noopener noreferrer"
                           style={{
@@ -435,9 +478,7 @@ export default function ClientDashboard() {
             <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
               {messages.length === 0 ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-                  <div style={{ opacity: 0.2, marginBottom: 10 }}>
-                    <svg width="44" height="44" viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#e0e0e0"/><path d="M14 18h28v16a2 2 0 01-2 2H16a2 2 0 01-2-2V18z" stroke="#121a2e" strokeWidth="1.5" fill="none"/><circle cx="22" cy="26" r="2" fill="#121a2e"/><circle cx="28" cy="26" r="2" fill="#121a2e"/><circle cx="34" cy="26" r="2" fill="#121a2e"/></svg>
-                  </div>
+                  <MessageSquare size={36} style={{ color: "rgba(18,26,46,0.15)", marginBottom: 10 }} />
                   <p style={{ fontSize: 13, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>Aucun message</p>
                 </div>
               ) : (
@@ -520,17 +561,19 @@ interface TickerFile { url: string; type: string; name: string }
 
 function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
   const NUM_COLS   = 10;
-  const CARD_H     = 140;
-  const CARD_GAP   = 14;
-  const ITEMS_PER  = 4;              // cartes visibles par colonne avant duplication
+  const CARD_H     = 280;   // 2× plus grand
+  const CARD_GAP   = 16;
+  const ITEMS_PER  = 4;
   const TOTAL_H    = (CARD_H + CARD_GAP) * ITEMS_PER;
+  // Même vitesse pour toutes les colonnes → lignes horizontales conservées
+  const SPEED      = 20;    // secondes (÷2 vs l'ancien ~10s)
 
   return (
     <div style={{
       position: "relative",
       background: "#eeeeee",
       borderBottom: "1px solid rgba(0,0,0,0.14)",
-      height: 200,
+      height: 240,
       overflow: "hidden",
       flexShrink: 0,
     }}>
@@ -542,13 +585,13 @@ function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
       `}</style>
 
       {Array.from({ length: NUM_COLS }).map((_, col) => {
-        const leftPct  = (col / NUM_COLS) * 100;
+        const leftPct = (col / NUM_COLS) * 100;
         const widthPct = 100 / NUM_COLS;
-        const speed    = 5 + col * 0.8;
-        const delay    = -(col * 0.6);
-        const offsetY  = col % 2 === 0 ? -30 : -60;
+        // Décalage de phase : chaque colonne commence à un point différent
+        // du même cycle → pas de superposition, effet visuel varié
+        const delay   = -((col / NUM_COLS) * SPEED);
+        const offsetY = -(CARD_H / 2);  // même offset pour toutes → alignement horizontal
 
-        // Contenu : médias réels si dispo, sinon placeholder vide
         const cards = Array.from({ length: ITEMS_PER * 2 }).map((_, i) => {
           const f = mediaFiles.length > 0 ? mediaFiles[i % mediaFiles.length] : null;
           return { key: i, file: f };
@@ -560,22 +603,22 @@ function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
             left: `${leftPct}%`,
             width: `${widthPct}%`,
             top: offsetY,
-            animation: `tickUp ${speed}s ${delay}s linear infinite`,
+            animation: `tickUp ${SPEED}s ${delay}s linear infinite`,
             overflow: "hidden",
-            // PAS de rotation ici → translateY reste vertical pur
+            // PAS de rotation sur la colonne → translateY reste vertical pur
           }}>
             {cards.map(({ key, file }) => (
               <div key={key} style={{
-                margin: `0 6px ${CARD_GAP}px 6px`,
+                margin: `0 5px ${CARD_GAP}px 5px`,
                 height: CARD_H,
-                borderRadius: 12,
+                borderRadius: 14,
                 overflow: "hidden",
-                // Rotation sur la CARTE individuelle, pas sur la colonne
-                transform: "rotate(12deg)",
+                // Rotation sur la CARTE individuelle (pas la colonne)
+                transform: "rotate(10deg)",
                 transformOrigin: "center center",
                 background: "#fff",
-                border: "1px solid rgba(0,0,0,0.12)",
-                boxShadow: "0px 4px 12px rgba(0,0,0,0.06)",
+                border: "1px solid rgba(0,0,0,0.10)",
+                boxShadow: "0px 4px 16px rgba(0,0,0,0.06)",
                 flexShrink: 0,
               }}>
                 {file ? (
@@ -585,7 +628,6 @@ function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
                     <video src={file.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   )
                 ) : (
-                  // Placeholder vide sans texte
                   <div style={{ width: "100%", height: "100%", background: "#f0f0f0" }} />
                 )}
               </div>
