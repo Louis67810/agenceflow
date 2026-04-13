@@ -6,6 +6,7 @@ import {
   ArrowLeft, Send, CheckCircle2, Clock, Loader2, ChevronRight,
   User, MessageSquare, AlertCircle, UserPlus, X,
   Paperclip, FolderOpen, ExternalLink, Trash2, Plus,
+  Image, ClipboardCheck,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ interface Project {
   start_date: string | null;
   designer_id: string | null;
   created_at: string;
+  banner_url: string | null;
 }
 
 interface Message {
@@ -110,15 +112,32 @@ export default function AdminProjectDetailPage({
 
   // Files
   const [files, setFiles]           = useState<ProjectFile[]>([]);
-  const [rightTab, setRightTab]     = useState<"messages" | "fichiers">("messages");
+  const [rightTab, setRightTab]     = useState<"messages" | "fichiers" | "banniere" | "review">("messages");
   const [newFileName, setNewFileName] = useState("");
   const [newFileUrl, setNewFileUrl]   = useState("");
   const [newFileType, setNewFileType] = useState("other");
   const [addingFile, setAddingFile]   = useState(false);
   const [showAddFile, setShowAddFile] = useState(false);
+  // Bannière
+  const [bannerUrl, setBannerUrl]     = useState("");
+  const [savingBanner, setSavingBanner] = useState(false);
+  // Reviews
+  const [reviews, setReviews]         = useState<{ id: string; stage_label: string; message: string | null; link_url: string | null; status: string; created_at: string }[]>([]);
+  const [showSendReview, setShowSendReview] = useState(false);
+  const [reviewStageIdx, setReviewStageIdx] = useState<number | null>(null);
+  const [reviewMsg, setReviewMsg]     = useState("");
+  const [reviewLink, setReviewLink]   = useState("");
+  const [sendingReview, setSendingReview] = useState(false);
 
   useEffect(() => { loadProject(); loadDesigners(); }, [id]);
-  useEffect(() => { if (project) { loadMessages(); loadFiles(); } }, [project?.id]);
+  useEffect(() => {
+    if (project) {
+      loadMessages();
+      loadFiles();
+      loadReviews();
+      setBannerUrl(project.banner_url ?? "");
+    }
+  }, [project?.id]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function loadProject() {
@@ -261,6 +280,53 @@ export default function AdminProjectDetailPage({
       }
     } catch { /* silent */ }
     setSending(false);
+  }
+
+  async function loadReviews() {
+    if (!project) return;
+    try {
+      const r = await fetch(`/api/reviews?project_id=${project.id}`);
+      const d = await r.json();
+      setReviews(d.reviews ?? []);
+    } catch { /* silent */ }
+  }
+
+  async function saveBanner() {
+    if (!project) return;
+    setSavingBanner(true);
+    const r = await fetch(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ banner_url: bannerUrl || null }),
+    });
+    const d = await r.json();
+    if (r.ok) setProject(d.project);
+    setSavingBanner(false);
+  }
+
+  async function handleSendReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || reviewStageIdx === null) return;
+    setSendingReview(true);
+    const stage = stages[reviewStageIdx];
+    const r = await fetch("/api/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: project.id,
+        stage_index: reviewStageIdx,
+        stage_label: stage.label,
+        message: reviewMsg || null,
+        link_url: reviewLink || null,
+      }),
+    });
+    const d = await r.json();
+    if (r.ok) setReviews(prev => [d.review, ...prev]);
+    setSendingReview(false);
+    setShowSendReview(false);
+    setReviewMsg("");
+    setReviewLink("");
+    setReviewStageIdx(null);
   }
 
   // ── Loading / Error ────────────────────────────────────────────────────────
@@ -491,13 +557,26 @@ export default function AdminProjectDetailPage({
           <div className="flex border-b border-gray-100 shrink-0">
             <button
               onClick={() => setRightTab("messages")}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "messages" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "messages" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
               <MessageSquare size={14} />Messages
             </button>
             <button
+              onClick={() => setRightTab("review")}
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "review" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              <ClipboardCheck size={14} />
+              Review{reviews.filter(r => r.status === "pending").length > 0 ? ` (${reviews.filter(r => r.status === "pending").length})` : ""}
+            </button>
+            <button
+              onClick={() => setRightTab("banniere")}
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "banniere" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              <Image size={14} />Bannière
+            </button>
+            <button
               onClick={() => setRightTab("fichiers")}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "fichiers" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "fichiers" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
             >
               <Paperclip size={14} />
               Fichiers{files.length > 0 ? ` (${files.length})` : ""}
@@ -556,6 +635,130 @@ export default function AdminProjectDetailPage({
                 </button>
               </form>
             </>
+          )}
+
+          {/* ── Bannière ── */}
+          {rightTab === "banniere" && (
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <p className="text-sm text-gray-500">Définissez une bannière qui s&apos;affichera en haut de l&apos;espace client. Format recommandé : 1440×220px, JPG ou PNG.</p>
+              {project.banner_url && (
+                <div className="rounded-xl overflow-hidden border border-gray-200" style={{ height: 120 }}>
+                  <img src={project.banner_url} alt="Bannière" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">URL de l&apos;image</label>
+                <input
+                  type="url"
+                  value={bannerUrl}
+                  onChange={(e) => setBannerUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+              </div>
+              <button
+                onClick={saveBanner}
+                disabled={savingBanner}
+                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+              >
+                {savingBanner ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                {project.banner_url ? "Mettre à jour la bannière" : "Définir la bannière"}
+              </button>
+              {project.banner_url && (
+                <button
+                  onClick={() => { setBannerUrl(""); saveBanner(); }}
+                  className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                >
+                  Supprimer la bannière
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Review ── */}
+          {rightTab === "review" && (
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Envoyer une review */}
+              {!showSendReview ? (
+                <button
+                  onClick={() => setShowSendReview(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                >
+                  <ClipboardCheck size={14} />Envoyer une tâche à review
+                </button>
+              ) : (
+                <form onSubmit={handleSendReview} className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Étape concernée</label>
+                    <select
+                      value={reviewStageIdx ?? ""}
+                      onChange={(e) => setReviewStageIdx(Number(e.target.value))}
+                      required
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    >
+                      <option value="">Choisir une étape...</option>
+                      {stages.map((s, i) => (
+                        <option key={i} value={i}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Message (optionnel)</label>
+                    <textarea
+                      value={reviewMsg}
+                      onChange={(e) => setReviewMsg(e.target.value)}
+                      rows={3}
+                      placeholder="Instructions pour le client..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Lien à partager (optionnel)</label>
+                    <input
+                      type="url"
+                      value={reviewLink}
+                      onChange={(e) => setReviewLink(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={sendingReview || reviewStageIdx === null}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+                      {sendingReview ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      Envoyer
+                    </button>
+                    <button type="button" onClick={() => setShowSendReview(false)}
+                      className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors">
+                      Annuler
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Liste des reviews */}
+              {reviews.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">Aucune review envoyée pour ce projet.</p>
+              ) : (
+                reviews.map((rv) => (
+                  <div key={rv.id} className="border border-gray-200 rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-900">{rv.stage_label}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${rv.status === "validated" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
+                        {rv.status === "validated" ? "Validé" : "En attente"}
+                      </span>
+                    </div>
+                    {rv.message && <p className="text-xs text-gray-500">{rv.message}</p>}
+                    {rv.link_url && (
+                      <a href={rv.link_url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1">
+                        <ExternalLink size={11} />{rv.link_url}
+                      </a>
+                    )}
+                    <p className="text-xs text-gray-400">{new Date(rv.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  </div>
+                ))
+              )}
+            </div>
           )}
 
           {/* ── Fichiers ── */}

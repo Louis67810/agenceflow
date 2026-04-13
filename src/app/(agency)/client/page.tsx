@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare } from "lucide-react";
+import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare, Bell, CheckCircle2, ClipboardCheck, Mail, Phone, Hash, ChevronRight, HelpCircle } from "lucide-react";
 import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +25,13 @@ interface Project {
   form_data: Record<string, unknown>;
   start_date: string | null;
   created_at: string;
+  banner_url: string | null;
+  notif_email_enabled: boolean;
+  notif_whatsapp_phone: string | null;
+  notif_whatsapp_group: string | null;
+  notif_whatsapp_enabled: boolean;
+  notif_slack_webhook: string | null;
+  notif_slack_enabled: boolean;
 }
 
 interface Message {
@@ -40,6 +47,19 @@ interface ProjectFile {
   name: string;
   url: string;
   type: string;
+}
+
+interface StageReview {
+  id: string;
+  project_id: string;
+  stage_index: number;
+  stage_label: string;
+  message: string | null;
+  link_url: string | null;
+  thumbnail_url: string | null;
+  status: "pending" | "validated";
+  created_at: string;
+  validated_at: string | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,18 +90,32 @@ function stageDeadline(stages: Stage[], upToIdx: number, startDate: string): str
 export default function ClientDashboard() {
   const [project, setProject]       = useState<Project | null>(null);
   const [loading, setLoading]       = useState(true);
-  const [messages, setMessages]     = useState<Message[]>([]);
   const [files, setFiles]           = useState<ProjectFile[]>([]);
-  const [newMsg, setNewMsg]         = useState("");
-  const [sending, setSending]       = useState(false);
   const [clientName, setClientName] = useState("Moi");
   const [userId, setUserId]         = useState<string | null>(null);
   const [advancing, setAdvancing]   = useState(false);
-  const [tab, setTab]               = useState<"liens" | "brief" | "fichiers">("liens");
-  const [convTab, setConvTab]       = useState<"app">("app");
+  const [tab, setTab]               = useState<"liens" | "review" | "brief" | "fichiers">("liens");
   const [showConfirm, setShowConfirm] = useState(false);
-  const [holdPct, setHoldPct]       = useState(0);
-  const holdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [confirmPressed, setConfirmPressed] = useState(false);
+  // Reviews (tâches à review)
+  const [reviews, setReviews]       = useState<StageReview[]>([]);
+  const [validatingReview, setValidatingReview] = useState<string | null>(null);
+  // Notifications
+  const [notifTab, setNotifTab]     = useState<"whatsapp" | "email" | "slack">("whatsapp");
+  const [waPhone, setWaPhone]       = useState("");
+  const [savingNotif, setSavingNotif] = useState(false);
+  // Tutorial
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+
+  /* ── Conversation (gardé en commentaire au cas où) ──────────────────────────
+  const [messages, setMessages]     = useState<Message[]>([]);
+  const [newMsg, setNewMsg]         = useState("");
+  const [sending, setSending]       = useState(false);
+  const [convTab, setConvTab]       = useState<"app">("app");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  ──────────────────────────────────────────────────────────────────────────── */
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
@@ -105,20 +139,28 @@ export default function ClientDashboard() {
       setProject(proj);
       setUserId(session.user.id);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
+      if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
 
-      const [mr, fr] = await Promise.all([
-        fetch(`/api/messages?project_id=${proj.id}`),
+      const [fr, rr] = await Promise.all([
         fetch(`/api/files?project_id=${proj.id}`),
+        fetch(`/api/reviews?project_id=${proj.id}`),
       ]);
-      const md = await mr.json();
       const fd = await fr.json();
-      setMessages(md.messages ?? []);
+      const rd = await rr.json();
       setFiles(fd.files ?? []);
+      setReviews(rd.reviews ?? []);
+
+      // Afficher le tutoriel à la première visite
+      if (!localStorage.getItem("cf_tutorial_done")) {
+        setShowTutorial(true);
+      }
+
       setLoading(false);
     }
     load();
   }, []);
 
+  /* ── Conversation helpers (gardés, non utilisés pour l'instant) ─────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -142,6 +184,7 @@ export default function ClientDashboard() {
     if (r.ok && d.message) { setMessages((prev) => [...prev, d.message]); setNewMsg(""); }
     setSending(false);
   }
+  ──────────────────────────────────────────────────────────────────────────── */
 
   async function handleValidate() {
     if (!project) return;
@@ -155,31 +198,34 @@ export default function ClientDashboard() {
     if (r.ok) setProject(d.project);
     setAdvancing(false);
     setShowConfirm(false);
+    setConfirmPressed(false);
   }
 
-  function startHold() {
-    setHoldPct(0);
-    const step = 100 / (5000 / 50); // 5s en pas de 50ms
-    holdRef.current = setInterval(() => {
-      setHoldPct(prev => {
-        const next = prev + step;
-        if (next >= 100) {
-          clearInterval(holdRef.current!);
-          holdRef.current = null;
-          handleValidate();
-          return 100;
-        }
-        return next;
-      });
-    }, 50);
-  }
-
-  function stopHold() {
-    if (holdRef.current) {
-      clearInterval(holdRef.current);
-      holdRef.current = null;
+  async function handleValidateReview(reviewId: string) {
+    setValidatingReview(reviewId);
+    const r = await fetch(`/api/reviews/${reviewId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "validated" }),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      setReviews(prev => prev.map(rv => rv.id === reviewId ? d.review : rv));
     }
-    setHoldPct(0);
+    setValidatingReview(null);
+  }
+
+  async function saveNotification(updates: Record<string, unknown>) {
+    if (!project) return;
+    setSavingNotif(true);
+    const r = await fetch(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const d = await r.json();
+    if (r.ok) setProject(d.project);
+    setSavingNotif(false);
   }
 
   if (loading) return (
@@ -258,8 +304,16 @@ export default function ClientDashboard() {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
-        {/* ── Hero : ticker vertical de médias ─────────────────────────── */}
-        <HeroBanner mediaFiles={mediaFiles} />
+        {/* ── Bannière projet (image fixe définie par l'admin) ───────────── */}
+        {project.banner_url && (
+          <div style={{ position: "relative", height: 220, overflow: "hidden", flexShrink: 0 }}>
+            <img
+              src={project.banner_url}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            />
+          </div>
+        )}
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{
@@ -417,20 +471,35 @@ export default function ClientDashboard() {
                 padding: "10px 12px",
                 display: "flex", gap: 4,
               }}>
-                {(["liens", "brief", "fichiers"] as const).map((t) => (
+                {([
+                  { key: "liens", label: "Liens" },
+                  { key: "review", label: reviews.filter(r => r.status === "pending").length > 0
+                    ? `À review (${reviews.filter(r => r.status === "pending").length})`
+                    : "À review" },
+                  { key: "brief", label: "Brief" },
+                  { key: "fichiers", label: "Fichiers" },
+                ] as const).map(({ key: t, label }) => (
                   <button key={t} onClick={() => setTab(t)}
                     style={{
                       padding: "10px 13px",
                       background: tab === t ? "#fff" : "transparent",
                       border: tab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
                       borderRadius: 9,
-                      fontSize: 14, fontWeight: 600,
+                      fontSize: 13, fontWeight: 600,
                       letterSpacing: "-0.45px",
                       color: tab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
                       cursor: "pointer",
                       boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02)" : "none",
+                      position: "relative" as const,
                     }}>
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    {label}
+                    {t === "review" && reviews.filter(r => r.status === "pending").length > 0 && (
+                      <span style={{
+                        position: "absolute", top: 6, right: 6,
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: "#ef4444",
+                      }} />
+                    )}
                   </button>
                 ))}
               </div>
@@ -481,6 +550,86 @@ export default function ClientDashboard() {
                   </div>
                 ))}
 
+                {tab === "review" && (
+                  <div style={{ padding: "4px 0" }}>
+                    {reviews.length === 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 8 }}>
+                        <ClipboardCheck size={32} style={{ color: "rgba(18,26,46,0.15)" }} />
+                        <p style={{ color: "rgba(18,26,46,0.4)", fontSize: 14, letterSpacing: "-0.3px" }}>Aucune tâche à review</p>
+                      </div>
+                    ) : (
+                      reviews.map((rv, i) => (
+                        <div key={rv.id}>
+                          <div style={{ padding: "12px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
+                            {/* Header review */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                  width: 26, height: 26, borderRadius: 7,
+                                  background: rv.status === "validated" ? "#d1fae5" : "#e8edff",
+                                  flexShrink: 0,
+                                }}>
+                                  {rv.status === "validated"
+                                    ? <CheckCircle2 size={14} style={{ color: "#168b64" }} />
+                                    : <ClipboardCheck size={14} style={{ color: "#0147ff" }} />}
+                                </span>
+                                <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
+                                  {rv.stage_label}
+                                </span>
+                              </div>
+                              <span style={{
+                                fontSize: 11, padding: "3px 8px", borderRadius: 6,
+                                background: rv.status === "validated" ? "#d1fae5" : "#fef9c3",
+                                color: rv.status === "validated" ? "#168b64" : "#854d0e",
+                                fontWeight: 600,
+                              }}>
+                                {rv.status === "validated" ? "Validé" : "En attente"}
+                              </span>
+                            </div>
+                            {rv.message && (
+                              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.6)", lineHeight: "1.5", margin: 0 }}>
+                                {rv.message}
+                              </p>
+                            )}
+                            {rv.link_url && (
+                              <a href={rv.link_url} target="_blank" rel="noopener noreferrer"
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 6,
+                                  padding: "8px 12px", background: "#f0f3ff",
+                                  border: "1px solid rgba(1,71,255,0.12)", borderRadius: 8,
+                                  fontSize: 13, fontWeight: 500, color: "#0147ff", textDecoration: "none",
+                                }}>
+                                <ExternalLink size={13} />Ouvrir le lien
+                              </a>
+                            )}
+                            {rv.status === "pending" && (
+                              <button
+                                onClick={() => handleValidateReview(rv.id)}
+                                disabled={validatingReview === rv.id}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                                  padding: "11px 16px",
+                                  background: validatingReview === rv.id ? "rgba(1,71,255,0.7)" : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                                  color: "#fff", border: "1px solid #2f4d9d",
+                                  borderRadius: 9, fontSize: 13, fontWeight: 600,
+                                  cursor: validatingReview === rv.id ? "not-allowed" : "pointer",
+                                  letterSpacing: "-0.45px",
+                                  boxShadow: "inset 0px -2px 0px 0px #0e42c8, 0px 4px 10px rgba(1,71,255,0.2)",
+                                }}>
+                                {validatingReview === rv.id
+                                  ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />Validation...</>
+                                  : <><CheckCircle2 size={13} />Valider cette étape</>}
+                              </button>
+                            )}
+                          </div>
+                          {i < reviews.length - 1 && <div style={{ height: 1, background: "rgba(0,0,0,0.05)" }} />}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
                 {tab === "brief" && (
                   <div style={{ padding: "4px 0" }}>
                     {project.form_data && Object.entries(project.form_data).filter(([k]) => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k)).length > 0 ? (
@@ -526,95 +675,221 @@ export default function ClientDashboard() {
             </div>
           </div>
 
-          {/* Right column: Conversation */}
+          {/* Right column: Notifications */}
           <div style={{
-            width: 340,
-            flexShrink: 0,
+            width: 340, flexShrink: 0,
             background: "#fff",
             border: "1px solid rgba(0,0,0,0.13)",
-            borderRadius: 13,
-            overflow: "hidden",
+            borderRadius: 13, overflow: "hidden",
             display: "flex", flexDirection: "column",
             boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
           }}>
-            <div style={{ padding: "15px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+            {/* Header */}
+            <div style={{ padding: "15px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Bell size={16} style={{ color: "#121a2e" }} />
               <span style={{ ...jakartaSans, fontSize: 17, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
-                Conversation
+                Notifications
               </span>
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {messages.length === 0 ? (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-                  <MessageSquare size={36} style={{ color: "rgba(18,26,46,0.15)", marginBottom: 10 }} />
-                  <p style={{ fontSize: 13, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>Aucun message</p>
-                </div>
-              ) : (
-                messages.map((msg) => {
-                  const isClient = msg.sender_role === "client";
-                  return (
-                    <div key={msg.id} style={{ display: "flex", justifyContent: isClient ? "flex-end" : "flex-start" }}>
-                      <div style={{
-                        maxWidth: "82%",
-                        padding: "10px 13px",
-                        background: isClient ? "linear-gradient(121deg, rgb(78,126,250), rgb(1,71,255))" : "#fff",
-                        border: isClient ? "none" : "1px solid rgba(0,0,0,0.08)",
-                        borderRadius: 10,
-                        fontSize: 13, lineHeight: "1.5",
-                        color: isClient ? "#fff" : "#121a2e",
-                        boxShadow: "0px 2px 5px rgba(0,0,0,0.03)",
-                      }}>
-                        {msg.content}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
+            {/* Tabs */}
+            <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "0 12px" }}>
+              {([
+                { key: "whatsapp", label: "WhatsApp" },
+                { key: "email", label: "Email" },
+                { key: "slack", label: "Slack" },
+              ] as const).map(({ key, label }) => (
+                <button key={key} onClick={() => setNotifTab(key)}
+                  style={{
+                    padding: "10px 12px", fontSize: 13, fontWeight: 600,
+                    letterSpacing: "-0.3px",
+                    color: notifTab === key ? "#0147ff" : "rgba(18,26,46,0.4)",
+                    background: "none", border: "none",
+                    borderBottom: `2px solid ${notifTab === key ? "#0147ff" : "transparent"}`,
+                    cursor: "pointer",
+                    marginBottom: -1,
+                  }}>
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <div style={{ padding: "8px 10px 10px", background: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{
-                flex: 1,
-                background: "#fff",
-                border: "1px solid rgba(158,158,158,0.17)",
-                borderRadius: 9,
-                padding: "10px 13px",
-                boxShadow: "0px 4px 4px rgba(0,0,0,0.02)",
-              }}>
-                <input
-                  type="text"
-                  value={newMsg}
-                  onChange={(e) => setNewMsg(e.target.value)}
-                  placeholder="Entrez un message ici"
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
-                  style={{
-                    width: "100%", border: "none", outline: "none",
-                    fontSize: 14, fontWeight: 500, letterSpacing: "-0.45px",
-                    color: "#121a2e", background: "transparent",
-                  }}
-                />
-              </div>
-              <button
-                onClick={() => handleSend({})}
-                disabled={sending || !newMsg.trim()}
-                style={{
-                  width: 36, height: 36,
-                  background: "linear-gradient(96.83deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-                  border: "0.633px solid #2f4d9d",
-                  borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: sending || !newMsg.trim() ? "not-allowed" : "pointer",
-                  opacity: sending || !newMsg.trim() ? 0.5 : 1,
-                  flexShrink: 0,
-                  boxShadow: "0px 4px 10px rgba(1,71,255,0.25)",
-                }}>
-                {sending
-                  ? <Loader2 size={13} style={{ color: "#fff", animation: "spin 1s linear infinite" }} />
-                  : <Send size={13} style={{ color: "#fff" }} />}
-              </button>
+            {/* Content */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+
+              {/* ── WhatsApp ── */}
+              {notifTab === "whatsapp" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#25D366", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>WhatsApp</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>
+                        {project.notif_whatsapp_group ? "Groupe actif" : "Non configuré"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => saveNotification({ notif_whatsapp_enabled: !project.notif_whatsapp_enabled })}
+                      disabled={!project.notif_whatsapp_group || savingNotif}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.notif_whatsapp_group ? "pointer" : "not-allowed",
+                        background: project.notif_whatsapp_enabled && project.notif_whatsapp_group ? "#0147ff" : "#e5e7eb",
+                        position: "relative", transition: "background 0.2s", flexShrink: 0,
+                        opacity: !project.notif_whatsapp_group ? 0.5 : 1,
+                      }}>
+                      <span style={{
+                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                        transition: "left 0.2s",
+                        left: project.notif_whatsapp_enabled && project.notif_whatsapp_group ? 23 : 3,
+                      }} />
+                    </button>
+                  </div>
+
+                  {project.notif_whatsapp_group ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0 }}>Votre groupe WhatsApp est prêt :</p>
+                      <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+                          background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)",
+                          borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#16a34a",
+                        }}>
+                        <ChevronRight size={14} />Rejoindre le groupe
+                      </a>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <label style={{ ...jakartaSans, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>
+                        Numéro WhatsApp
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "#f7f7f9", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9 }}>
+                          <Phone size={14} style={{ color: "rgba(18,26,46,0.35)", flexShrink: 0 }} />
+                          <input
+                            type="tel"
+                            value={waPhone}
+                            onChange={(e) => setWaPhone(e.target.value)}
+                            placeholder="+33 6 00 00 00 00"
+                            style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#121a2e" }}
+                          />
+                        </div>
+                        <button
+                          onClick={() => saveNotification({ notif_whatsapp_phone: waPhone })}
+                          disabled={!waPhone.trim() || savingNotif}
+                          style={{
+                            padding: "0 14px", background: "#121a2e", color: "#fff",
+                            border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                            cursor: !waPhone.trim() ? "not-allowed" : "pointer",
+                            opacity: !waPhone.trim() ? 0.5 : 1,
+                          }}>
+                          {savingNotif ? "..." : "Envoyer"}
+                        </button>
+                      </div>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>
+                        Un groupe WhatsApp sera créé et vous y serez invité.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Email ── */}
+              {notifTab === "email" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#4285f4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Mail size={16} style={{ color: "#fff" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>Email</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>Toujours configuré</p>
+                    </div>
+                    <button
+                      onClick={() => saveNotification({ notif_email_enabled: !project.notif_email_enabled })}
+                      disabled={savingNotif}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                        background: project.notif_email_enabled ? "#0147ff" : "#e5e7eb",
+                        position: "relative", transition: "background 0.2s", flexShrink: 0,
+                      }}>
+                      <span style={{
+                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
+                        left: project.notif_email_enabled ? 23 : 3,
+                      }} />
+                    </button>
+                  </div>
+                  <p style={{ ...jakartaSans, fontSize: 13, color: "rgba(18,26,46,0.6)", lineHeight: "1.5" }}>
+                    Les notifications seront envoyées à l&apos;adresse email associée à votre compte.
+                  </p>
+                </div>
+              )}
+
+              {/* ── Slack ── */}
+              {notifTab === "slack" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "#4A154B", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Hash size={16} style={{ color: "#fff" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>Slack</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>
+                        {project.notif_slack_webhook ? "Webhook configuré" : "Non configuré"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => saveNotification({ notif_slack_enabled: !project.notif_slack_enabled })}
+                      disabled={!project.notif_slack_webhook || savingNotif}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.notif_slack_webhook ? "pointer" : "not-allowed",
+                        background: project.notif_slack_enabled && project.notif_slack_webhook ? "#0147ff" : "#e5e7eb",
+                        position: "relative", transition: "background 0.2s", flexShrink: 0,
+                        opacity: !project.notif_slack_webhook ? 0.5 : 1,
+                      }}>
+                      <span style={{
+                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
+                        left: project.notif_slack_enabled && project.notif_slack_webhook ? 23 : 3,
+                      }} />
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ ...jakartaSans, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>Webhook URL</label>
+                    <input
+                      type="url"
+                      defaultValue={project.notif_slack_webhook ?? ""}
+                      placeholder="https://hooks.slack.com/services/..."
+                      onBlur={(e) => { if (e.target.value !== (project.notif_slack_webhook ?? "")) saveNotification({ notif_slack_webhook: e.target.value || null }); }}
+                      style={{
+                        padding: "10px 12px", border: "1px solid rgba(0,0,0,0.09)",
+                        borderRadius: 9, fontSize: 13, color: "#121a2e",
+                        background: "#f7f7f9", outline: "none",
+                      }}
+                    />
+                    <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>
+                      Obtenez votre webhook dans les paramètres de votre espace Slack.
+                    </p>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
+
+          {/* ── Conversation (gardée, masquée) ────────────────────────────────
+          <div style={{ width: 340, flexShrink: 0, background: "#fff", border: "1px solid rgba(0,0,0,0.13)", borderRadius: 13, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "15px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+              <span style={{ fontSize: 17, fontWeight: 600, color: "#121a2e" }}>Conversation</span>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px" }}>
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+          ────────────────────────────────────────────────────────────────────── */}
         </div>
       </div>
     </div>
@@ -622,10 +897,10 @@ export default function ClientDashboard() {
     {/* ── Modal confirmation validation ──────────────────────────────────── */}
     {showConfirm && currentStage && (
       <div
-        onClick={() => { setShowConfirm(false); stopHold(); }}
+        onClick={() => { if (!advancing) setShowConfirm(false); }}
         style={{
           position: "fixed", inset: 0, zIndex: 100,
-          background: "rgba(18,26,46,0.35)",
+          background: "rgba(18,26,46,0.3)",
           backdropFilter: "blur(4px)",
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: 24,
@@ -637,8 +912,8 @@ export default function ClientDashboard() {
             background: "#fff",
             borderRadius: 20,
             padding: "32px 28px 28px",
-            maxWidth: 420, width: "100%",
-            boxShadow: "0px 32px 64px rgba(18,26,46,0.18), 0px 8px 24px rgba(18,26,46,0.08)",
+            maxWidth: 400, width: "100%",
+            boxShadow: "0px 32px 64px rgba(18,26,46,0.16), 0px 8px 24px rgba(18,26,46,0.06)",
             border: "1px solid rgba(0,0,0,0.07)",
           }}
         >
@@ -657,61 +932,48 @@ export default function ClientDashboard() {
             </svg>
           </div>
 
-          <h3 style={{ ...jakartaSans, fontSize: 18, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 10px" }}>
-            Valider l&apos;étape ?
+          <h3 style={{ ...jakartaSans, fontSize: 20, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 12px" }}>
+            Attention
           </h3>
-          <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.6)", lineHeight: "1.6", margin: "0 0 6px" }}>
-            Vous êtes sur le point de valider <strong style={{ color: "#121a2e" }}>{currentStage.label}</strong>.
-          </p>
-          <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.6)", lineHeight: "1.6", margin: "0 0 28px" }}>
-            Une fois validée, cette action est <strong style={{ color: "#ea580c" }}>irréversible</strong> — vous ne pourrez plus revenir en arrière ni modifier cette étape. Nous passerons automatiquement à la suivante.
+          <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.65)", lineHeight: "1.65", margin: "0 0 28px" }}>
+            Une fois cette étape validée, vous ne pourrez plus y revenir. Nous passerons ensuite à la suivante, alors assurez-vous d&apos;être certain avant de valider.
           </p>
 
-          {/* Bouton long-press */}
-          <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.4)", marginBottom: 10, letterSpacing: "-0.3px" }}>
-            Maintenez le bouton appuyé 5 secondes pour confirmer
-          </p>
-          <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
-            {/* Fond de progression */}
-            <div style={{
-              position: "absolute", left: 0, top: 0, bottom: 0,
-              width: `${holdPct}%`,
-              background: "linear-gradient(90deg, rgb(78,126,250), rgb(1,71,255))",
-              transition: "width 0.05s linear",
+          {/* Bouton confirmer */}
+          <button
+            onClick={async () => {
+              setConfirmPressed(true);
+              await handleValidate();
+              setConfirmPressed(false);
+            }}
+            disabled={advancing}
+            style={{
+              width: "100%", padding: "15px 20px", marginBottom: 10,
+              background: confirmPressed || advancing
+                ? "linear-gradient(121deg, rgb(40,80,200) 9.99%, rgb(0,45,180) 82.49%)"
+                : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+              color: "#fff",
+              border: "1px solid #2f4d9d",
               borderRadius: 12,
-            }} />
-            <button
-              onMouseDown={startHold}
-              onMouseUp={stopHold}
-              onMouseLeave={stopHold}
-              onTouchStart={startHold}
-              onTouchEnd={stopHold}
-              style={{
-                position: "relative",
-                width: "100%",
-                padding: "15px 20px",
-                background: holdPct > 0 ? "transparent" : "#f0f3ff",
-                border: `1px solid ${holdPct > 0 ? "rgba(1,71,255,0.3)" : "rgba(1,71,255,0.15)"}`,
-                borderRadius: 12,
-                fontSize: 14, fontWeight: 600,
-                letterSpacing: "-0.45px",
-                color: holdPct > 0 ? "#fff" : "#0147ff",
-                cursor: "pointer",
-                userSelect: "none",
-              }}
-            >
-              {advancing
-                ? "Validation en cours..."
-                : holdPct >= 100
-                ? "Validé ✓"
-                : holdPct > 0
-                ? `Maintenir... ${Math.round(holdPct)}%`
-                : `Confirmer : ${currentStage.label}`}
-            </button>
-          </div>
+              fontSize: 14, fontWeight: 600,
+              letterSpacing: "-0.45px",
+              cursor: advancing ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              boxShadow: confirmPressed || advancing
+                ? "inset 0px 3px 6px rgba(0,0,0,0.2)"
+                : "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.25)",
+              transition: "all 0.1s ease",
+              transform: confirmPressed ? "scale(0.99)" : "scale(1)",
+            }}
+          >
+            {advancing
+              ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Validation...</>
+              : `Valider : ${currentStage.label}`}
+          </button>
 
           <button
-            onClick={() => { setShowConfirm(false); stopHold(); }}
+            onClick={() => setShowConfirm(false)}
+            disabled={advancing}
             style={{
               width: "100%", padding: "13px 20px",
               background: "transparent",
@@ -719,7 +981,7 @@ export default function ClientDashboard() {
               borderRadius: 12,
               fontSize: 14, fontWeight: 500,
               color: "rgba(18,26,46,0.5)",
-              cursor: "pointer",
+              cursor: advancing ? "not-allowed" : "pointer",
               letterSpacing: "-0.45px",
             }}
           >
@@ -728,6 +990,55 @@ export default function ClientDashboard() {
         </div>
       </div>
     )}
+
+    {/* ── Tutoriel overlay ───────────────────────────────────────────────────── */}
+    {showTutorial && (() => {
+      const steps = [
+        { title: "Bienvenue dans votre espace !", body: "Retrouvez ici l'avancement de votre projet, les étapes, et toutes les ressources partagées par votre agence.", icon: "👋" },
+        { title: "Suivez vos étapes", body: "Le Gantt vous montre la progression de votre projet. Quand une étape est prête, vous pouvez la valider depuis le bouton en haut à droite.", icon: "📊" },
+        { title: "Tâches à review", body: "L'onglet \"À review\" vous notifie quand votre agence vous soumet quelque chose à valider (maquette, texte, etc.).", icon: "✅" },
+        { title: "Notifications", body: "Configurez vos alertes WhatsApp, Email ou Slack pour être notifié automatiquement à chaque avancement.", icon: "🔔" },
+      ];
+      const step = steps[tutorialStep];
+      return (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(18,26,46,0.5)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "32px 28px 24px", maxWidth: 380, width: "100%", boxShadow: "0px 32px 64px rgba(18,26,46,0.2)" }}>
+            <div style={{ fontSize: 36, marginBottom: 16, textAlign: "center" }}>{step.icon}</div>
+            <h3 style={{ ...jakartaSans, fontSize: 20, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 10px", textAlign: "center" }}>
+              {step.title}
+            </h3>
+            <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.6)", lineHeight: "1.65", margin: "0 0 28px", textAlign: "center" }}>
+              {step.body}
+            </p>
+            {/* Dots */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+              {steps.map((_, i) => (
+                <span key={i} style={{ width: i === tutorialStep ? 20 : 6, height: 6, borderRadius: 3, background: i === tutorialStep ? "#0147ff" : "#e5e7eb", transition: "all 0.3s" }} />
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                if (tutorialStep < steps.length - 1) {
+                  setTutorialStep(tutorialStep + 1);
+                } else {
+                  setShowTutorial(false);
+                  localStorage.setItem("cf_tutorial_done", "1");
+                }
+              }}
+              style={{
+                width: "100%", padding: "14px", borderRadius: 12,
+                background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                color: "#fff", border: "1px solid #2f4d9d",
+                fontSize: 14, fontWeight: 600, cursor: "pointer",
+                letterSpacing: "-0.45px",
+                boxShadow: "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.25)",
+              }}>
+              {tutorialStep < steps.length - 1 ? "Suivant →" : "Commencer !"}
+            </button>
+          </div>
+        </div>
+      );
+    })()}
     </>
   );
 }

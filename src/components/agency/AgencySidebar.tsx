@@ -107,7 +107,6 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   if (role === "client") {
     const clientLinks = [
       { href: "/client", label: "Mon projet", icon: <LayoutDashboard size={18} />, exact: true },
-      { href: "/client/messages", label: "Conversation", icon: <MessageSquare size={18} />, exact: false },
       { href: "/client/ressources", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
       { href: "/client/agenda", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },
     ];
@@ -177,17 +176,25 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
         {/* Bottom */}
         <div className="px-3 pb-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: 4 }}>
-          <Link href="/client/aide"
+          <button
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("cf_tutorial_done");
+                window.location.href = "/client";
+              }
+            }}
             style={{
               display: "flex", alignItems: "center", gap: 12,
               padding: "12px 14px", borderRadius: 9,
               fontSize: 14, lineHeight: "20px",
               color: "rgb(156,163,175)",
-              textDecoration: "none",
+              background: "none", border: "none",
+              cursor: "pointer", width: "100%",
+              textAlign: "left",
             }}>
             <span style={{ display: "flex" }}><HelpCircle size={18} /></span>
             <span>Aide</span>
-          </Link>
+          </button>
 
           <Link href="/client/parametres"
             style={{
