@@ -100,7 +100,7 @@ export default function ClientMessagesPage() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
 
-      <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
         <div style={{ padding: "68px 24px 0" }}>

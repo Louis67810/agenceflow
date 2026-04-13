@@ -154,7 +154,7 @@ export default function ClientDashboard() {
   if (!project) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
-      <div style={{ marginLeft: 256, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
         <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.2)" }} />
         <p style={{ fontSize: 16, color: "rgba(18,26,46,0.5)" }}>Aucun projet en cours</p>
       </div>
@@ -186,7 +186,7 @@ export default function ClientDashboard() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
 
-      <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* ── Hero : ticker vertical de médias ─────────────────────────── */}
         <HeroTicker mediaFiles={mediaFiles} />
@@ -561,6 +561,7 @@ function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
             width: `${widthPct}%`,
             top: offsetY,
             animation: `tickUp ${speed}s ${delay}s linear infinite`,
+            overflow: "hidden",
             // PAS de rotation ici → translateY reste vertical pur
           }}>
             {cards.map(({ key, file }) => (

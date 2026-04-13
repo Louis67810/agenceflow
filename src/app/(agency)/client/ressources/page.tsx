@@ -97,7 +97,7 @@ export default function ClientRessourcesPage() {
   if (loading) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
-      <div style={{ marginLeft: 256, flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Loader2 size={28} style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} />
       </div>
     </div>
@@ -123,7 +123,7 @@ export default function ClientRessourcesPage() {
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
 
-      <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
         <div style={{ padding: "40px 24px 0" }}>
