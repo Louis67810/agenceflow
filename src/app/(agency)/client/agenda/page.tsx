@@ -130,7 +130,7 @@ export default function ClientAgendaPage() {
         {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "68px 32px 0",
+          padding: "68px 24px 0",
         }}>
           <h1 style={{
             ...jakartaSans,
@@ -171,9 +171,9 @@ export default function ClientAgendaPage() {
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "24px 32px 0" }} />
+        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "24px 24px 0" }} />
 
-        <div style={{ padding: "20px 32px 32px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ padding: "20px 24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
 
           {/* Gantt card */}
           {stages.length > 0 && (

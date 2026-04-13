@@ -40,14 +40,12 @@ interface ProjectFile {
   name: string;
   url: string;
   type: string;
-  created_at: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
-// 3 couleurs cycliques + vert quand validée
 function stageColors(stage: Stage, idx: number) {
   if (stage.completed) return {
     bg: "#d1fae5", border: "1px solid rgba(22,139,100,0.2)",
@@ -67,10 +65,6 @@ function stageDeadline(stages: Stage[], upToIdx: number, startDate: string): str
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
 }
 
-const GDOCS_LOGO  = "https://www.figma.com/api/mcp/asset/5e6372b4-16fb-4b2a-ac9c-f7812ea0f33b";
-const FIGMA_LOGO  = "https://www.figma.com/api/mcp/asset/b4e5daec-6971-417b-af37-6027f6a670ac";
-const FRAMER_LOGO = "https://www.figma.com/api/mcp/asset/79058a24-e856-492e-8390-f8c869d50e7c";
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ClientDashboard() {
@@ -83,7 +77,7 @@ export default function ClientDashboard() {
   const [clientName, setClientName] = useState("Moi");
   const [advancing, setAdvancing]   = useState(false);
   const [tab, setTab]               = useState<"liens" | "brief" | "fichiers">("liens");
-  const [convTab, setConvTab]       = useState<"app" | "docs" | "figma" | "framer">("app");
+  const [convTab, setConvTab]       = useState<"app">("app");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
@@ -151,8 +145,6 @@ export default function ClientDashboard() {
     setAdvancing(false);
   }
 
-  // ── Loading / empty ───────────────────────────────────────────────────────
-
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#fbfbfb" }}>
       <Loader2 style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} size={28} />
@@ -180,19 +172,13 @@ export default function ClientDashboard() {
   const framerUrl     = (project.form_data?.framer_url ?? "") as string;
 
   const toolLinks = [
-    { label: "Projet Google Docs", url: googleDocsUrl, icon: GDOCS_LOGO },
-    { label: "Projet Figma",       url: figmaUrl,      icon: FIGMA_LOGO },
-    { label: "Projet Framer",      url: framerUrl,     icon: FRAMER_LOGO },
+    { label: "Projet Google Docs", url: googleDocsUrl },
+    { label: "Projet Figma",       url: figmaUrl      },
+    { label: "Projet Framer",      url: framerUrl     },
   ];
 
-  // Ticker items = ressources disponibles (répétées pour loop sans fin)
-  const tickerSource = [
-    ...(googleDocsUrl ? [{ label: "Google Docs", icon: GDOCS_LOGO }] : []),
-    ...(figmaUrl      ? [{ label: "Figma",        icon: FIGMA_LOGO  }] : []),
-    ...(framerUrl     ? [{ label: "Framer",       icon: FRAMER_LOGO }] : []),
-    { label: "Projet", icon: GDOCS_LOGO },
-    { label: "Design", icon: FIGMA_LOGO },
-  ].slice(0, 5);
+  // Médias pour le ticker : fichiers images/vidéos uploadés par l'utilisateur
+  const mediaFiles = files.filter((f) => f.type.startsWith("image") || f.type.startsWith("video"));
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -202,78 +188,13 @@ export default function ClientDashboard() {
 
       <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
 
-        {/* ── Hero section : ticker vertical ───────────────────────────── */}
-        <div style={{
-          position: "relative",
-          background: "#eeeeee",
-          borderBottom: "1px solid rgba(0,0,0,0.14)",
-          height: 200,
-          overflow: "hidden",
-          flexShrink: 0,
-        }}>
-          {/* Colonnes ticker */}
-          <style>{`
-            @keyframes tickUp {
-              from { transform: translateY(0) rotate(15.12deg); }
-              to   { transform: translateY(-50%) rotate(15.12deg); }
-            }
-          `}</style>
-          {Array.from({ length: 6 }).map((_, col) => {
-            const item = tickerSource[col % tickerSource.length];
-            const speed = 6 + col * 1.4;
-            const delay = -(col * 1.1);
-            return (
-              <div key={col} style={{
-                position: "absolute",
-                left: col * 170 - 40,
-                top: 0,
-                width: 160,
-                display: "flex",
-                flexDirection: "column",
-                animation: `tickUp ${speed}s ${delay}s linear infinite`,
-                transformOrigin: "center center",
-              }}>
-                {/* Duplicate 2× for seamless loop */}
-                {[0, 1].map((dup) => (
-                  <div key={dup} style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 12 }}>
-                    {[0, 1, 2].map((i) => (
-                      <div key={i} style={{
-                        width: 160,
-                        height: 110,
-                        border: "1px solid rgba(0,0,0,0.13)",
-                        borderRadius: 13,
-                        background: "#fff",
-                        boxShadow: "0px 4px 8px rgba(0,0,0,0.04)",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        flexShrink: 0,
-                      }}>
-                        <img src={item.icon} alt="" style={{ width: 28, height: 28, objectFit: "contain", opacity: 0.4 }} />
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.3px", ...jakartaSans }}>
-                          {item.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-          {/* Gradient fade bottom */}
-          <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
-            background: "linear-gradient(to bottom, transparent, #fbfbfb)",
-            zIndex: 2,
-          }} />
-        </div>
+        {/* ── Hero : ticker vertical de médias ─────────────────────────── */}
+        <HeroTicker mediaFiles={mediaFiles} />
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "24px 32px 16px",
+          padding: "24px 24px 16px",
         }}>
           <h1 style={{
             ...jakartaSans,
@@ -289,7 +210,7 @@ export default function ClientDashboard() {
               <button onClick={handleValidate} disabled={advancing}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  padding: "16px 22px",
+                  padding: "14px 20px",
                   background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
                   color: "#fff",
                   border: "1px solid #2f4d9d",
@@ -297,12 +218,7 @@ export default function ClientDashboard() {
                   fontSize: 14, fontWeight: 500,
                   cursor: advancing ? "not-allowed" : "pointer",
                   opacity: advancing ? 0.7 : 1,
-                  boxShadow: [
-                    "inset 0px -3px 0px 0px #0e42c8",
-                    "inset 0px 2px 6px 4px rgba(0,0,0,0.08)",
-                    "inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
-                    "0px 4px 12px rgba(1,71,255,0.2)",
-                  ].join(", "),
+                  boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.2)",
                   whiteSpace: "nowrap",
                 }}>
                 {advancing
@@ -314,10 +230,10 @@ export default function ClientDashboard() {
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "0 32px" }} />
+        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "0 24px" }} />
 
         {/* ── Main content ────────────────────────────────────────────────── */}
-        <div style={{ display: "flex", gap: 16, padding: "20px 32px 32px", flex: 1 }}>
+        <div style={{ display: "flex", gap: 16, padding: "20px 24px 32px", flex: 1 }}>
 
           {/* Left column */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -328,27 +244,11 @@ export default function ClientDashboard() {
                 position: "relative",
                 background: "#eeeeee",
                 borderRadius: 13,
-                height: 198,
+                height: 196,
                 overflow: "hidden",
                 flexShrink: 0,
               }}>
-                {/* Background deco cards */}
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} style={{
-                    position: "absolute",
-                    width: 180, height: 100,
-                    background: "rgba(255,255,255,0.12)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    borderRadius: 10,
-                    transform: "rotate(-6deg)",
-                    top: i % 2 === 0 ? -30 : 80,
-                    left: i * 220 - 20,
-                    zIndex: 0,
-                  }} />
-                ))}
-
-                {/* Inner positioning area */}
-                <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0, zIndex: 1 }}>
+                <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0 }}>
                   {/* Now-line */}
                   {(() => {
                     const nowPct = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
@@ -358,13 +258,11 @@ export default function ClientDashboard() {
                         left: `${nowPct}%`,
                         top: 8, bottom: 8, width: 2,
                         background: "rgba(0,0,0,0.3)",
-                        zIndex: 3,
-                        borderRadius: 1,
+                        zIndex: 3, borderRadius: 1,
                       }} />
                     );
                   })()}
 
-                  {/* Stage pills — proportional + alternating rows */}
                   {stages.map((stage, idx) => {
                     const startPct = stages.slice(0, idx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
                     const widthPct = (stage.duration_days || 1) / totalDays * 100;
@@ -375,7 +273,7 @@ export default function ClientDashboard() {
                         position: "absolute",
                         left: `${startPct}%`,
                         width: `calc(${widthPct}% - 8px)`,
-                        top: isTop ? 24 : 104,
+                        top: isTop ? 22 : 104,
                         height: 70,
                         background: c.bg,
                         border: c.border,
@@ -387,20 +285,13 @@ export default function ClientDashboard() {
                         zIndex: 2,
                       }}>
                         <span style={{
-                          display: "block",
-                          fontSize: 13, fontWeight: 600,
-                          letterSpacing: "-0.45px", lineHeight: "16px",
-                          color: c.text,
+                          display: "block", fontSize: 13, fontWeight: 600,
+                          letterSpacing: "-0.45px", color: c.text,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {stage.label}
                         </span>
-                        <span style={{
-                          display: "block", marginTop: 6,
-                          fontSize: 11, fontWeight: 500,
-                          letterSpacing: "-0.3px",
-                          color: c.sub,
-                        }}>
+                        <span style={{ display: "block", marginTop: 6, fontSize: 11, color: c.sub }}>
                           {idx === currentIdx && !stage.completed
                             ? `fin ${stageDeadline(stages, idx, startDate)}`
                             : `${stage.duration_days}j`}
@@ -415,117 +306,88 @@ export default function ClientDashboard() {
             {/* Tool links card */}
             <div style={{
               background: "#fff",
-              border: "1px solid rgba(0,0,0,0.18)",
+              border: "1px solid rgba(0,0,0,0.13)",
               borderRadius: 13,
               overflow: "hidden",
               boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
             }}>
-              {/* Tab bar */}
               <div style={{
                 background: "#fbfbfb",
                 borderBottom: "1px solid rgba(0,0,0,0.05)",
-                padding: "12px 13px",
+                padding: "10px 12px",
                 display: "flex", gap: 4,
               }}>
                 {(["liens", "brief", "fichiers"] as const).map((t) => (
                   <button key={t} onClick={() => setTab(t)}
                     style={{
-                      padding: "11px 13px",
+                      padding: "10px 13px",
                       background: tab === t ? "#fff" : "transparent",
                       border: tab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
-                      borderRadius: 10,
+                      borderRadius: 9,
                       fontSize: 14, fontWeight: 600,
                       letterSpacing: "-0.45px",
                       color: tab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
                       cursor: "pointer",
-                      boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
+                      boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02)" : "none",
                     }}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
 
-              <div style={{ padding: "14px 16px" }}>
-                {tab === "liens" && (
-                  <>
-                    {toolLinks.map((link, i) => (
-                      <div key={link.label}>
-                        <div style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "12px 6px",
-                          opacity: !link.url ? 0.4 : 1,
+              <div style={{ padding: "12px 16px" }}>
+                {tab === "liens" && toolLinks.map((link, i) => (
+                  <div key={link.label}>
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 4px",
+                    }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.45px", color: link.url ? "#121a2e" : "rgba(18,26,46,0.35)" }}>
+                        {link.label}
+                      </span>
+                      {link.url ? (
+                        <a href={link.url} target="_blank" rel="noopener noreferrer"
+                          style={{
+                            padding: "9px 13px",
+                            background: "#fff", border: "1px solid rgba(0,0,0,0.08)",
+                            borderRadius: 9, fontSize: 13, fontWeight: 500,
+                            color: "#121a2e", textDecoration: "none",
+                            boxShadow: "0px 2px 4px rgba(0,0,0,0.04)",
+                          }}>
+                          Ouvrir
+                        </a>
+                      ) : (
+                        <span style={{
+                          padding: "9px 13px", border: "1px solid rgba(0,0,0,0.05)",
+                          borderRadius: 9, fontSize: 12, color: "rgba(18,26,46,0.25)",
+                          letterSpacing: "-0.3px",
                         }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <div style={{
-                              width: 42, height: 42,
-                              background: "#f7f7f7",
-                              borderRadius: 6,
-                              overflow: "hidden",
-                              flexShrink: 0,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                            }}>
-                              <img src={link.icon} alt="" style={{ width: 26, height: 26, objectFit: "contain" }} />
-                            </div>
-                            <span style={{
-                              fontSize: 15, fontWeight: 600,
-                              letterSpacing: "-0.45px", color: "#121a2e",
-                            }}>
-                              {link.label}
-                            </span>
-                          </div>
-                          {link.url ? (
-                            <a href={link.url} target="_blank" rel="noopener noreferrer"
-                              style={{
-                                display: "flex", alignItems: "center",
-                                padding: "10px 14px",
-                                background: "#fff",
-                                border: "1px solid rgba(0,0,0,0.08)",
-                                borderRadius: 10,
-                                fontSize: 13, fontWeight: 500,
-                                color: "#121a2e", textDecoration: "none",
-                                boxShadow: "0px 2px 4px rgba(0,0,0,0.04)",
-                              }}>
-                              Ouvrir
-                            </a>
-                          ) : (
-                            <span style={{
-                              padding: "10px 14px",
-                              border: "1px solid rgba(0,0,0,0.06)",
-                              borderRadius: 10,
-                              fontSize: 13, color: "rgba(18,26,46,0.3)",
-                            }}>
-                              Ouvrir
-                            </span>
-                          )}
-                        </div>
-                        {i < toolLinks.length - 1 && (
-                          <div style={{ height: 1, background: "rgba(0,0,0,0.05)", margin: "0 6px" }} />
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
+                          En attente de création
+                        </span>
+                      )}
+                    </div>
+                    {i < toolLinks.length - 1 && <div style={{ height: 1, background: "rgba(0,0,0,0.05)" }} />}
+                  </div>
+                ))}
 
                 {tab === "brief" && (
                   <div style={{ padding: "4px 0" }}>
-                    {project.form_data && Object.keys(project.form_data).filter(k => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k)).length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        {Object.entries(project.form_data)
-                          .filter(([k]) => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k))
-                          .map(([k, v], i, arr) => (
-                            <div key={k}>
-                              <div style={{ padding: "12px 6px" }}>
-                                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.45)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4 }}>
-                                  {k.replace(/_/g, " ")}
-                                </span>
-                                <p style={{ margin: 0, fontSize: 15, color: "#121a2e", lineHeight: "1.5" }}>{String(v)}</p>
-                              </div>
-                              {i < arr.length - 1 && <div style={{ height: 1, background: "rgba(0,0,0,0.05)", margin: "0 6px" }} />}
+                    {project.form_data && Object.entries(project.form_data).filter(([k]) => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k)).length > 0 ? (
+                      Object.entries(project.form_data)
+                        .filter(([k]) => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k))
+                        .map(([k, v], i, arr) => (
+                          <div key={k}>
+                            <div style={{ padding: "10px 4px" }}>
+                              <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.38)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4 }}>
+                                {k.replace(/_/g, " ")}
+                              </span>
+                              <p style={{ margin: 0, fontSize: 14, color: "#121a2e", lineHeight: "1.5" }}>{String(v)}</p>
                             </div>
-                          ))}
-                      </div>
+                            {i < arr.length - 1 && <div style={{ height: 1, background: "rgba(0,0,0,0.05)" }} />}
+                          </div>
+                        ))
                     ) : (
-                      <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun brief disponible pour l&apos;instant.</p>
+                      <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun brief disponible.</p>
                     )}
                   </div>
                 )}
@@ -533,13 +395,13 @@ export default function ClientDashboard() {
                 {tab === "fichiers" && (
                   <div style={{ padding: "4px 0" }}>
                     {files.length === 0 ? (
-                      <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun fichier partagé pour l&apos;instant.</p>
+                      <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun fichier partagé.</p>
                     ) : (
                       files.map((f) => (
                         <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
                           style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "12px 10px", borderRadius: 10, textDecoration: "none",
+                            padding: "10px 8px", borderRadius: 9, textDecoration: "none",
                             border: "1px solid rgba(0,0,0,0.06)", marginBottom: 6,
                           }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: "#121a2e" }}>{f.name}</span>
@@ -555,62 +417,26 @@ export default function ClientDashboard() {
 
           {/* Right column: Conversation */}
           <div style={{
-            width: 360,
+            width: 340,
             flexShrink: 0,
             background: "#fff",
-            border: "1px solid rgba(0,0,0,0.18)",
+            border: "1px solid rgba(0,0,0,0.13)",
             borderRadius: 13,
             overflow: "hidden",
             display: "flex", flexDirection: "column",
             boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
           }}>
-            <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-              <span style={{ ...jakartaSans, fontSize: 18, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
+            <div style={{ padding: "15px 18px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+              <span style={{ ...jakartaSans, fontSize: 17, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
                 Conversation
               </span>
             </div>
 
-            {/* Conv tabs */}
-            <div style={{
-              background: "#fbfbfb",
-              borderBottom: "1px solid rgba(0,0,0,0.06)",
-              padding: "10px 14px",
-              display: "flex", gap: 4,
-            }}>
-              {(["app", "docs", "figma", "framer"] as const).map((t) => {
-                const url = t === "docs" ? googleDocsUrl : t === "figma" ? figmaUrl : t === "framer" ? framerUrl : "";
-                const disabled = t !== "app" && !url;
-                return (
-                  <button key={t}
-                    onClick={() => {
-                      if (t === "app") { setConvTab("app"); return; }
-                      if (url) window.open(url, "_blank", "noopener,noreferrer");
-                    }}
-                    style={{
-                      padding: "10px 12px",
-                      background: convTab === t && t === "app" ? "#fff" : "transparent",
-                      border: convTab === t && t === "app" ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
-                      borderRadius: 10,
-                      fontSize: 14, fontWeight: 600,
-                      letterSpacing: "-0.45px",
-                      color: disabled ? "rgba(18,26,46,0.2)" : (convTab === t && t === "app") ? "#121a2e" : "rgba(18,26,46,0.45)",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      display: "flex", alignItems: "center", gap: 5,
-                      boxShadow: convTab === t && t === "app" ? "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
-                    }}>
-                    {t === "app" ? "App" : t === "docs" ? "Docs" : t.charAt(0).toUpperCase() + t.slice(1)}
-                    {t !== "app" && <ExternalLink size={11} style={{ opacity: disabled ? 0.3 : 0.5 }} />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Messages */}
             <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
               {messages.length === 0 ? (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-                  <div style={{ width: 48, height: 48, marginBottom: 12, opacity: 0.25 }}>
-                    <svg viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#e0e0e0"/><path d="M14 18h28v16a2 2 0 01-2 2H16a2 2 0 01-2-2V18z" stroke="#121a2e" strokeWidth="1.5" fill="none"/><circle cx="22" cy="26" r="2" fill="#121a2e"/><circle cx="28" cy="26" r="2" fill="#121a2e"/><circle cx="34" cy="26" r="2" fill="#121a2e"/></svg>
+                  <div style={{ opacity: 0.2, marginBottom: 10 }}>
+                    <svg width="44" height="44" viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#e0e0e0"/><path d="M14 18h28v16a2 2 0 01-2 2H16a2 2 0 01-2-2V18z" stroke="#121a2e" strokeWidth="1.5" fill="none"/><circle cx="22" cy="26" r="2" fill="#121a2e"/><circle cx="28" cy="26" r="2" fill="#121a2e"/><circle cx="34" cy="26" r="2" fill="#121a2e"/></svg>
                   </div>
                   <p style={{ fontSize: 13, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>Aucun message</p>
                 </div>
@@ -620,8 +446,8 @@ export default function ClientDashboard() {
                   return (
                     <div key={msg.id} style={{ display: "flex", justifyContent: isClient ? "flex-end" : "flex-start" }}>
                       <div style={{
-                        maxWidth: "80%",
-                        padding: "10px 14px",
+                        maxWidth: "82%",
+                        padding: "10px 13px",
                         background: isClient ? "linear-gradient(121deg, rgb(78,126,250), rgb(1,71,255))" : "#fff",
                         border: isClient ? "none" : "1px solid rgba(0,0,0,0.08)",
                         borderRadius: 10,
@@ -638,15 +464,14 @@ export default function ClientDashboard() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div style={{ padding: "8px 12px 12px", background: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ padding: "8px 10px 10px", background: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
                 flex: 1,
                 background: "#fff",
                 border: "1px solid rgba(158,158,158,0.17)",
-                borderRadius: 10,
+                borderRadius: 9,
                 padding: "10px 13px",
-                boxShadow: "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)",
+                boxShadow: "0px 4px 4px rgba(0,0,0,0.02)",
               }}>
                 <input
                   type="text"
@@ -665,7 +490,7 @@ export default function ClientDashboard() {
                 onClick={() => handleSend({})}
                 disabled={sending || !newMsg.trim()}
                 style={{
-                  width: 38, height: 38,
+                  width: 36, height: 36,
                   background: "linear-gradient(96.83deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
                   border: "0.633px solid #2f4d9d",
                   borderRadius: "50%",
@@ -676,13 +501,105 @@ export default function ClientDashboard() {
                   boxShadow: "0px 4px 10px rgba(1,71,255,0.25)",
                 }}>
                 {sending
-                  ? <Loader2 size={14} style={{ color: "#fff", animation: "spin 1s linear infinite" }} />
-                  : <Send size={14} style={{ color: "#fff" }} />}
+                  ? <Loader2 size={13} style={{ color: "#fff", animation: "spin 1s linear infinite" }} />
+                  : <Send size={13} style={{ color: "#fff" }} />}
               </button>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Hero Ticker ───────────────────────────────────────────────────────────────
+// Colonnes de cartes inclinées qui défilent verticalement.
+// Chaque carte individuelle est tournée (pas la colonne) → pas de dérive horizontale.
+
+interface TickerFile { url: string; type: string; name: string }
+
+function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
+  const NUM_COLS   = 10;
+  const CARD_H     = 140;
+  const CARD_GAP   = 14;
+  const ITEMS_PER  = 4;              // cartes visibles par colonne avant duplication
+  const TOTAL_H    = (CARD_H + CARD_GAP) * ITEMS_PER;
+
+  return (
+    <div style={{
+      position: "relative",
+      background: "#eeeeee",
+      borderBottom: "1px solid rgba(0,0,0,0.14)",
+      height: 200,
+      overflow: "hidden",
+      flexShrink: 0,
+    }}>
+      <style>{`
+        @keyframes tickUp {
+          from { transform: translateY(0); }
+          to   { transform: translateY(-${TOTAL_H}px); }
+        }
+      `}</style>
+
+      {Array.from({ length: NUM_COLS }).map((_, col) => {
+        const leftPct  = (col / NUM_COLS) * 100;
+        const widthPct = 100 / NUM_COLS;
+        const speed    = 5 + col * 0.8;
+        const delay    = -(col * 0.6);
+        const offsetY  = col % 2 === 0 ? -30 : -60;
+
+        // Contenu : médias réels si dispo, sinon placeholder vide
+        const cards = Array.from({ length: ITEMS_PER * 2 }).map((_, i) => {
+          const f = mediaFiles.length > 0 ? mediaFiles[i % mediaFiles.length] : null;
+          return { key: i, file: f };
+        });
+
+        return (
+          <div key={col} style={{
+            position: "absolute",
+            left: `${leftPct}%`,
+            width: `${widthPct}%`,
+            top: offsetY,
+            animation: `tickUp ${speed}s ${delay}s linear infinite`,
+            // PAS de rotation ici → translateY reste vertical pur
+          }}>
+            {cards.map(({ key, file }) => (
+              <div key={key} style={{
+                margin: `0 6px ${CARD_GAP}px 6px`,
+                height: CARD_H,
+                borderRadius: 12,
+                overflow: "hidden",
+                // Rotation sur la CARTE individuelle, pas sur la colonne
+                transform: "rotate(12deg)",
+                transformOrigin: "center center",
+                background: "#fff",
+                border: "1px solid rgba(0,0,0,0.12)",
+                boxShadow: "0px 4px 12px rgba(0,0,0,0.06)",
+                flexShrink: 0,
+              }}>
+                {file ? (
+                  file.type.startsWith("image") ? (
+                    <img src={file.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <video src={file.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  )
+                ) : (
+                  // Placeholder vide sans texte
+                  <div style={{ width: "100%", height: "100%", background: "#f0f0f0" }} />
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      {/* Gradient fade bas */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
+        background: "linear-gradient(to bottom, transparent, #fbfbfb)",
+        zIndex: 10,
+        pointerEvents: "none",
+      }} />
     </div>
   );
 }

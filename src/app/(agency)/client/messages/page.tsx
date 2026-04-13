@@ -103,7 +103,7 @@ export default function ClientMessagesPage() {
       <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
-        <div style={{ padding: "68px 32px 0" }}>
+        <div style={{ padding: "68px 24px 0" }}>
           <h1 style={{
             ...jakartaSans,
             fontSize: 32, fontWeight: 600,
@@ -115,10 +115,10 @@ export default function ClientMessagesPage() {
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "24px 32px 0" }} />
+        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "24px 24px 0" }} />
 
         {/* Conversation card */}
-        <div style={{ padding: "20px 32px 32px", flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "20px 24px 24px", flex: 1, display: "flex", flexDirection: "column" }}>
           <div style={{
             flex: 1,
             background: "#fff",
