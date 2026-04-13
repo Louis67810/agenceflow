@@ -213,10 +213,7 @@ export default function ClientAgendaPage() {
                 height: 198,
                 overflow: "hidden",
                 background: "#f7f7f9",
-                backgroundImage: [
-                  "repeating-linear-gradient(135deg, rgba(140,150,200,0.07) 0px, rgba(140,150,200,0.07) 1px, transparent 1px, transparent 34px)",
-                  "repeating-linear-gradient(45deg, rgba(140,150,200,0.07) 0px, rgba(140,150,200,0.07) 1px, transparent 1px, transparent 34px)",
-                ].join(", "),
+                backgroundImage: "repeating-linear-gradient(35deg, rgba(140,150,200,0.13) 0px, rgba(140,150,200,0.13) 1px, transparent 1px, transparent 34px)",
               }}>
                 <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0, zIndex: 1 }}>
                   {/* Barre de progression (flèche + ligne verticale) */}

@@ -274,24 +274,53 @@ export default function ClientDashboard() {
             {stages.length > 0 && (
               <div style={{
                 position: "relative",
-                background: "#eeeeee",
+                background: "#f7f7f9",
+                backgroundImage: "repeating-linear-gradient(35deg, rgba(140,150,200,0.13) 0px, rgba(140,150,200,0.13) 1px, transparent 1px, transparent 34px)",
                 borderRadius: 13,
                 height: 196,
                 overflow: "hidden",
                 flexShrink: 0,
               }}>
                 <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0 }}>
-                  {/* Now-line */}
+                  {/* Barre de progression */}
                   {(() => {
                     const nowPct = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
                     return (
                       <div style={{
                         position: "absolute",
-                        left: `${nowPct}%`,
-                        top: 8, bottom: 8, width: 2,
-                        background: "rgba(0,0,0,0.3)",
-                        zIndex: 3, borderRadius: 1,
-                      }} />
+                        left: `calc(${nowPct}% - 10px)`,
+                        top: 0,
+                        width: 20,
+                        height: 196,
+                        zIndex: 3,
+                        pointerEvents: "none",
+                      }}>
+                        <svg width="20" height="196" viewBox="0 0 20 196" fill="none">
+                          <defs>
+                            <filter id="gp_filter2" x="0" y="0" width="20" height="27.5" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+                              <feFlood floodOpacity="0" result="BackgroundImageFix"/>
+                              <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                              <feOffset/><feGaussianBlur stdDeviation="0.5"/>
+                              <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.13 0"/>
+                              <feBlend mode="normal" in2="BackgroundImageFix" result="e1"/>
+                              <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                              <feOffset dy="1"/><feGaussianBlur stdDeviation="0.5"/>
+                              <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.12 0"/>
+                              <feBlend mode="normal" in2="e1" result="e2"/>
+                              <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                              <feOffset dy="3"/><feGaussianBlur stdDeviation="1"/>
+                              <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.07 0"/>
+                              <feBlend mode="normal" in2="e2" result="e3"/>
+                              <feBlend mode="normal" in="SourceGraphic" in2="e3" result="shape"/>
+                            </filter>
+                          </defs>
+                          <line x1="10" y1="17" x2="10" y2="196" stroke="#82858C" strokeWidth="2"/>
+                          <g filter="url(#gp_filter2)">
+                            <path d="M4 6C4 4.34315 5.34315 3 7 3H13C14.6569 3 16 4.34315 16 6V10.9C16 11.2961 15.9216 11.6882 15.7692 12.0538L14.2692 15.6538C13.8034 16.7718 12.7111 17.5 11.5 17.5H8.5C7.2889 17.5 6.19658 16.7718 5.73077 15.6538L4.23077 12.0538C4.07843 11.6882 4 11.2961 4 10.9V6Z" fill="#121A2E"/>
+                            <path d="M13 2C15.2091 2 17 3.79086 17 6V10.9004C16.9999 11.4284 16.8954 11.9511 16.6924 12.4385L15.1924 16.0381C14.5713 17.5287 13.1148 18.5 11.5 18.5H8.5C6.8852 18.5 5.4287 17.5287 4.80762 16.0381L3.30762 12.4385C3.10455 11.9511 3.00005 11.4284 3 10.9004V6C3 3.79086 4.79086 2 7 2H13Z" stroke="white" strokeWidth="2"/>
+                          </g>
+                        </svg>
+                      </div>
                     );
                   })()}
 
@@ -580,8 +609,7 @@ function HeroBanner({ mediaFiles }: { mediaFiles: TickerFile[] }) {
       height: 240,
       overflow: "hidden",
       flexShrink: 0,
-      background: "#000",
-      borderBottom: "1px solid rgba(0,0,0,0.10)",
+      background: "#e8e8e8",
     }}>
       {current.type.startsWith("image") ? (
         <img
