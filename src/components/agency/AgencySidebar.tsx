@@ -113,8 +113,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
     ];
 
     return (
-      <aside className="fixed left-0 top-0 h-screen w-64 bg-gray-900 flex flex-col z-30"
-        style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+      <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col z-30"
+        style={{ background: "#121a2e", borderRight: "1px solid rgba(255,255,255,0.08)" }}>
 
         {/* Header — logo + séparateur + "Espace Client" */}
         <div className="flex items-center gap-3 px-5 py-4"
@@ -141,7 +141,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               : pathname.startsWith(item.href);
 
             if (isActive) {
-              // Actif : icône à gauche, texte blanc
+              // Actif : fond blanc 7%, icône à gauche, texte blanc
               return (
                 <Link key={item.href} href={item.href}
                   style={{
@@ -149,6 +149,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                     padding: "10px 12px", borderRadius: 8,
                     fontSize: 14, fontWeight: 500, lineHeight: "20px",
                     color: "rgb(255,255,255)",
+                    background: "rgba(255,255,255,0.07)",
                     textDecoration: "none",
                   }}>
                   <span style={{ color: "rgb(255,255,255)", display: "flex" }}>{item.icon}</span>
@@ -222,7 +223,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-30">
+    <aside className="fixed left-0 top-0 h-screen w-64 text-white flex flex-col z-30" style={{ background: "#121a2e" }}>
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-700">
         <div className="flex items-center gap-3">
@@ -250,7 +251,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     isOnLinkedIn
                       ? "bg-[#0A66C2] text-white"
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      : "text-gray-400 hover:bg-white/5 hover:text-white"
                   )}
                 >
                   <div className="w-[18px] h-[18px] bg-white rounded flex items-center justify-center shrink-0">
@@ -274,8 +275,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                           className={cn(
                             "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
                             subActive
-                              ? "text-white bg-gray-800"
-                              : "text-gray-400 hover:text-white hover:bg-gray-800"
+                              ? "text-white bg-white/7"
+                              : "text-gray-400 hover:text-white hover:bg-white/5"
                           )}
                         >
                           {sub.icon}
@@ -292,8 +293,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1",
                     pathname.startsWith(item.href)
-                      ? "bg-indigo-600 text-white"
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      ? "bg-white/7 text-white rounded-lg"
+                      : "text-gray-400 hover:bg-white/5 hover:text-white"
                   )}
                 >
                   {item.icon}
@@ -312,8 +313,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     isOnAgenda
-                      ? "bg-indigo-600 text-white"
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      ? "bg-white/7 text-white rounded-lg"
+                      : "text-gray-400 hover:bg-white/5 hover:text-white"
                   )}
                 >
                   <CalendarDays size={18} />
@@ -336,8 +337,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                           className={cn(
                             "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
                             subActive
-                              ? "text-white bg-gray-800"
-                              : "text-gray-400 hover:text-white hover:bg-gray-800"
+                              ? "text-white bg-white/7"
+                              : "text-gray-400 hover:text-white hover:bg-white/5"
                           )}
                         >
                           {sub.icon}
@@ -363,8 +364,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  ? "bg-white/7 text-white rounded-lg"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
               )}
             >
               {item.icon}
@@ -377,7 +378,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
       {/* User + Actions */}
       <div className="px-3 py-4 border-t border-gray-700 space-y-1">
         <form action="/api/auth/signout" method="POST">
-          <button type="submit" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-red-400 transition-colors">
+          <button type="submit" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-red-400 transition-colors">
             <LogOut size={18} />
             Déconnexion
           </button>

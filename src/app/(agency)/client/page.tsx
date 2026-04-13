@@ -160,7 +160,7 @@ export default function ClientDashboard() {
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-      <Loader2 style={{ color: "rgb(18,26,46)", animation: "spin 1s linear infinite" }} size={28} />
+      <Loader2 style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} size={28} />
     </div>
   );
 
@@ -192,10 +192,10 @@ export default function ClientDashboard() {
     display: "flex" as const, alignItems: "center" as const, gap: 4,
     padding: "6px 12px",
     border: "1px solid",
-    borderColor: active ? "rgb(18,26,46)" : "rgba(18,26,46,0.15)",
+    borderColor: active ? "#121a2e" : "rgba(18,26,46,0.15)",
     borderRadius: 8,
-    background: active ? "rgb(18,26,46)" : "#fff",
-    color: active ? "#fff" : "rgb(18,26,46)",
+    background: active ? "#121a2e" : "#fff",
+    color: active ? "#fff" : "#121a2e",
     fontSize: 12, fontWeight: 600, letterSpacing: "-0.45px", lineHeight: "16px",
     cursor: "pointer",
   });
@@ -241,7 +241,7 @@ export default function ClientDashboard() {
               ...jakartaSans,
               fontSize: 32, fontWeight: 600,
               letterSpacing: "-0.45px", lineHeight: "28px",
-              color: "rgb(18,26,46)",
+              color: "#121a2e",
               margin: 0,
             }}>
               Mon espace
@@ -252,9 +252,9 @@ export default function ClientDashboard() {
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "10px 20px",
-                  background: "rgb(18,26,46)",
+                  background: "#121a2e",
                   color: "#fff",
-                  border: "1px solid rgb(18,26,46)",
+                  border: "1px solid #121a2e",
                   borderRadius: 10,
                   fontSize: 14, fontWeight: 500, lineHeight: "102.88%",
                   cursor: advancing ? "not-allowed" : "pointer",
@@ -362,7 +362,7 @@ export default function ClientDashboard() {
                           <span style={{
                             fontSize: 14, fontWeight: 600,
                             letterSpacing: "-0.45px", lineHeight: "16px",
-                            color: "rgb(18,26,46)",
+                            color: "#121a2e",
                           }}>
                             {link.label}
                           </span>
@@ -375,7 +375,7 @@ export default function ClientDashboard() {
                               border: "1px solid rgba(18,26,46,0.2)",
                               borderRadius: 8,
                               fontSize: 12, fontWeight: 500, lineHeight: "102.88%",
-                              color: "rgb(18,26,46)",
+                              color: "#121a2e",
                               textDecoration: "none",
                             }}>
                             Ouvrir
@@ -412,7 +412,7 @@ export default function ClientDashboard() {
                           <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                             {k.replace(/_/g, " ")}
                           </p>
-                          <p style={{ fontSize: 14, color: "rgb(18,26,46)" }}>
+                          <p style={{ fontSize: 14, color: "#121a2e" }}>
                             {Array.isArray(v) ? v.join(", ") : String(v ?? "")}
                           </p>
                         </div>
@@ -439,7 +439,7 @@ export default function ClientDashboard() {
                             border: "1px solid rgba(18,26,46,0.08)", borderRadius: 8,
                             textDecoration: "none",
                           }}>
-                          <span style={{ fontSize: 14, color: "rgb(18,26,46)", fontWeight: 500 }}>{file.name}</span>
+                          <span style={{ fontSize: 14, color: "#121a2e", fontWeight: 500 }}>{file.name}</span>
                           <ExternalLink size={14} style={{ color: "rgba(18,26,46,0.3)" }} />
                         </a>
                       ))}
@@ -464,7 +464,7 @@ export default function ClientDashboard() {
                 <h2 style={{
                   fontSize: 20, fontWeight: 600,
                   letterSpacing: "-0.45px", lineHeight: "16px",
-                  color: "rgb(18,26,46)", marginBottom: 12,
+                  color: "#121a2e", marginBottom: 12,
                 }}>
                   Conversation
                 </h2>
@@ -487,7 +487,7 @@ export default function ClientDashboard() {
                             borderRadius: 8,
                             fontSize: 12, fontWeight: 600,
                             letterSpacing: "-0.45px", lineHeight: "16px",
-                            color: "rgb(18,26,46)",
+                            color: "#121a2e",
                             textDecoration: "none",
                           }}>
                           {t.label}
@@ -500,10 +500,10 @@ export default function ClientDashboard() {
                         style={{
                           padding: "5px 10px",
                           border: "1px solid",
-                          borderColor: isActive ? "rgb(18,26,46)" : "rgba(18,26,46,0.15)",
+                          borderColor: isActive ? "#121a2e" : "rgba(18,26,46,0.15)",
                           borderRadius: 8,
-                          background: isActive ? "rgb(18,26,46)" : "#fff",
-                          color: isActive ? "#fff" : "rgb(18,26,46)",
+                          background: isActive ? "#121a2e" : "#fff",
+                          color: isActive ? "#fff" : "#121a2e",
                           fontSize: 12, fontWeight: 600,
                           letterSpacing: "-0.45px", lineHeight: "16px",
                           cursor: "pointer",
@@ -535,8 +535,8 @@ export default function ClientDashboard() {
                           maxWidth: "75%",
                           padding: "8px 12px",
                           borderRadius: 10,
-                          background: isClient ? "rgb(18,26,46)" : "rgba(18,26,46,0.05)",
-                          color: isClient ? "#fff" : "rgb(18,26,46)",
+                          background: isClient ? "#121a2e" : "rgba(18,26,46,0.05)",
+                          color: isClient ? "#fff" : "#121a2e",
                           fontSize: 13, lineHeight: "18px",
                         }}>
                           {msg.content}
@@ -574,7 +574,7 @@ export default function ClientDashboard() {
                 <button type="submit" disabled={sending || !newMsg.trim()}
                   style={{
                     width: 34, height: 34,
-                    background: "rgb(18,26,46)",
+                    background: "#121a2e",
                     border: "none", borderRadius: 8,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     cursor: sending || !newMsg.trim() ? "not-allowed" : "pointer",

@@ -210,9 +210,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <label key={o} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "10px 16px", borderRadius: 10,
-                border: val === o ? "1px solid rgb(7,16,29)" : "1px solid #e5e7eb",
+                border: val === o ? "1px solid #121a2e" : "1px solid #e5e7eb",
                 background: val === o ? "rgba(7,16,29,0.04)" : "#fff",
-                fontSize: 14, cursor: "pointer", color: "rgb(7,16,29)",
+                fontSize: 14, cursor: "pointer", color: "#121a2e",
               }}>
                 <input type="radio" name={field.id} value={o} checked={val === o} onChange={() => setVal(o)} />
                 {o}
@@ -232,9 +232,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <label key={o} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "10px 16px", borderRadius: 10,
-                border: checked.includes(o) ? "1px solid rgb(7,16,29)" : "1px solid #e5e7eb",
+                border: checked.includes(o) ? "1px solid #121a2e" : "1px solid #e5e7eb",
                 background: checked.includes(o) ? "rgba(7,16,29,0.04)" : "#fff",
-                fontSize: 14, cursor: "pointer", color: "rgb(7,16,29)",
+                fontSize: 14, cursor: "pointer", color: "#121a2e",
               }}>
                 <input type="checkbox" checked={checked.includes(o)} onChange={() => toggle(o)} />
                 {o}
@@ -249,7 +249,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           value={val} onChange={(e) => setVal(e.target.value)} required={field.required}
           placeholder={field.placeholder ?? ""}
           style={inputStyle}
-          onFocus={(e) => { e.currentTarget.style.borderColor = "rgb(7,16,29)"; }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
           onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
         />;
     }
@@ -259,7 +259,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
   if (step === "loading") return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb" }}>
-      <Loader2 style={{ color: "rgb(7,16,29)", animation: "spin 1s linear infinite" }} size={28} />
+      <Loader2 style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} size={28} />
     </div>
   );
 
@@ -267,7 +267,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <AlertCircle size={40} style={{ color: "#ef4444", margin: "0 auto 16px" }} />
-        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "rgb(7,16,29)", marginBottom: 8 }}>Lien invalide</h1>
+        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>Lien invalide</h1>
         <p style={{ fontSize: 16, color: "rgba(7,16,29,0.7)" }}>Ce lien est invalide ou a expiré. Contactez votre agence.</p>
       </div>
     </div>
@@ -277,12 +277,12 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <CheckCircle2 size={40} style={{ color: "#22c55e", margin: "0 auto 16px" }} />
-        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "rgb(7,16,29)", marginBottom: 8 }}>Formulaire déjà envoyé</h1>
+        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>Formulaire déjà envoyé</h1>
         <p style={{ fontSize: 16, color: "rgba(7,16,29,0.7)", marginBottom: 24 }}>Vous avez déjà rempli ce formulaire.</p>
         <button
           onClick={() => router.push(keyData?.role === "designer" || keyData?.role === "developer" ? "/designer" : "/client")}
           style={{
-            background: "rgb(7,16,29)", color: "#fff", border: "none", borderRadius: 10,
+            background: "#121a2e", color: "#fff", border: "none", borderRadius: 10,
             padding: "12px 24px", fontSize: 16, fontWeight: 500, cursor: "pointer",
           }}
         >
@@ -296,7 +296,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <CheckCircle2 size={40} style={{ color: "#22c55e", margin: "0 auto 16px" }} />
-        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "rgb(7,16,29)", marginBottom: 8 }}>
+        <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>
           Merci {keyData?.name.split(" ")[0]} !
         </h1>
         <p style={{ fontSize: 16, color: "rgba(7,16,29,0.7)" }}>
@@ -333,9 +333,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           <div style={{
             display: "inline-flex",
             alignItems: "center",
-            background: "rgb(7,16,29)",
+            background: "#121a2e",
             color: "#fff",
-            border: "1px solid rgb(7,16,29)",
+            border: "1px solid #121a2e",
             borderRadius: 10,
             padding: "8px 16px",
             fontSize: 20,
@@ -366,7 +366,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           fontWeight: 600,
           letterSpacing: "-0.45px",
           lineHeight: "28px",
-          color: "rgb(7,16,29)",
+          color: "#121a2e",
           marginBottom: 12,
           paddingTop: 4,
         }}>
@@ -408,13 +408,13 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             fontWeight: 600,
             letterSpacing: "-0.45px",
             lineHeight: "28px",
-            color: "rgb(7,16,29)",
+            color: "#121a2e",
             marginBottom: 8,
           }}>Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="votre@email.com" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "rgb(7,16,29)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
           />
         </div>
@@ -428,7 +428,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             fontWeight: 600,
             letterSpacing: "-0.45px",
             lineHeight: "28px",
-            color: "rgb(7,16,29)",
+            color: "#121a2e",
             marginBottom: 8,
           }}>Mot de passe</label>
           <div style={{ position: "relative" }}>
@@ -436,7 +436,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Minimum 6 caractères" required minLength={6}
               style={{ ...inputStyle, paddingRight: 44 }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "rgb(7,16,29)"; }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
               onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
             />
             <button type="button" onClick={() => setShowPwd(!showPwd)}
@@ -459,14 +459,14 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             fontWeight: 600,
             letterSpacing: "-0.45px",
             lineHeight: "28px",
-            color: "rgb(7,16,29)",
+            color: "#121a2e",
             marginBottom: 8,
           }}>Confirmez le mot de passe</label>
           <input type={showPwd ? "text" : "password"} value={confirmPwd}
             onChange={(e) => setConfirmPwd(e.target.value)}
             placeholder="Répétez votre mot de passe" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "rgb(7,16,29)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
           />
         </div>
@@ -475,9 +475,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         <button type="submit" disabled={registering}
           style={{
             marginTop: 8,
-            background: "rgb(7,16,29)",
+            background: "#121a2e",
             color: "#fff",
-            border: "1px solid rgb(7,16,29)",
+            border: "1px solid #121a2e",
             borderRadius: 12,
             padding: "14px 24px",
             fontSize: 16,
@@ -513,7 +513,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           <div style={{ height: 4, background: "#f3f4f6", borderRadius: 2, overflow: "hidden" }}>
             <div style={{
               height: "100%",
-              background: "rgb(7,16,29)",
+              background: "#121a2e",
               borderRadius: 2,
               width: `${((pageIndex + 1) / totalPages) * 100}%`,
               transition: "width 0.3s",
@@ -525,10 +525,10 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
       {/* Title */}
       <div style={{ marginBottom: 28 }}>
         {totalPages > 1
-          ? <h2 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "rgb(7,16,29)" }}>{currentPage?.title}</h2>
+          ? <h2 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>{currentPage?.title}</h2>
           : (
             <>
-              <h1 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "rgb(7,16,29)", marginBottom: 8 }}>
+              <h1 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e", marginBottom: 8 }}>
                 Votre formulaire
               </h1>
               <p style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.45px", color: "rgba(7,16,29,0.7)" }}>
@@ -562,7 +562,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               fontWeight: 600,
               letterSpacing: "-0.45px",
               lineHeight: "28px",
-              color: "rgb(7,16,29)",
+              color: "#121a2e",
               marginBottom: 8,
             }}>
               {field.label}
@@ -587,7 +587,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
                 borderRadius: 12,
                 background: "#fff",
                 fontSize: 14,
-                color: "rgb(7,16,29)",
+                color: "#121a2e",
                 cursor: "pointer",
               }}>
               <ChevronLeft size={15} />Précédent
@@ -597,9 +597,9 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             style={{
               display: "flex", alignItems: "center", gap: 8,
               padding: "12px 24px",
-              background: "rgb(7,16,29)",
+              background: "#121a2e",
               color: "#fff",
-              border: "1px solid rgb(7,16,29)",
+              border: "1px solid #121a2e",
               borderRadius: 12,
               fontSize: 16,
               fontWeight: 500,
