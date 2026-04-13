@@ -75,9 +75,13 @@ export default function ClientDashboard() {
   const [newMsg, setNewMsg]         = useState("");
   const [sending, setSending]       = useState(false);
   const [clientName, setClientName] = useState("Moi");
+  const [userId, setUserId]         = useState<string | null>(null);
   const [advancing, setAdvancing]   = useState(false);
   const [tab, setTab]               = useState<"liens" | "brief" | "fichiers">("liens");
   const [convTab, setConvTab]       = useState<"app">("app");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [holdPct, setHoldPct]       = useState(0);
+  const holdRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
@@ -99,6 +103,7 @@ export default function ClientDashboard() {
 
       const proj = projects[0];
       setProject(proj);
+      setUserId(session.user.id);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
 
       const [mr, fr] = await Promise.all([
@@ -125,7 +130,13 @@ export default function ClientDashboard() {
     const r = await fetch("/api/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: project.id, sender_role: "client", sender_name: clientName, content: newMsg.trim() }),
+      body: JSON.stringify({
+        project_id: project.id,
+        sender_id: userId ?? "00000000-0000-0000-0000-000000000000",
+        sender_role: "client",
+        sender_name: clientName,
+        content: newMsg.trim(),
+      }),
     });
     const d = await r.json();
     if (r.ok && d.message) { setMessages((prev) => [...prev, d.message]); setNewMsg(""); }
@@ -143,6 +154,32 @@ export default function ClientDashboard() {
     const d = await r.json();
     if (r.ok) setProject(d.project);
     setAdvancing(false);
+    setShowConfirm(false);
+  }
+
+  function startHold() {
+    setHoldPct(0);
+    const step = 100 / (5000 / 50); // 5s en pas de 50ms
+    holdRef.current = setInterval(() => {
+      setHoldPct(prev => {
+        const next = prev + step;
+        if (next >= 100) {
+          clearInterval(holdRef.current!);
+          holdRef.current = null;
+          handleValidate();
+          return 100;
+        }
+        return next;
+      });
+    }, 50);
+  }
+
+  function stopHold() {
+    if (holdRef.current) {
+      clearInterval(holdRef.current);
+      holdRef.current = null;
+    }
+    setHoldPct(0);
   }
 
   if (loading) return (
@@ -215,6 +252,7 @@ export default function ClientDashboard() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
 
@@ -239,7 +277,7 @@ export default function ClientDashboard() {
 
           {currentStage && (
             <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15 }}>
-              <button onClick={handleValidate} disabled={advancing}
+              <button onClick={() => setShowConfirm(true)} disabled={advancing}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "14px 20px",
@@ -284,7 +322,10 @@ export default function ClientDashboard() {
                 <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0 }}>
                   {/* Barre de progression */}
                   {(() => {
-                    const nowPct = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
+                    const today = new Date();
+                    const start = new Date(startDate);
+                    const elapsedDays = Math.max(0, (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                    const nowPct = Math.min(100, (elapsedDays / totalDays) * 100);
                     return (
                       <div style={{
                         position: "absolute",
@@ -352,10 +393,8 @@ export default function ClientDashboard() {
                         }}>
                           {stage.label}
                         </span>
-                        <span style={{ display: "block", marginTop: 6, fontSize: 11, color: c.sub }}>
-                          {idx === currentIdx && !stage.completed
-                            ? `fin ${stageDeadline(stages, idx, startDate)}`
-                            : `${stage.duration_days}j`}
+                        <span style={{ display: "block", marginTop: 4, fontSize: 10, color: c.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {stage.duration_days}j · {stageDeadline(stages, idx, startDate)}
                         </span>
                       </div>
                     );
@@ -579,6 +618,117 @@ export default function ClientDashboard() {
         </div>
       </div>
     </div>
+
+    {/* ── Modal confirmation validation ──────────────────────────────────── */}
+    {showConfirm && currentStage && (
+      <div
+        onClick={() => { setShowConfirm(false); stopHold(); }}
+        style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          background: "rgba(18,26,46,0.35)",
+          backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            padding: "32px 28px 28px",
+            maxWidth: 420, width: "100%",
+            boxShadow: "0px 32px 64px rgba(18,26,46,0.18), 0px 8px 24px rgba(18,26,46,0.08)",
+            border: "1px solid rgba(0,0,0,0.07)",
+          }}
+        >
+          {/* Icône avertissement */}
+          <div style={{
+            width: 48, height: 48, borderRadius: 14,
+            background: "#fff7ed",
+            border: "1px solid rgba(234,88,12,0.15)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: 20,
+          }}>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <path d="M11 2L20.5 19H1.5L11 2Z" stroke="#ea580c" strokeWidth="1.8" strokeLinejoin="round" fill="rgba(234,88,12,0.08)"/>
+              <rect x="10.25" y="9" width="1.5" height="5.5" rx=".75" fill="#ea580c"/>
+              <circle cx="11" cy="16.5" r=".85" fill="#ea580c"/>
+            </svg>
+          </div>
+
+          <h3 style={{ ...jakartaSans, fontSize: 18, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 10px" }}>
+            Valider l&apos;étape ?
+          </h3>
+          <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.6)", lineHeight: "1.6", margin: "0 0 6px" }}>
+            Vous êtes sur le point de valider <strong style={{ color: "#121a2e" }}>{currentStage.label}</strong>.
+          </p>
+          <p style={{ ...jakartaSans, fontSize: 14, color: "rgba(18,26,46,0.6)", lineHeight: "1.6", margin: "0 0 28px" }}>
+            Une fois validée, cette action est <strong style={{ color: "#ea580c" }}>irréversible</strong> — vous ne pourrez plus revenir en arrière ni modifier cette étape. Nous passerons automatiquement à la suivante.
+          </p>
+
+          {/* Bouton long-press */}
+          <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.4)", marginBottom: 10, letterSpacing: "-0.3px" }}>
+            Maintenez le bouton appuyé 5 secondes pour confirmer
+          </p>
+          <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", marginBottom: 12 }}>
+            {/* Fond de progression */}
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${holdPct}%`,
+              background: "linear-gradient(90deg, rgb(78,126,250), rgb(1,71,255))",
+              transition: "width 0.05s linear",
+              borderRadius: 12,
+            }} />
+            <button
+              onMouseDown={startHold}
+              onMouseUp={stopHold}
+              onMouseLeave={stopHold}
+              onTouchStart={startHold}
+              onTouchEnd={stopHold}
+              style={{
+                position: "relative",
+                width: "100%",
+                padding: "15px 20px",
+                background: holdPct > 0 ? "transparent" : "#f0f3ff",
+                border: `1px solid ${holdPct > 0 ? "rgba(1,71,255,0.3)" : "rgba(1,71,255,0.15)"}`,
+                borderRadius: 12,
+                fontSize: 14, fontWeight: 600,
+                letterSpacing: "-0.45px",
+                color: holdPct > 0 ? "#fff" : "#0147ff",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              {advancing
+                ? "Validation en cours..."
+                : holdPct >= 100
+                ? "Validé ✓"
+                : holdPct > 0
+                ? `Maintenir... ${Math.round(holdPct)}%`
+                : `Confirmer : ${currentStage.label}`}
+            </button>
+          </div>
+
+          <button
+            onClick={() => { setShowConfirm(false); stopHold(); }}
+            style={{
+              width: "100%", padding: "13px 20px",
+              background: "transparent",
+              border: "1px solid rgba(0,0,0,0.08)",
+              borderRadius: 12,
+              fontSize: 14, fontWeight: 500,
+              color: "rgba(18,26,46,0.5)",
+              cursor: "pointer",
+              letterSpacing: "-0.45px",
+            }}
+          >
+            Annuler
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

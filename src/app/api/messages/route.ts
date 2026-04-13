@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { project_id, sender_role, sender_name, content } = await request.json();
+    const { project_id, sender_id, sender_role, sender_name, content } = await request.json();
     if (!project_id || !sender_role || !content) {
       return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
     }
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       .insert({
         id: crypto.randomUUID(),
         project_id,
+        sender_id: sender_id ?? "00000000-0000-0000-0000-000000000000",
         sender_role,
         sender_name: sender_name ?? "Utilisateur",
         content,

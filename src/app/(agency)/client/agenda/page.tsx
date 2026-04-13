@@ -218,7 +218,10 @@ export default function ClientAgendaPage() {
                 <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0, zIndex: 1 }}>
                   {/* Barre de progression (flèche + ligne verticale) */}
                   {(() => {
-                    const nowPct = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
+                    const today = new Date();
+                    const start = new Date(startDate);
+                    const elapsedDays = Math.max(0, (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                    const nowPct = Math.min(100, (elapsedDays / totalDays) * 100);
                     return (
                       <div style={{
                         position: "absolute",
@@ -286,8 +289,8 @@ export default function ClientAgendaPage() {
                         }}>
                           {stage.label}
                         </span>
-                        <span style={{ display: "block", marginTop: 6, fontSize: 11, color: c.sub }}>
-                          {stage.duration_days}j
+                        <span style={{ display: "block", marginTop: 4, fontSize: 10, color: c.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {stage.duration_days}j · {stageDeadline(stages, idx, startDate)}
                         </span>
                       </div>
                     );
