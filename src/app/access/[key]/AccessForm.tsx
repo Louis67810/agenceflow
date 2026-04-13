@@ -35,15 +35,15 @@ const jakartaSans: CSSProperties = {
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "12px 16px",
-  fontSize: 18,
+  padding: "8px 20px",
+  fontSize: 14,
   letterSpacing: "-0.45px",
-  lineHeight: "28px",
-  color: "rgba(7, 16, 29, 0.7)",
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
+  lineHeight: "33px",
+  color: "rgba(18, 26, 46, 0.5)",
+  border: "1px solid rgba(0,0,0,0.07)",
+  borderRadius: 8,
   outline: "none",
-  background: "#fff",
+  background: "#f6f6f6",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   const Card = ({ children }: { children: ReactNode }) => (
     <div style={{
       minHeight: "100vh",
-      background: "#f8f9fa",
+      background: "#fbfbfb",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -319,37 +319,15 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     }}>
       <div style={{
         width: "100%",
-        maxWidth: 480,
+        maxWidth: 672,
         background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 20,
+        border: "1px solid rgba(0,0,0,0.18)",
+        borderRadius: 32,
         overflow: "hidden",
+        boxShadow: "0px 96px 27px rgba(0,0,0,0), 0px 62px 25px rgba(0,0,0,0.01), 0px 35px 21px rgba(0,0,0,0.03), 0px 15px 15px rgba(0,0,0,0.04), 0px 4px 8px rgba(0,0,0,0.05)",
+        padding: "48px",
       }}>
-        {/* Card header badge */}
-        <div style={{
-          padding: "16px 24px",
-          borderBottom: "1px solid #f3f4f6",
-        }}>
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            background: "#121a2e",
-            color: "#fff",
-            border: "1px solid #121a2e",
-            borderRadius: 10,
-            padding: "8px 16px",
-            fontSize: 20,
-            fontWeight: 500,
-            lineHeight: "102.88%",
-          }}>
-            {step === "register" ? "Créer mon espace" : "Formulaire"}
-          </div>
-        </div>
-
-        {/* Card body */}
-        <div style={{ padding: "28px 24px 32px" }}>
-          {children}
-        </div>
+        {children}
       </div>
     </div>
   );
@@ -414,8 +392,8 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="votre@email.com" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.25)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; }}
           />
         </div>
 
@@ -466,33 +444,32 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
             onChange={(e) => setConfirmPwd(e.target.value)}
             placeholder="Répétez votre mot de passe" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.25)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; }}
           />
         </div>
 
         {/* CTA */}
-        <button type="submit" disabled={registering}
-          style={{
-            marginTop: 8,
-            background: "#121a2e",
-            color: "#fff",
-            border: "1px solid #121a2e",
-            borderRadius: 12,
-            padding: "14px 24px",
-            fontSize: 16,
-            fontWeight: 500,
-            cursor: registering ? "not-allowed" : "pointer",
-            opacity: registering ? 0.7 : 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}>
-          {registering
-            ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />Création en cours...</>
-            : "Créer mon espace"}
-        </button>
+        <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, marginTop: 8 }}>
+          <button type="submit" disabled={registering}
+            style={{
+              width: "100%",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "18px 24px",
+              background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+              color: "#fff",
+              border: "1px solid #2f4d9d",
+              borderRadius: 10,
+              fontSize: 16, fontWeight: 500, lineHeight: "1.029",
+              cursor: registering ? "not-allowed" : "pointer",
+              opacity: registering ? 0.7 : 1,
+              boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+            }}>
+            {registering
+              ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />Création en cours...</>
+              : "Créer mon espace"}
+          </button>
+        </div>
       </form>
     </Card>
   );
@@ -593,26 +570,27 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <ChevronLeft size={15} />Précédent
             </button>
           )}
-          <button type="submit" disabled={submitting}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "12px 24px",
-              background: "#121a2e",
-              color: "#fff",
-              border: "1px solid #121a2e",
-              borderRadius: 12,
-              fontSize: 16,
-              fontWeight: 500,
-              cursor: submitting ? "not-allowed" : "pointer",
-              opacity: submitting ? 0.7 : 1,
-              marginLeft: "auto",
-            }}>
-            {submitting
-              ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Envoi...</>
-              : isLastPage
-              ? "Envoyer mon formulaire"
-              : <>Suivant <ChevronRight size={15} /></>}
-          </button>
+          <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, marginLeft: "auto" }}>
+            <button type="submit" disabled={submitting}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "14px 24px",
+                background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                color: "#fff",
+                border: "1px solid #2f4d9d",
+                borderRadius: 10,
+                fontSize: 16, fontWeight: 500,
+                cursor: submitting ? "not-allowed" : "pointer",
+                opacity: submitting ? 0.7 : 1,
+                boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+              }}>
+              {submitting
+                ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Envoi...</>
+                : isLastPage
+                ? "Envoyer mon formulaire"
+                : <>Suivant <ChevronRight size={15} /></>}
+            </button>
+          </div>
         </div>
       </form>
     </Card>

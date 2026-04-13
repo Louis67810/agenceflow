@@ -108,8 +108,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
     const clientLinks = [
       { href: "/client", label: "Mon projet", icon: <LayoutDashboard size={18} />, exact: true },
       { href: "/client/messages", label: "Conversation", icon: <MessageSquare size={18} />, exact: false },
-      { href: "/client/projects", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
-      { href: "/client/onboarding", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },
+      { href: "/client/ressources", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
+      { href: "/client/agenda", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },
     ];
 
     return (
@@ -158,18 +158,18 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               );
             }
 
-            // Inactif : texte à gauche, icône à droite
+            // Inactif : icône à gauche, texte à droite
             return (
               <Link key={item.href} href={item.href}
                 style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 12px", borderRadius: 8,
                   fontSize: 14, lineHeight: "20px",
                   color: "rgb(156,163,175)",
                   textDecoration: "none",
                 }}>
-                <span>{item.label}</span>
                 <span style={{ color: "rgb(156,163,175)", display: "flex" }}>{item.icon}</span>
+                <span>{item.label}</span>
               </Link>
             );
           })}
@@ -177,17 +177,17 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
         {/* Bottom — Aide + Paramètres */}
         <div className="px-3 pb-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: 2 }}>
-          {/* Aide : texte gauche, icône droite */}
-          <Link href="/client/onboarding"
+          {/* Aide : icône gauche, texte droite */}
+          <Link href="/client/agenda"
             style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
+              display: "flex", alignItems: "center", gap: 12,
               padding: "10px 12px", borderRadius: 8,
               fontSize: 14, lineHeight: "20px",
               color: "rgb(156,163,175)",
               textDecoration: "none",
             }}>
-            <span>Aide</span>
             <span style={{ display: "flex" }}><HelpCircle size={18} /></span>
+            <span>Aide</span>
           </Link>
 
           {/* Paramètres : icône gauche, texte droite */}

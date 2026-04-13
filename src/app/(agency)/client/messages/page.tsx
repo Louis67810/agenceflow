@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Send, Loader2, MessageSquare, AlertCircle } from "lucide-react";
+import { Send, Loader2, ExternalLink } from "lucide-react";
+import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 interface Message {
   id: string;
@@ -17,14 +18,16 @@ interface Project {
   name: string;
 }
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 export default function ClientMessagesPage() {
   const [project, setProject]   = useState<Project | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
   const [newMsg, setNewMsg]     = useState("");
   const [sending, setSending]   = useState(false);
   const [clientName, setClientName] = useState("Moi");
+  const [convTab, setConvTab]   = useState<"app" | "docs" | "figma" | "framer">("app");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const supabase = createBrowserClient(
@@ -35,21 +38,19 @@ export default function ClientMessagesPage() {
   useEffect(() => {
     async function init() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { setError("Non connecté"); setLoading(false); return; }
+      if (!session) { setLoading(false); return; }
 
-      // Load client's project
       const r = await fetch("/api/projects/me", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const d = await r.json();
       const projects: Project[] = d.projects ?? [];
-      if (projects.length === 0) { setLoading(false); return; }
+      if (!projects.length) { setLoading(false); return; }
 
       const proj = projects[0];
       setProject(proj);
       setClientName(proj.name?.split("—")[1]?.trim() || session.user.email?.split("@")[0] || "Moi");
 
-      // Load messages
       const mr = await fetch(`/api/messages?project_id=${proj.id}`);
       const md = await mr.json();
       setMessages(md.messages ?? []);
@@ -62,8 +63,8 @@ export default function ClientMessagesPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSend(e: { preventDefault?: () => void }) {
+    e.preventDefault?.();
     if (!newMsg.trim() || !project) return;
     setSending(true);
     const r = await fetch("/api/messages", {
@@ -85,102 +86,213 @@ export default function ClientMessagesPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <div className="px-6 lg:px-10 py-5 border-b border-gray-200 bg-white shrink-0">
-        <h1 className="text-lg font-bold text-gray-900">Conversation</h1>
-        {project && (
-          <p className="text-sm text-gray-400 mt-0.5">{project.name}</p>
-        )}
-      </div>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
+      <AgencySidebar role="client" userName={clientName} />
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="animate-spin text-indigo-500" size={28} />
+      {/* Main content */}
+      <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
+
+        {/* Header */}
+        <div style={{ padding: "78px 60px 0" }}>
+          <h1 style={{
+            ...jakartaSans,
+            fontSize: 32, fontWeight: 600,
+            letterSpacing: "-0.45px", lineHeight: "28px",
+            color: "#121a2e", margin: 0,
+          }}>
+            Mes conversations
+          </h1>
         </div>
-      ) : error ? (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 max-w-sm">
-            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-            <p className="text-sm">{error}</p>
-          </div>
-        </div>
-      ) : !project ? (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center">
-            <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <MessageSquare size={22} className="text-gray-300" />
+
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "24px 60px 0" }} />
+
+        {/* Conversation card */}
+        <div style={{ padding: "24px 60px 32px", flex: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{
+            flex: 1,
+            background: "#fff",
+            border: "1px solid rgba(0,0,0,0.18)",
+            borderRadius: 13,
+            overflow: "hidden",
+            display: "flex", flexDirection: "column",
+            boxShadow: "0px 54px 15px rgba(0,0,0,0), 0px 35px 14px rgba(0,0,0,0), 0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
+            minHeight: 500,
+          }}>
+            {/* Conv tabs */}
+            <div style={{
+              background: "#fff",
+              padding: "16px 15px",
+              display: "flex", gap: 6,
+              borderBottom: "1px solid rgba(0,0,0,0.06)",
+            }}>
+              {(["app", "docs", "figma", "framer"] as const).map((t) => (
+                <button key={t} onClick={() => setConvTab(t)}
+                  style={{
+                    padding: "11px 13px",
+                    background: convTab === t ? "#fff" : "transparent",
+                    border: convTab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
+                    borderRadius: 10,
+                    fontSize: 12, fontWeight: 600,
+                    letterSpacing: "-0.45px",
+                    color: convTab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
+                    cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 6,
+                    boxShadow: convTab === t ? "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
+                  }}>
+                  {t === "app" ? "App" : t === "docs" ? "Google Docs" : t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t !== "app" && <ExternalLink size={12} style={{ opacity: 0.5 }} />}
+                </button>
+              ))}
             </div>
-            <p className="text-gray-700 font-semibold mb-1">Aucun projet en cours</p>
-            <p className="text-gray-400 text-sm">Votre conversation apparaîtra ici une fois votre projet démarré.</p>
+
+            {/* Messages area */}
+            <div style={{
+              flex: 1,
+              background: "#fbfbfb",
+              overflowY: "auto",
+              padding: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              borderTop: "1px solid rgba(0,0,0,0.06)",
+            }}>
+              {loading ? (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Loader2 size={24} style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} />
+                </div>
+              ) : convTab === "app" ? (
+                messages.length === 0 ? (
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
+                    <div style={{ width: 56, height: 56, marginBottom: 16, opacity: 0.25 }}>
+                      <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="56" height="56" rx="12" fill="#e0e0e0"/>
+                        <path d="M14 18h28v16a2 2 0 01-2 2H16a2 2 0 01-2-2V18z" stroke="#121a2e" strokeWidth="1.5" fill="none"/>
+                        <circle cx="22" cy="26" r="2" fill="#121a2e"/>
+                        <circle cx="28" cy="26" r="2" fill="#121a2e"/>
+                        <circle cx="34" cy="26" r="2" fill="#121a2e"/>
+                      </svg>
+                    </div>
+                    <p style={{ fontSize: 16, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>
+                      Aucun message pour l&apos;instant
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isClient = msg.sender_role === "client";
+                    return (
+                      <div key={msg.id} style={{ display: "flex", justifyContent: isClient ? "flex-end" : "flex-start", gap: 10 }}>
+                        {!isClient && (
+                          <div style={{
+                            width: 32, height: 32, borderRadius: "50%",
+                            background: "#fff", border: "1px solid rgba(0,0,0,0.08)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 12, fontWeight: 700, color: "#121a2e", flexShrink: 0,
+                          }}>
+                            {msg.sender_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", flexDirection: "column", maxWidth: "60%", alignItems: isClient ? "flex-end" : "flex-start" }}>
+                          <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginBottom: 6, letterSpacing: "-0.45px" }}>
+                            {msg.sender_name}
+                          </span>
+                          <div style={{
+                            padding: "12px 16px",
+                            background: isClient ? "linear-gradient(121deg, rgb(78,126,250), rgb(1,71,255))" : "#fff",
+                            border: isClient ? "none" : "1px solid rgba(0,0,0,0.08)",
+                            borderRadius: 10,
+                            borderTopRightRadius: isClient ? 2 : 10,
+                            borderTopLeftRadius: isClient ? 10 : 2,
+                            fontSize: 14, lineHeight: "1.5",
+                            color: isClient ? "#fff" : "#121a2e",
+                            boxShadow: "0px 2px 5px rgba(0,0,0,0.03)",
+                          }}>
+                            {msg.content}
+                          </div>
+                          <span style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 6, letterSpacing: "-0.45px" }}>
+                            {new Date(msg.created_at).toLocaleString("fr-FR", {
+                              hour: "2-digit", minute: "2-digit",
+                              day: "numeric", month: "short",
+                            })}
+                          </span>
+                        </div>
+                        {isClient && (
+                          <div style={{
+                            width: 32, height: 32, borderRadius: "50%",
+                            background: "rgba(78,126,250,0.1)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 12, fontWeight: 700, color: "#4e7efa", flexShrink: 0,
+                          }}>
+                            {clientName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )
+              ) : (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <p style={{ fontSize: 14, color: "rgba(18,26,46,0.3)", textAlign: "center" }}>
+                    Ouvrez {convTab === "docs" ? "Google Docs" : convTab.charAt(0).toUpperCase() + convTab.slice(1)}<br />pour accéder aux commentaires
+                  </p>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input row */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "8px 28px 12px",
+              background: "#fff",
+            }}>
+              <div style={{
+                flex: 1,
+                background: "#fff",
+                border: "1px solid rgba(158,158,158,0.17)",
+                borderRadius: 10,
+                padding: "11px 13px",
+                boxShadow: "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)",
+              }}>
+                <input
+                  type="text"
+                  value={newMsg}
+                  onChange={(e) => setNewMsg(e.target.value)}
+                  placeholder="Entrez un message ici"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend(e);
+                    }
+                  }}
+                  style={{
+                    width: "100%", border: "none", outline: "none",
+                    fontSize: 12, fontWeight: 600, letterSpacing: "-0.45px",
+                    color: "rgba(18,26,46,0.6)", background: "transparent",
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => handleSend({})}
+                disabled={sending || !newMsg.trim()}
+                style={{
+                  width: 38, height: 38,
+                  background: "linear-gradient(96.83deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                  border: "0.633px solid #2f4d9d",
+                  borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: sending || !newMsg.trim() ? "not-allowed" : "pointer",
+                  opacity: sending || !newMsg.trim() ? 0.5 : 1,
+                  flexShrink: 0,
+                }}>
+                {sending
+                  ? <Loader2 size={14} style={{ color: "#fff", animation: "spin 1s linear infinite" }} />
+                  : <Send size={14} style={{ color: "#fff" }} />}
+              </button>
+            </div>
           </div>
         </div>
-      ) : (
-        <>
-          {/* Messages list */}
-          <div className="flex-1 overflow-y-auto px-6 lg:px-10 py-6 space-y-5 bg-gray-50">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400 py-16">
-                <div className="w-14 h-14 bg-white rounded-2xl border border-gray-200 flex items-center justify-center mb-4">
-                  <MessageSquare size={22} className="opacity-40" />
-                </div>
-                <p className="text-sm font-medium text-gray-600">Aucun message pour l&apos;instant</p>
-                <p className="text-xs text-gray-400 mt-1">Démarrez la conversation avec votre agence.</p>
-              </div>
-            ) : (
-              messages.map((msg) => {
-                const isClient = msg.sender_role === "client";
-                return (
-                  <div key={msg.id} className={`flex gap-3 ${isClient ? "flex-row-reverse" : ""}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${isClient ? "bg-indigo-100 text-indigo-600" : "bg-white border border-gray-200 text-gray-600"}`}>
-                      {msg.sender_name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className={`flex flex-col max-w-xs lg:max-w-md ${isClient ? "items-end" : "items-start"}`}>
-                      <span className="text-xs text-gray-400 mb-1.5">{msg.sender_name}</span>
-                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${isClient ? "bg-indigo-600 text-white rounded-tr-sm" : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"}`}>
-                        {msg.content}
-                      </div>
-                      <span className="text-xs text-gray-400 mt-1.5">
-                        {new Date(msg.created_at).toLocaleString("fr-FR", {
-                          hour: "2-digit", minute: "2-digit",
-                          day: "numeric", month: "short",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="px-6 lg:px-10 py-4 border-t border-gray-200 bg-white shrink-0">
-            <form onSubmit={handleSend} className="flex gap-3 items-end max-w-3xl">
-              <input
-                type="text"
-                value={newMsg}
-                onChange={(e) => setNewMsg(e.target.value)}
-                placeholder="Écrire un message à votre agence..."
-                className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition-all"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend(e);
-                  }
-                }}
-              />
-              <button
-                type="submit"
-                disabled={sending || !newMsg.trim()}
-                className="flex items-center justify-center w-11 h-11 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors shrink-0"
-              >
-                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              </button>
-            </form>
-          </div>
-        </>
-      )}
+      </div>
     </div>
   );
 }
