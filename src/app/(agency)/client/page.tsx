@@ -189,12 +189,12 @@ export default function ClientDashboard() {
       label: "Projet Figma",
       url: figmaUrl,
       icon: (
-        <svg width="13" height="20" viewBox="0 0 13 20" fill="none">
-          <rect fill="#F24E1E" x="0" y="0" width="6.5" height="6.5" rx="3.25"/>
-          <rect fill="#FF7262" x="6.5" y="0" width="6.5" height="6.5" rx="3.25"/>
-          <rect fill="#A259FF" x="0" y="6.5" width="6.5" height="6.5" rx="3.25"/>
-          <circle fill="#1ABCFE" cx="9.75" cy="9.75" r="3.25"/>
-          <rect fill="#0ACF83" x="0" y="13" width="6.5" height="6.5" rx="3.25"/>
+        <svg width="15" height="23" viewBox="0 0 15 23" fill="none">
+          <path d="M0 18.3594C0 16.3315 1.61774 14.6875 3.61328 14.6875H7.22656V18.3594C7.22656 20.3873 5.60882 22.0312 3.61328 22.0312C1.61774 22.0312 0 20.3873 0 18.3594Z" fill="#24CB71"/>
+          <path d="M7.22656 0V7.34375H10.8398C12.8354 7.34375 14.4531 5.69978 14.4531 3.67187C14.4531 1.64397 12.8354 0 10.8398 0H7.22656Z" fill="#FF7237"/>
+          <path d="M10.8096 14.6875C12.8051 14.6875 14.4229 13.0435 14.4229 11.0156C14.4229 8.9877 12.8051 7.34375 10.8096 7.34375C8.81401 7.34375 7.19629 8.9877 7.19629 11.0156C7.19629 13.0435 8.81401 14.6875 10.8096 14.6875Z" fill="#00B6FF"/>
+          <path d="M0 3.67187C0 5.69978 1.61774 7.34375 3.61328 7.34375H7.22656V0H3.61328C1.61774 0 0 1.64397 0 3.67187Z" fill="#FF3737"/>
+          <path d="M0 11.0156C0 13.0435 1.61774 14.6875 3.61328 14.6875H7.22656V7.34375H3.61328C1.61774 7.34375 0 8.98772 0 11.0156Z" fill="#874FFF"/>
         </svg>
       ),
     },
@@ -202,8 +202,8 @@ export default function ClientDashboard() {
       label: "Projet Framer",
       url: framerUrl,
       icon: (
-        <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
-          <path fill="#0075FF" d="M1 0h14v8H8zM1 8h7l7 12H1z"/>
+        <svg width="14" height="21" viewBox="0 0 14 21" fill="none">
+          <path d="M0 0H13.7614V6.88044H6.88071L0 0ZM0 6.88044H6.88071L13.7614 13.7612H0V6.88044ZM0 13.7612H6.88071V20.6419L0 13.7612Z" fill="black"/>
         </svg>
       ),
     },
@@ -221,7 +221,7 @@ export default function ClientDashboard() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* ── Hero : ticker vertical de médias ─────────────────────────── */}
-        <HeroTicker mediaFiles={mediaFiles} />
+        <HeroBanner mediaFiles={mediaFiles} />
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{
@@ -553,96 +553,84 @@ export default function ClientDashboard() {
   );
 }
 
-// ── Hero Ticker ───────────────────────────────────────────────────────────────
-// Colonnes de cartes inclinées qui défilent verticalement.
-// Chaque carte individuelle est tournée (pas la colonne) → pas de dérive horizontale.
+// ── Hero Banner (carrousel) ────────────────────────────────────────────────────
+// Affiche les fichiers média un par un, change toutes les 5 secondes.
+// Si aucun fichier → retourne null (bannière invisible).
 
 interface TickerFile { url: string; type: string; name: string }
 
-function HeroTicker({ mediaFiles }: { mediaFiles: TickerFile[] }) {
-  const NUM_COLS   = 10;
-  const CARD_H     = 280;   // 2× plus grand
-  const CARD_GAP   = 16;
-  const ITEMS_PER  = 4;
-  const TOTAL_H    = (CARD_H + CARD_GAP) * ITEMS_PER;
-  // Même vitesse pour toutes les colonnes → lignes horizontales conservées
-  const SPEED      = 20;    // secondes (÷2 vs l'ancien ~10s)
+function HeroBanner({ mediaFiles }: { mediaFiles: TickerFile[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (mediaFiles.length <= 1) return;
+    const timer = setInterval(() => {
+      setIndex(prev => (prev + 1) % mediaFiles.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [mediaFiles.length]);
+
+  if (mediaFiles.length === 0) return null;
+
+  const current = mediaFiles[index];
 
   return (
     <div style={{
       position: "relative",
-      background: "#eeeeee",
-      borderBottom: "1px solid rgba(0,0,0,0.14)",
       height: 240,
       overflow: "hidden",
       flexShrink: 0,
+      background: "#000",
+      borderBottom: "1px solid rgba(0,0,0,0.10)",
     }}>
-      <style>{`
-        @keyframes tickUp {
-          from { transform: translateY(0); }
-          to   { transform: translateY(-${TOTAL_H}px); }
-        }
-      `}</style>
+      {current.type.startsWith("image") ? (
+        <img
+          key={index}
+          src={current.url}
+          alt=""
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      ) : (
+        <video
+          key={index}
+          src={current.url}
+          autoPlay
+          muted
+          loop
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
+      )}
 
-      {Array.from({ length: NUM_COLS }).map((_, col) => {
-        const leftPct = (col / NUM_COLS) * 100;
-        const widthPct = 100 / NUM_COLS;
-        // Décalage de phase : chaque colonne commence à un point différent
-        // du même cycle → pas de superposition, effet visuel varié
-        const delay   = -((col / NUM_COLS) * SPEED);
-        const offsetY = -(CARD_H / 2);  // même offset pour toutes → alignement horizontal
-
-        const cards = Array.from({ length: ITEMS_PER * 2 }).map((_, i) => {
-          const f = mediaFiles.length > 0 ? mediaFiles[i % mediaFiles.length] : null;
-          return { key: i, file: f };
-        });
-
-        return (
-          <div key={col} style={{
-            position: "absolute",
-            left: `${leftPct}%`,
-            width: `${widthPct}%`,
-            top: offsetY,
-            animation: `tickUp ${SPEED}s ${delay}s linear infinite`,
-            overflow: "hidden",
-            // PAS de rotation sur la colonne → translateY reste vertical pur
-          }}>
-            {cards.map(({ key, file }) => (
-              <div key={key} style={{
-                margin: `0 5px ${CARD_GAP}px 5px`,
-                height: CARD_H,
-                borderRadius: 14,
-                overflow: "hidden",
-                // Rotation sur la CARTE individuelle (pas la colonne)
-                transform: "rotate(10deg)",
-                transformOrigin: "center center",
-                background: "#fff",
-                border: "1px solid rgba(0,0,0,0.10)",
-                boxShadow: "0px 4px 16px rgba(0,0,0,0.06)",
-                flexShrink: 0,
-              }}>
-                {file ? (
-                  file.type.startsWith("image") ? (
-                    <img src={file.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    <video src={file.url} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  )
-                ) : (
-                  <div style={{ width: "100%", height: "100%", background: "#f0f0f0" }} />
-                )}
-              </div>
-            ))}
-          </div>
-        );
-      })}
-
-      {/* Gradient fade bas */}
-      <div style={{
-        position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
-        background: "linear-gradient(to bottom, transparent, #fbfbfb)",
-        zIndex: 10,
-        pointerEvents: "none",
-      }} />
+      {/* Points de navigation */}
+      {mediaFiles.length > 1 && (
+        <div style={{
+          position: "absolute",
+          bottom: 12,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          gap: 6,
+          zIndex: 10,
+        }}>
+          {mediaFiles.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndex(i)}
+              style={{
+                width: i === index ? 20 : 6,
+                height: 6,
+                borderRadius: 3,
+                background: i === index ? "#fff" : "rgba(255,255,255,0.5)",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
