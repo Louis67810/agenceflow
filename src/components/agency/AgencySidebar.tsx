@@ -24,6 +24,8 @@ import {
   Lightbulb,
   ClipboardList,
   Bot,
+  HelpCircle,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -100,6 +102,124 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
   const roleLabel =
     role === "admin" ? "Administration" : role === "client" ? "Espace Client" : "Espace Designer";
+
+  // ── Client sidebar — design fidèle au Framer ────────────────────────────────
+  if (role === "client") {
+    const clientLinks = [
+      { href: "/client", label: "Mon projet", icon: <LayoutDashboard size={18} />, exact: true },
+      { href: "/client/messages", label: "Conversation", icon: <MessageSquare size={18} />, exact: false },
+      { href: "/client/projects", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
+      { href: "/client/onboarding", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },
+    ];
+
+    return (
+      <aside className="fixed left-0 top-0 h-screen w-64 bg-gray-900 flex flex-col z-30"
+        style={{ borderRight: "1px solid rgba(255,255,255,0.08)" }}>
+
+        {/* Header — logo + séparateur + "Espace Client" */}
+        <div className="flex items-center gap-3 px-5 py-4"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Logo SVG simplifié */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
+              <Briefcase size={13} className="text-gray-900" />
+            </div>
+          </div>
+          {/* Séparateur vertical */}
+          <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+          {/* Label */}
+          <span style={{ fontSize: 14, fontWeight: 500, lineHeight: "20px", color: "rgb(255,255,255)" }}>
+            Espace Client
+          </span>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {clientLinks.map((item) => {
+            const isActive = item.exact
+              ? pathname === item.href
+              : pathname.startsWith(item.href);
+
+            if (isActive) {
+              // Actif : icône à gauche, texte blanc
+              return (
+                <Link key={item.href} href={item.href}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 12px", borderRadius: 8,
+                    fontSize: 14, fontWeight: 500, lineHeight: "20px",
+                    color: "rgb(255,255,255)",
+                    textDecoration: "none",
+                  }}>
+                  <span style={{ color: "rgb(255,255,255)", display: "flex" }}>{item.icon}</span>
+                  {item.label}
+                </Link>
+              );
+            }
+
+            // Inactif : texte à gauche, icône à droite
+            return (
+              <Link key={item.href} href={item.href}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 12px", borderRadius: 8,
+                  fontSize: 14, lineHeight: "20px",
+                  color: "rgb(156,163,175)",
+                  textDecoration: "none",
+                }}>
+                <span>{item.label}</span>
+                <span style={{ color: "rgb(156,163,175)", display: "flex" }}>{item.icon}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom — Aide + Paramètres */}
+        <div className="px-3 pb-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: 2 }}>
+          {/* Aide : texte gauche, icône droite */}
+          <Link href="/client/onboarding"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "10px 12px", borderRadius: 8,
+              fontSize: 14, lineHeight: "20px",
+              color: "rgb(156,163,175)",
+              textDecoration: "none",
+            }}>
+            <span>Aide</span>
+            <span style={{ display: "flex" }}><HelpCircle size={18} /></span>
+          </Link>
+
+          {/* Paramètres : icône gauche, texte droite */}
+          <Link href="/client"
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 12px", borderRadius: 8,
+              fontSize: 14, lineHeight: "20px",
+              color: "rgb(156,163,175)",
+              textDecoration: "none",
+            }}>
+            <span style={{ display: "flex" }}><Settings size={18} /></span>
+            <span>Paramètres</span>
+          </Link>
+
+          {/* Déconnexion */}
+          <form action="/api/auth/signout" method="POST">
+            <button type="submit"
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                fontSize: 14, lineHeight: "20px",
+                color: "rgb(156,163,175)",
+                background: "none", border: "none", cursor: "pointer",
+              }}>
+              <LogOut size={18} />
+              <span>Déconnexion</span>
+            </button>
+          </form>
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-gray-900 text-white flex flex-col z-30">
