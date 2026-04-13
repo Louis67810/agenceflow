@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { CSSProperties, ReactNode, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   CheckCircle2, AlertCircle, Loader2, Eye, EyeOff,
-  ChevronRight, ChevronLeft,
+  ChevronRight, ChevronLeft, Briefcase,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -29,22 +29,97 @@ type Step = "loading" | "not_found" | "already_done" | "register" | "form" | "do
 
 // ─── Styles partagés ──────────────────────────────────────────────────────────
 
-const jakartaSans: CSSProperties = {
-  fontFamily: '"Plus Jakarta Sans", sans-serif',
-};
+const jakartaSans: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const inter: CSSProperties       = { fontFamily: '"Inter", sans-serif' };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  padding: "8px 20px",
+  padding: "10px 16px",
   fontSize: 14,
   letterSpacing: "-0.45px",
-  lineHeight: "33px",
-  color: "rgba(18, 26, 46, 0.5)",
+  lineHeight: "24px",
+  color: "#121a2e",          // full opacity — placeholder stays lighter via browser default
   border: "1px solid rgba(0,0,0,0.07)",
   borderRadius: 8,
   outline: "none",
   background: "#f6f6f6",
+  boxSizing: "border-box" as const,
 };
+
+// ─── Card — OUTSIDE component so it never remounts on re-render ───────────────
+// (Définir Card à l'intérieur d'AccessForm cause un bug : chaque frappe
+//  crée un nouveau type de composant → React démonte/remonte → le champ
+//  perd le focus.)
+
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#fbfbfb",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "40px 16px",
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      {/* Formes décoratives */}
+      <div style={{
+        position: "fixed", top: -120, left: -120,
+        width: 450, height: 450,
+        background: "radial-gradient(circle, rgba(78,126,250,0.09) 0%, transparent 70%)",
+        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
+      }} />
+      <div style={{
+        position: "fixed", bottom: -120, right: -120,
+        width: 550, height: 550,
+        background: "radial-gradient(circle, rgba(1,71,255,0.07) 0%, transparent 70%)",
+        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
+      }} />
+      <div style={{
+        position: "fixed", top: "40%", right: -80,
+        width: 280, height: 280,
+        background: "radial-gradient(circle, rgba(98,54,170,0.06) 0%, transparent 70%)",
+        borderRadius: "50%", pointerEvents: "none", zIndex: 0,
+      }} />
+
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 560 }}>
+        {/* Logo */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 18px",
+            background: "#121a2e",
+            borderRadius: 10,
+            boxShadow: "0px 4px 12px rgba(18,26,46,0.15)",
+          }}>
+            <Briefcase size={15} color="#fff" />
+            <span style={{
+              ...jakartaSans,
+              fontSize: 16, fontWeight: 700,
+              letterSpacing: "-0.3px", color: "#fff",
+            }}>
+              Ruff
+            </span>
+          </div>
+        </div>
+
+        {/* Card body */}
+        <div style={{
+          width: "100%",
+          background: "#fff",
+          border: "1px solid rgba(0,0,0,0.13)",
+          borderRadius: 24,
+          overflow: "hidden",
+          boxShadow: "0px 96px 27px rgba(0,0,0,0), 0px 62px 25px rgba(0,0,0,0.01), 0px 35px 21px rgba(0,0,0,0.03), 0px 15px 15px rgba(0,0,0,0.04), 0px 4px 8px rgba(0,0,0,0.05)",
+          padding: "40px 40px",
+        }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -69,10 +144,11 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   const [formError, setFormError]   = useState<string | null>(null);
   const [pageError, setPageError]   = useState<string | null>(null);
 
-  const supabase = createBrowserClient(
+  // useMemo évite de recréer le client à chaque re-render
+  const supabase = useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  ), []);
 
   useEffect(() => {
     fetch(`/api/keys/${accessKey}`)
@@ -111,7 +187,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
   // ── Register ───────────────────────────────────────────────────────────────
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
     if (password !== confirmPwd) { setRegisterError("Les mots de passe ne correspondent pas."); return; }
     if (password.length < 6) { setRegisterError("Le mot de passe doit faire au moins 6 caractères."); return; }
@@ -147,7 +223,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validatePage()) return;
     setSubmitting(true);
@@ -180,7 +256,6 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
     setSubmitting(false);
     if (data.role === "designer" || data.role === "developer") router.push("/designer");
-    else if (data.project_id) router.push(`/client/projects/${data.project_id}`);
     else router.push("/client");
   };
 
@@ -190,14 +265,27 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     const val = (values[field.id] ?? "") as string;
     const setVal = (v: string) => setValues((p) => ({ ...p, [field.id]: v }));
 
+    const focusStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = "rgba(78,126,250,0.5)";
+      e.currentTarget.style.background  = "#fff";
+    };
+    const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)";
+      e.currentTarget.style.background  = "#f6f6f6";
+    };
+
     switch (field.type) {
       case "textarea":
         return <textarea value={val} onChange={(e) => setVal(e.target.value)} required={field.required}
           placeholder={field.placeholder} rows={3}
+          onFocus={focusStyle as React.FocusEventHandler<HTMLTextAreaElement>}
+          onBlur={blurStyle as React.FocusEventHandler<HTMLTextAreaElement>}
           style={{ ...inputStyle, resize: "none" }} />;
       case "select":
         return (
           <select value={val} onChange={(e) => setVal(e.target.value)} required={field.required}
+            onFocus={focusStyle as React.FocusEventHandler<HTMLSelectElement>}
+            onBlur={blurStyle as React.FocusEventHandler<HTMLSelectElement>}
             style={inputStyle}>
             <option value="">-- Choisir --</option>
             {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -210,8 +298,8 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <label key={o} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "10px 16px", borderRadius: 10,
-                border: val === o ? "1px solid #121a2e" : "1px solid #e5e7eb",
-                background: val === o ? "rgba(7,16,29,0.04)" : "#fff",
+                border: val === o ? "1px solid rgba(78,126,250,0.6)" : "1px solid rgba(0,0,0,0.08)",
+                background: val === o ? "rgba(78,126,250,0.05)" : "#fff",
                 fontSize: 14, cursor: "pointer", color: "#121a2e",
               }}>
                 <input type="radio" name={field.id} value={o} checked={val === o} onChange={() => setVal(o)} />
@@ -232,8 +320,8 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
               <label key={o} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "10px 16px", borderRadius: 10,
-                border: checked.includes(o) ? "1px solid #121a2e" : "1px solid #e5e7eb",
-                background: checked.includes(o) ? "rgba(7,16,29,0.04)" : "#fff",
+                border: checked.includes(o) ? "1px solid rgba(78,126,250,0.6)" : "1px solid rgba(0,0,0,0.08)",
+                background: checked.includes(o) ? "rgba(78,126,250,0.05)" : "#fff",
                 fontSize: 14, cursor: "pointer", color: "#121a2e",
               }}>
                 <input type="checkbox" checked={checked.includes(o)} onChange={() => toggle(o)} />
@@ -244,27 +332,63 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         );
       }
       default:
-        return <input
-          type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "phone" ? "tel" : "text"}
-          value={val} onChange={(e) => setVal(e.target.value)} required={field.required}
-          placeholder={field.placeholder ?? ""}
-          style={inputStyle}
-          onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
-        />;
+        return (
+          <input
+            type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "phone" ? "tel" : "text"}
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            required={field.required}
+            placeholder={field.placeholder ?? ""}
+            style={inputStyle}
+            onFocus={focusStyle}
+            onBlur={blurStyle}
+          />
+        );
     }
+  }
+
+  // ── Shared CTA button ─────────────────────────────────────────────────────
+
+  function BlueBtn({ loading, label, loadingLabel }: { loading: boolean; label: string; loadingLabel: string }) {
+    return (
+      <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, marginTop: 8 }}>
+        <button type="submit" disabled={loading}
+          style={{
+            width: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "16px 24px",
+            background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+            color: "#fff",
+            border: "1px solid #2f4d9d",
+            borderRadius: 10,
+            fontSize: 16, fontWeight: 500,
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.7 : 1,
+            boxShadow: [
+              "inset 0px -3px 0px 0px #0e42c8",
+              "inset 0px 2px 6px 4px rgba(0,0,0,0.08)",
+              "inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+              "0px 4px 12px rgba(1,71,255,0.25)",
+            ].join(", "),
+          }}>
+          {loading
+            ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />{loadingLabel}</>
+            : label}
+        </button>
+      </div>
+    );
   }
 
   // ── Écrans état ────────────────────────────────────────────────────────────
 
   if (step === "loading") return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#fbfbfb" }}>
       <Loader2 style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} size={28} />
     </div>
   );
 
   if (step === "not_found") return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#fbfbfb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <AlertCircle size={40} style={{ color: "#ef4444", margin: "0 auto 16px" }} />
         <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>Lien invalide</h1>
@@ -274,7 +398,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   );
 
   if (step === "already_done") return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#fbfbfb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <CheckCircle2 size={40} style={{ color: "#22c55e", margin: "0 auto 16px" }} />
         <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>Formulaire déjà envoyé</h1>
@@ -293,7 +417,7 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
   );
 
   if (step === "done") return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#f9fafb", padding: 24 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#fbfbfb", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 360 }}>
         <CheckCircle2 size={40} style={{ color: "#22c55e", margin: "0 auto 16px" }} />
         <h1 style={{ ...jakartaSans, fontSize: 24, fontWeight: 600, color: "#121a2e", marginBottom: 8 }}>
@@ -306,64 +430,31 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
     </div>
   );
 
-  // ── Shared card layout ────────────────────────────────────────────────────
-
-  const Card = ({ children }: { children: ReactNode }) => (
-    <div style={{
-      minHeight: "100vh",
-      background: "#fbfbfb",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "40px 16px",
-    }}>
-      <div style={{
-        width: "100%",
-        maxWidth: 672,
-        background: "#fff",
-        border: "1px solid rgba(0,0,0,0.18)",
-        borderRadius: 32,
-        overflow: "hidden",
-        boxShadow: "0px 96px 27px rgba(0,0,0,0), 0px 62px 25px rgba(0,0,0,0.01), 0px 35px 21px rgba(0,0,0,0.03), 0px 15px 15px rgba(0,0,0,0.04), 0px 4px 8px rgba(0,0,0,0.05)",
-        padding: "48px",
-      }}>
-        {children}
-      </div>
-    </div>
-  );
-
   // ── Register ───────────────────────────────────────────────────────────────
 
   if (step === "register") return (
     <Card>
-      {/* Title */}
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{
           ...jakartaSans,
-          fontSize: 32,
-          fontWeight: 600,
-          letterSpacing: "-0.45px",
-          lineHeight: "28px",
-          color: "#121a2e",
-          marginBottom: 12,
-          paddingTop: 4,
+          fontSize: 28, fontWeight: 700,
+          letterSpacing: "-0.5px", lineHeight: "32px",
+          color: "#121a2e", marginBottom: 10,
         }}>
           Bienvenue, {keyData?.name} !
         </h1>
         <p style={{
-          fontSize: 20,
-          fontWeight: 500,
-          letterSpacing: "-0.45px",
-          lineHeight: "28px",
-          color: "rgba(7,16,29,0.7)",
+          ...inter,
+          fontSize: 16, fontWeight: 400,
+          letterSpacing: "-0.2px", lineHeight: "24px",
+          color: "rgba(18,26,46,0.55)",
         }}>
           {keyData?.role === "designer"
             ? "Créez votre accès prestataire pour rejoindre l'agence."
-            : "Remplissez les champs ci dessous pour créer votre compte."}
+            : "Remplissez les champs ci-dessous pour créer votre compte."}
         </p>
       </div>
 
-      {/* Error */}
       {registerError && (
         <div style={{
           display: "flex", gap: 10, padding: "12px 16px",
@@ -375,101 +466,56 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         </div>
       )}
 
-      {/* Form */}
-      <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        {/* Email */}
+      <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
-          <label style={{
-            display: "block",
-            ...jakartaSans,
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: "-0.45px",
-            lineHeight: "28px",
-            color: "#121a2e",
-            marginBottom: 8,
-          }}>Email</label>
+          <label style={{ ...jakartaSans, display: "block", fontSize: 14, fontWeight: 600, color: "#121a2e", marginBottom: 6 }}>
+            Email
+          </label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="votre@email.com" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.25)"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(78,126,250,0.5)"; e.currentTarget.style.background = "#fff"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; e.currentTarget.style.background = "#f6f6f6"; }}
           />
         </div>
 
-        {/* Password */}
         <div>
-          <label style={{
-            display: "block",
-            ...jakartaSans,
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: "-0.45px",
-            lineHeight: "28px",
-            color: "#121a2e",
-            marginBottom: 8,
-          }}>Mot de passe</label>
+          <label style={{ ...jakartaSans, display: "block", fontSize: 14, fontWeight: 600, color: "#121a2e", marginBottom: 6 }}>
+            Mot de passe
+          </label>
           <div style={{ position: "relative" }}>
             <input type={showPwd ? "text" : "password"} value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Minimum 6 caractères" required minLength={6}
               style={{ ...inputStyle, paddingRight: 44 }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "#121a2e"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(78,126,250,0.5)"; e.currentTarget.style.background = "#fff"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; e.currentTarget.style.background = "#f6f6f6"; }}
             />
             <button type="button" onClick={() => setShowPwd(!showPwd)}
               style={{
-                position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-                background: "none", border: "none", cursor: "pointer", color: "rgba(7,16,29,0.4)",
-                display: "flex", alignItems: "center",
+                position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)",
+                display: "flex", alignItems: "center", padding: 0,
               }}>
               {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
         </div>
 
-        {/* Confirm password */}
         <div>
-          <label style={{
-            display: "block",
-            ...jakartaSans,
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: "-0.45px",
-            lineHeight: "28px",
-            color: "#121a2e",
-            marginBottom: 8,
-          }}>Confirmez le mot de passe</label>
+          <label style={{ ...jakartaSans, display: "block", fontSize: 14, fontWeight: 600, color: "#121a2e", marginBottom: 6 }}>
+            Confirmez le mot de passe
+          </label>
           <input type={showPwd ? "text" : "password"} value={confirmPwd}
             onChange={(e) => setConfirmPwd(e.target.value)}
             placeholder="Répétez votre mot de passe" required
             style={inputStyle}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.25)"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(78,126,250,0.5)"; e.currentTarget.style.background = "#fff"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.07)"; e.currentTarget.style.background = "#f6f6f6"; }}
           />
         </div>
 
-        {/* CTA */}
-        <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, marginTop: 8 }}>
-          <button type="submit" disabled={registering}
-            style={{
-              width: "100%",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "18px 24px",
-              background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-              color: "#fff",
-              border: "1px solid #2f4d9d",
-              borderRadius: 10,
-              fontSize: 16, fontWeight: 500, lineHeight: "1.029",
-              cursor: registering ? "not-allowed" : "pointer",
-              opacity: registering ? 0.7 : 1,
-              boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
-            }}>
-            {registering
-              ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />Création en cours...</>
-              : "Créer mon espace"}
-          </button>
-        </div>
+        <BlueBtn loading={registering} label="Créer mon espace" loadingLabel="Création en cours..." />
       </form>
     </Card>
   );
@@ -480,42 +526,36 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
 
   return (
     <Card>
-      {/* Progress */}
       {totalPages > 1 && (
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontSize: 14, color: "rgba(7,16,29,0.5)" }}>{currentPage?.title}</span>
-            <span style={{ fontSize: 14, color: "rgba(7,16,29,0.5)" }}>{pageIndex + 1} / {totalPages}</span>
+            <span style={{ ...inter, fontSize: 13, color: "rgba(18,26,46,0.5)" }}>{currentPage?.title}</span>
+            <span style={{ ...inter, fontSize: 13, color: "rgba(18,26,46,0.5)" }}>{pageIndex + 1} / {totalPages}</span>
           </div>
           <div style={{ height: 4, background: "#f3f4f6", borderRadius: 2, overflow: "hidden" }}>
             <div style={{
-              height: "100%",
-              background: "#121a2e",
-              borderRadius: 2,
-              width: `${((pageIndex + 1) / totalPages) * 100}%`,
-              transition: "width 0.3s",
+              height: "100%", background: "linear-gradient(90deg, rgb(78,126,250), rgb(1,71,255))",
+              borderRadius: 2, width: `${((pageIndex + 1) / totalPages) * 100}%`, transition: "width 0.3s",
             }} />
           </div>
         </div>
       )}
 
-      {/* Title */}
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         {totalPages > 1
-          ? <h2 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>{currentPage?.title}</h2>
+          ? <h2 style={{ ...jakartaSans, fontSize: 28, fontWeight: 700, letterSpacing: "-0.5px", color: "#121a2e" }}>{currentPage?.title}</h2>
           : (
             <>
-              <h1 style={{ ...jakartaSans, fontSize: 32, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e", marginBottom: 8 }}>
+              <h1 style={{ ...jakartaSans, fontSize: 28, fontWeight: 700, letterSpacing: "-0.5px", color: "#121a2e", marginBottom: 8 }}>
                 Votre formulaire
               </h1>
-              <p style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.45px", color: "rgba(7,16,29,0.7)" }}>
+              <p style={{ ...inter, fontSize: 16, color: "rgba(18,26,46,0.55)" }}>
                 Remplissez ces informations pour démarrer votre projet.
               </p>
             </>
           )}
       </div>
 
-      {/* Error */}
       {(pageError || formError) && (
         <div style={{
           display: "flex", gap: 10, padding: "12px 16px",
@@ -527,20 +567,14 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         </div>
       )}
 
-      {/* Fields */}
       <form onSubmit={isLastPage ? handleSubmit : (e) => { e.preventDefault(); handleNext(); }}
-        style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {fields.map((field) => (
           <div key={field.id}>
             <label style={{
-              display: "block",
-              ...jakartaSans,
-              fontSize: 20,
-              fontWeight: 600,
-              letterSpacing: "-0.45px",
-              lineHeight: "28px",
-              color: "#121a2e",
-              marginBottom: 8,
+              ...jakartaSans, display: "block",
+              fontSize: 14, fontWeight: 600,
+              color: "#121a2e", marginBottom: 6,
             }}>
               {field.label}
               {field.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
@@ -550,30 +584,27 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
         ))}
 
         <div style={{
-          display: "flex",
-          gap: 12,
-          paddingTop: 8,
+          display: "flex", gap: 12, paddingTop: 4,
           justifyContent: pageIndex > 0 ? "space-between" : "flex-end",
+          alignItems: "center",
         }}>
           {pageIndex > 0 && (
             <button type="button" onClick={handlePrev}
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "12px 20px",
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                background: "#fff",
-                fontSize: 14,
-                color: "#121a2e",
-                cursor: "pointer",
+                border: "1px solid rgba(0,0,0,0.1)",
+                borderRadius: 10, background: "#fff",
+                fontSize: 14, color: "#121a2e", cursor: "pointer",
               }}>
               <ChevronLeft size={15} />Précédent
             </button>
           )}
-          <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, marginLeft: "auto" }}>
+          <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15, flex: pageIndex === 0 ? 1 : "none" }}>
             <button type="submit" disabled={submitting}
               style={{
-                display: "flex", alignItems: "center", gap: 8,
+                width: "100%",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 padding: "14px 24px",
                 background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
                 color: "#fff",
@@ -582,13 +613,19 @@ export default function AccessForm({ accessKey }: { accessKey: string }) {
                 fontSize: 16, fontWeight: 500,
                 cursor: submitting ? "not-allowed" : "pointer",
                 opacity: submitting ? 0.7 : 1,
-                boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+                whiteSpace: "nowrap",
+                boxShadow: [
+                  "inset 0px -3px 0px 0px #0e42c8",
+                  "inset 0px 2px 6px 4px rgba(0,0,0,0.08)",
+                  "inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+                  "0px 4px 12px rgba(1,71,255,0.25)",
+                ].join(", "),
               }}>
               {submitting
                 ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Envoi...</>
                 : isLastPage
-                ? "Envoyer mon formulaire"
-                : <>Suivant <ChevronRight size={15} /></>}
+                  ? "Envoyer mon formulaire"
+                  : <>Suivant <ChevronRight size={15} /></>}
             </button>
           </div>
         </div>

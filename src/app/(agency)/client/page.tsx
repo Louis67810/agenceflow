@@ -5,7 +5,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { Loader2, Send, FolderOpen, ExternalLink } from "lucide-react";
 import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface Stage {
   id: string;
@@ -43,24 +43,22 @@ interface ProjectFile {
   created_at: string;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
-// Couleurs des étapes (fidèles au Figma)
-function stageColors(stage: Stage, idx: number, currentIdx: number) {
+// 3 couleurs cycliques + vert quand validée
+function stageColors(stage: Stage, idx: number) {
   if (stage.completed) return {
-    bg: "#d1fae5", border: "1px solid rgba(102,59,18,0.17)",
+    bg: "#d1fae5", border: "1px solid rgba(22,139,100,0.2)",
     text: "#168b64", sub: "rgba(22,139,100,0.7)",
   };
-  if (idx === currentIdx) return {
-    bg: "#fee6d0", border: "1px solid rgba(102,59,18,0.17)",
-    text: "#663b12", sub: "rgba(102,59,18,0.7)",
-  };
-  return {
-    bg: "#d5eeff", border: "1px solid rgba(102,59,18,0.17)",
-    text: "#073e63", sub: "rgba(7,62,99,0.7)",
-  };
+  const palette = [
+    { bg: "#fee6d0", border: "1px solid rgba(102,59,18,0.17)", text: "#663b12", sub: "rgba(102,59,18,0.7)"  },
+    { bg: "#d5eeff", border: "1px solid rgba(7,62,99,0.17)",   text: "#073e63", sub: "rgba(7,62,99,0.7)"    },
+    { bg: "#E1D1FA", border: "1px solid rgba(98,54,170,0.17)", text: "#6236AA", sub: "rgba(98,54,170,0.7)"  },
+  ];
+  return palette[idx % 3];
 }
 
 function stageDeadline(stages: Stage[], upToIdx: number, startDate: string): string {
@@ -69,7 +67,11 @@ function stageDeadline(stages: Stage[], upToIdx: number, startDate: string): str
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+const GDOCS_LOGO  = "https://www.figma.com/api/mcp/asset/5e6372b4-16fb-4b2a-ac9c-f7812ea0f33b";
+const FIGMA_LOGO  = "https://www.figma.com/api/mcp/asset/b4e5daec-6971-417b-af37-6027f6a670ac";
+const FRAMER_LOGO = "https://www.figma.com/api/mcp/asset/79058a24-e856-492e-8390-f8c869d50e7c";
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ClientDashboard() {
   const [project, setProject]       = useState<Project | null>(null);
@@ -122,8 +124,8 @@ export default function ClientDashboard() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function handleSend(e: { preventDefault: () => void }) {
-    e.preventDefault();
+  async function handleSend(e: React.FormEvent | { preventDefault?: () => void }) {
+    if ("preventDefault" in e) e.preventDefault?.();
     if (!newMsg.trim() || !project) return;
     setSending(true);
     const r = await fetch("/api/messages", {
@@ -149,7 +151,7 @@ export default function ClientDashboard() {
     setAdvancing(false);
   }
 
-  // ── Loading / empty states ───────────────────────────────────────────────
+  // ── Loading / empty ───────────────────────────────────────────────────────
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#fbfbfb" }}>
@@ -158,9 +160,12 @@ export default function ClientDashboard() {
   );
 
   if (!project) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#fbfbfb", flexDirection: "column", gap: 12 }}>
-      <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.2)" }} />
-      <p style={{ fontSize: 16, color: "rgba(18,26,46,0.5)" }}>Aucun projet en cours</p>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
+      <AgencySidebar role="client" userName={clientName} />
+      <div style={{ marginLeft: 256, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+        <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.2)" }} />
+        <p style={{ fontSize: 16, color: "rgba(18,26,46,0.5)" }}>Aucun projet en cours</p>
+      </div>
     </div>
   );
 
@@ -170,27 +175,34 @@ export default function ClientDashboard() {
   const startDate   = project.start_date ?? project.created_at.split("T")[0];
   const totalDays   = stages.reduce((s, st) => s + (st.duration_days || 1), 0);
 
-  // Liens outils depuis form_data
   const googleDocsUrl = (project.form_data?.google_docs_url ?? project.form_data?.docs_url ?? "") as string;
   const figmaUrl      = (project.form_data?.figma_url ?? "") as string;
   const framerUrl     = (project.form_data?.framer_url ?? "") as string;
 
   const toolLinks = [
-    { label: "Projet Google Docs", url: googleDocsUrl, icon: "https://www.figma.com/api/mcp/asset/5e6372b4-16fb-4b2a-ac9c-f7812ea0f33b" },
-    { label: "Projet Figma",       url: figmaUrl,      icon: "https://www.figma.com/api/mcp/asset/b4e5daec-6971-417b-af37-6027f6a670ac" },
-    { label: "Projet Framer",      url: framerUrl,     icon: "https://www.figma.com/api/mcp/asset/79058a24-e856-492e-8390-f8c869d50e7c" },
+    { label: "Projet Google Docs", url: googleDocsUrl, icon: GDOCS_LOGO },
+    { label: "Projet Figma",       url: figmaUrl,      icon: FIGMA_LOGO },
+    { label: "Projet Framer",      url: framerUrl,     icon: FRAMER_LOGO },
   ];
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // Ticker items = ressources disponibles (répétées pour loop sans fin)
+  const tickerSource = [
+    ...(googleDocsUrl ? [{ label: "Google Docs", icon: GDOCS_LOGO }] : []),
+    ...(figmaUrl      ? [{ label: "Figma",        icon: FIGMA_LOGO  }] : []),
+    ...(framerUrl     ? [{ label: "Framer",       icon: FRAMER_LOGO }] : []),
+    { label: "Projet", icon: GDOCS_LOGO },
+    { label: "Design", icon: FIGMA_LOGO },
+  ].slice(0, 5);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
       <AgencySidebar role="client" userName={clientName} />
 
-      {/* Main content */}
       <div style={{ marginLeft: 256, flex: 1, display: "flex", flexDirection: "column" }}>
 
-        {/* ── Hero section (rotating cards) ─────────────────────────────── */}
+        {/* ── Hero section : ticker vertical ───────────────────────────── */}
         <div style={{
           position: "relative",
           background: "#eeeeee",
@@ -199,35 +211,69 @@ export default function ClientDashboard() {
           overflow: "hidden",
           flexShrink: 0,
         }}>
-          {Array.from({ length: 12 }).map((_, i) => {
-            const row = i % 2;
-            const col = Math.floor(i / 2);
+          {/* Colonnes ticker */}
+          <style>{`
+            @keyframes tickUp {
+              from { transform: translateY(0) rotate(15.12deg); }
+              to   { transform: translateY(-50%) rotate(15.12deg); }
+            }
+          `}</style>
+          {Array.from({ length: 6 }).map((_, col) => {
+            const item = tickerSource[col % tickerSource.length];
+            const speed = 6 + col * 1.4;
+            const delay = -(col * 1.1);
             return (
-              <div key={i} style={{
+              <div key={col} style={{
                 position: "absolute",
-                left: col * 200 - 60,
-                top: row === 0 ? -60 : 80,
-                width: 260,
-                height: 180,
-                border: "1px solid rgba(0,0,0,0.18)",
-                borderRadius: 13,
-                background: "#fff",
-                transform: "rotate(15.12deg)",
-                boxShadow: "0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
-              }} />
+                left: col * 170 - 40,
+                top: 0,
+                width: 160,
+                display: "flex",
+                flexDirection: "column",
+                animation: `tickUp ${speed}s ${delay}s linear infinite`,
+                transformOrigin: "center center",
+              }}>
+                {/* Duplicate 2× for seamless loop */}
+                {[0, 1].map((dup) => (
+                  <div key={dup} style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 12 }}>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} style={{
+                        width: 160,
+                        height: 110,
+                        border: "1px solid rgba(0,0,0,0.13)",
+                        borderRadius: 13,
+                        background: "#fff",
+                        boxShadow: "0px 4px 8px rgba(0,0,0,0.04)",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        flexShrink: 0,
+                      }}>
+                        <img src={item.icon} alt="" style={{ width: 28, height: 28, objectFit: "contain", opacity: 0.4 }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.3px", ...jakartaSans }}>
+                          {item.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             );
           })}
-          {/* Gradient fade at bottom */}
+          {/* Gradient fade bottom */}
           <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0, height: 76,
+            position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
             background: "linear-gradient(to bottom, transparent, #fbfbfb)",
+            zIndex: 2,
           }} />
         </div>
 
-        {/* ── Header: title + validate button ──────────────────────────── */}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "24px 70px 16px",
+          padding: "24px 32px 16px",
         }}>
           <h1 style={{
             ...jakartaSans,
@@ -243,35 +289,40 @@ export default function ClientDashboard() {
               <button onClick={handleValidate} disabled={advancing}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  padding: "18px 24px",
+                  padding: "16px 22px",
                   background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
                   color: "#fff",
                   border: "1px solid #2f4d9d",
                   borderRadius: 10,
-                  fontSize: 16, fontWeight: 500, lineHeight: "1.029",
+                  fontSize: 14, fontWeight: 500,
                   cursor: advancing ? "not-allowed" : "pointer",
                   opacity: advancing ? 0.7 : 1,
-                  boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+                  boxShadow: [
+                    "inset 0px -3px 0px 0px #0e42c8",
+                    "inset 0px 2px 6px 4px rgba(0,0,0,0.08)",
+                    "inset 0px 3px 0px 0px rgba(255,255,255,0.5)",
+                    "0px 4px 12px rgba(1,71,255,0.2)",
+                  ].join(", "),
                   whiteSpace: "nowrap",
                 }}>
                 {advancing
                   ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Validation...</>
-                  : `Valider l'étape : ${currentStage.label}`}
+                  : `Valider : ${currentStage.label}`}
               </button>
             </div>
           )}
         </div>
 
         {/* Divider */}
-        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "0 70px" }} />
+        <div style={{ height: 1, background: "rgba(0,0,0,0.07)", margin: "0 32px" }} />
 
-        {/* ── Main content area ────────────────────────────────────────── */}
-        <div style={{ display: "flex", gap: 20, padding: "24px 70px 32px", flex: 1 }}>
+        {/* ── Main content ────────────────────────────────────────────────── */}
+        <div style={{ display: "flex", gap: 16, padding: "20px 32px 32px", flex: 1 }}>
 
           {/* Left column */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
 
-            {/* Stage Gantt */}
+            {/* Gantt */}
             {stages.length > 0 && (
               <div style={{
                 position: "relative",
@@ -281,67 +332,87 @@ export default function ClientDashboard() {
                 overflow: "hidden",
                 flexShrink: 0,
               }}>
-                {/* Vertical now-line */}
-                {(() => {
-                  const nowRatio = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays;
-                  return (
-                    <div style={{
-                      position: "absolute",
-                      left: `calc(21px + ${nowRatio * 80}%)`,
-                      top: 10, bottom: 10, width: 2,
-                      background: "rgba(0,0,0,0.25)",
-                      zIndex: 2,
-                    }} />
-                  );
-                })()}
-                {/* Stage pills — alternating rows */}
-                {(() => {
-                  let leftAccum = 21;
-                  return stages.map((stage, idx) => {
-                    const c = stageColors(stage, idx, currentIdx);
-                    const widthRatio = (stage.duration_days || 1) / totalDays;
-                    const W = Math.floor(widthRatio * 860);
-                    const isTop = idx % 2 === 0;
-                    const left = leftAccum + (isTop ? 0 : Math.floor(W * 0.15));
-                    leftAccum += Math.floor(widthRatio * 500);
+                {/* Background deco cards */}
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} style={{
+                    position: "absolute",
+                    width: 180, height: 100,
+                    background: "rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    borderRadius: 10,
+                    transform: "rotate(-6deg)",
+                    top: i % 2 === 0 ? -30 : 80,
+                    left: i * 220 - 20,
+                    zIndex: 0,
+                  }} />
+                ))}
+
+                {/* Inner positioning area */}
+                <div style={{ position: "absolute", left: 16, right: 16, top: 0, bottom: 0, zIndex: 1 }}>
+                  {/* Now-line */}
+                  {(() => {
+                    const nowPct = stages.slice(0, currentIdx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
+                    return (
+                      <div style={{
+                        position: "absolute",
+                        left: `${nowPct}%`,
+                        top: 8, bottom: 8, width: 2,
+                        background: "rgba(0,0,0,0.3)",
+                        zIndex: 3,
+                        borderRadius: 1,
+                      }} />
+                    );
+                  })()}
+
+                  {/* Stage pills — proportional + alternating rows */}
+                  {stages.map((stage, idx) => {
+                    const startPct = stages.slice(0, idx).reduce((s, st) => s + (st.duration_days || 1), 0) / totalDays * 100;
+                    const widthPct = (stage.duration_days || 1) / totalDays * 100;
+                    const isTop    = idx % 2 === 0;
+                    const c        = stageColors(stage, idx);
                     return (
                       <div key={stage.id ?? idx} style={{
                         position: "absolute",
-                        top: isTop ? 31 : 109,
-                        left,
-                        width: Math.max(W, 120),
-                        height: 74,
+                        left: `${startPct}%`,
+                        width: `calc(${widthPct}% - 8px)`,
+                        top: isTop ? 24 : 104,
+                        height: 70,
                         background: c.bg,
                         border: c.border,
                         borderRadius: 10,
-                        padding: "15px 13px",
-                        boxShadow: "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)",
-                        display: "flex", flexDirection: "column", gap: 8,
+                        padding: "12px 11px",
+                        boxShadow: "0px 4px 8px rgba(0,0,0,0.06)",
+                        overflow: "hidden",
+                        boxSizing: "border-box",
+                        zIndex: 2,
                       }}>
                         <span style={{
-                          fontSize: 14, fontWeight: 600,
+                          display: "block",
+                          fontSize: 13, fontWeight: 600,
                           letterSpacing: "-0.45px", lineHeight: "16px",
                           color: c.text,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {stage.label}
                         </span>
                         <span style={{
-                          fontSize: 13, fontWeight: 500,
-                          letterSpacing: "-0.45px", lineHeight: "13px",
+                          display: "block", marginTop: 6,
+                          fontSize: 11, fontWeight: 500,
+                          letterSpacing: "-0.3px",
                           color: c.sub,
                         }}>
                           {idx === currentIdx && !stage.completed
-                            ? `${stage.duration_days} j : fin ${stageDeadline(stages, idx, startDate)}`
-                            : `${stage.duration_days} jours`}
+                            ? `fin ${stageDeadline(stages, idx, startDate)}`
+                            : `${stage.duration_days}j`}
                         </span>
                       </div>
                     );
-                  });
-                })()}
+                  })}
+                </div>
               </div>
             )}
 
-            {/* Tool links card (Liens/Brief/Fichiers) */}
+            {/* Tool links card */}
             <div style={{
               background: "#fff",
               border: "1px solid rgba(0,0,0,0.18)",
@@ -363,45 +434,41 @@ export default function ClientDashboard() {
                       background: tab === t ? "#fff" : "transparent",
                       border: tab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
                       borderRadius: 10,
-                      fontSize: 12, fontWeight: 600,
-                      letterSpacing: "-0.45px", lineHeight: "16px",
+                      fontSize: 14, fontWeight: 600,
+                      letterSpacing: "-0.45px",
                       color: tab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
                       cursor: "pointer",
-                      boxShadow: tab === t ? "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
+                      boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
                     }}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
 
-              {/* Content */}
-              <div style={{ padding: "18px" }}>
+              <div style={{ padding: "14px 16px" }}>
                 {tab === "liens" && (
                   <>
                     {toolLinks.map((link, i) => (
                       <div key={link.label}>
                         <div style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
-                          background: "#fff",
-                          borderRadius: 10,
-                          padding: 14,
-                          opacity: (!link.url && i === 2) ? 0.39 : 1,
+                          padding: "12px 6px",
+                          opacity: !link.url ? 0.4 : 1,
                         }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                             <div style={{
-                              width: 38, height: 39,
+                              width: 42, height: 42,
                               background: "#f7f7f7",
-                              borderRadius: 4,
+                              borderRadius: 6,
                               overflow: "hidden",
                               flexShrink: 0,
                               display: "flex", alignItems: "center", justifyContent: "center",
                             }}>
-                              <img src={link.icon} alt="" style={{ width: 24, height: 24, objectFit: "contain" }} />
+                              <img src={link.icon} alt="" style={{ width: 26, height: 26, objectFit: "contain" }} />
                             </div>
                             <span style={{
-                              fontSize: 14, fontWeight: 600,
-                              letterSpacing: "-0.45px", lineHeight: "16px",
-                              color: "#121a2e",
+                              fontSize: 15, fontWeight: 600,
+                              letterSpacing: "-0.45px", color: "#121a2e",
                             }}>
                               {link.label}
                             </span>
@@ -410,28 +477,29 @@ export default function ClientDashboard() {
                             <a href={link.url} target="_blank" rel="noopener noreferrer"
                               style={{
                                 display: "flex", alignItems: "center",
-                                padding: "12px 14px",
+                                padding: "10px 14px",
                                 background: "#fff",
-                                border: "1px solid rgba(0,0,0,0.06)",
+                                border: "1px solid rgba(0,0,0,0.08)",
                                 borderRadius: 10,
-                                fontSize: 12, fontWeight: 500, lineHeight: "1.029",
+                                fontSize: 13, fontWeight: 500,
                                 color: "#121a2e", textDecoration: "none",
+                                boxShadow: "0px 2px 4px rgba(0,0,0,0.04)",
                               }}>
                               Ouvrir
                             </a>
                           ) : (
                             <span style={{
-                              padding: "12px 14px",
+                              padding: "10px 14px",
                               border: "1px solid rgba(0,0,0,0.06)",
                               borderRadius: 10,
-                              fontSize: 12, color: "rgba(18,26,46,0.3)",
+                              fontSize: 13, color: "rgba(18,26,46,0.3)",
                             }}>
                               Ouvrir
                             </span>
                           )}
                         </div>
                         {i < toolLinks.length - 1 && (
-                          <div style={{ height: 1, background: "rgba(0,0,0,0.06)", margin: "0 4px" }} />
+                          <div style={{ height: 1, background: "rgba(0,0,0,0.05)", margin: "0 6px" }} />
                         )}
                       </div>
                     ))}
@@ -439,26 +507,31 @@ export default function ClientDashboard() {
                 )}
 
                 {tab === "brief" && (
-                  <div style={{ padding: "16px 0", color: "rgba(18,26,46,0.5)", fontSize: 14 }}>
-                    {project.form_data && Object.keys(project.form_data).length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ padding: "4px 0" }}>
+                    {project.form_data && Object.keys(project.form_data).filter(k => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k)).length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column" }}>
                         {Object.entries(project.form_data)
                           .filter(([k]) => !k.startsWith("_") && !["google_docs_url","figma_url","framer_url","docs_url"].includes(k))
-                          .map(([k, v]) => (
+                          .map(([k, v], i, arr) => (
                             <div key={k}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{k}</span>
-                              <p style={{ margin: "4px 0 0", fontSize: 14, color: "#121a2e" }}>{String(v)}</p>
+                              <div style={{ padding: "12px 6px" }}>
+                                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.45)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4 }}>
+                                  {k.replace(/_/g, " ")}
+                                </span>
+                                <p style={{ margin: 0, fontSize: 15, color: "#121a2e", lineHeight: "1.5" }}>{String(v)}</p>
+                              </div>
+                              {i < arr.length - 1 && <div style={{ height: 1, background: "rgba(0,0,0,0.05)", margin: "0 6px" }} />}
                             </div>
                           ))}
                       </div>
                     ) : (
-                      <p>Aucun brief disponible pour l&apos;instant.</p>
+                      <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun brief disponible pour l&apos;instant.</p>
                     )}
                   </div>
                 )}
 
                 {tab === "fichiers" && (
-                  <div style={{ padding: "8px 0" }}>
+                  <div style={{ padding: "4px 0" }}>
                     {files.length === 0 ? (
                       <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, padding: "8px 0" }}>Aucun fichier partagé pour l&apos;instant.</p>
                     ) : (
@@ -466,7 +539,7 @@ export default function ClientDashboard() {
                         <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
                           style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "12px 14px", borderRadius: 10, textDecoration: "none",
+                            padding: "12px 10px", borderRadius: 10, textDecoration: "none",
                             border: "1px solid rgba(0,0,0,0.06)", marginBottom: 6,
                           }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: "#121a2e" }}>{f.name}</span>
@@ -480,9 +553,9 @@ export default function ClientDashboard() {
             </div>
           </div>
 
-          {/* Right column: Conversation panel */}
+          {/* Right column: Conversation */}
           <div style={{
-            width: 380,
+            width: 360,
             flexShrink: 0,
             background: "#fff",
             border: "1px solid rgba(0,0,0,0.18)",
@@ -491,17 +564,8 @@ export default function ClientDashboard() {
             display: "flex", flexDirection: "column",
             boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
           }}>
-            {/* Header */}
-            <div style={{
-              padding: "18px 24px 14px",
-              borderBottom: "1px solid rgba(0,0,0,0.06)",
-            }}>
-              <span style={{
-                ...jakartaSans,
-                fontSize: 20, fontWeight: 600,
-                letterSpacing: "-0.45px", lineHeight: "16px",
-                color: "#121a2e",
-              }}>
+            <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+              <span style={{ ...jakartaSans, fontSize: 18, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
                 Conversation
               </span>
             </div>
@@ -510,94 +574,79 @@ export default function ClientDashboard() {
             <div style={{
               background: "#fbfbfb",
               borderBottom: "1px solid rgba(0,0,0,0.06)",
-              padding: "11px 18px",
-              display: "flex", gap: 6,
+              padding: "10px 14px",
+              display: "flex", gap: 4,
             }}>
-              {(["app", "docs", "figma", "framer"] as const).map((t) => (
-                <button key={t} onClick={() => setConvTab(t)}
-                  style={{
-                    padding: "11px 13px",
-                    background: convTab === t ? "#fff" : "transparent",
-                    border: convTab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
-                    borderRadius: 10,
-                    fontSize: 12, fontWeight: 600,
-                    letterSpacing: "-0.45px",
-                    color: convTab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
-                    cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: 6,
-                    boxShadow: convTab === t ? "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
-                  }}>
-                  {t === "app" ? "App" : t === "docs" ? "Google Docs" : t.charAt(0).toUpperCase() + t.slice(1)}
-                  {t !== "app" && (
-                    <ExternalLink size={12} style={{ opacity: 0.5 }} />
-                  )}
-                </button>
-              ))}
+              {(["app", "docs", "figma", "framer"] as const).map((t) => {
+                const url = t === "docs" ? googleDocsUrl : t === "figma" ? figmaUrl : t === "framer" ? framerUrl : "";
+                const disabled = t !== "app" && !url;
+                return (
+                  <button key={t}
+                    onClick={() => {
+                      if (t === "app") { setConvTab("app"); return; }
+                      if (url) window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      background: convTab === t && t === "app" ? "#fff" : "transparent",
+                      border: convTab === t && t === "app" ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
+                      borderRadius: 10,
+                      fontSize: 14, fontWeight: 600,
+                      letterSpacing: "-0.45px",
+                      color: disabled ? "rgba(18,26,46,0.2)" : (convTab === t && t === "app") ? "#121a2e" : "rgba(18,26,46,0.45)",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      display: "flex", alignItems: "center", gap: 5,
+                      boxShadow: convTab === t && t === "app" ? "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)" : "none",
+                    }}>
+                    {t === "app" ? "App" : t === "docs" ? "Docs" : t.charAt(0).toUpperCase() + t.slice(1)}
+                    {t !== "app" && <ExternalLink size={11} style={{ opacity: disabled ? 0.3 : 0.5 }} />}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {convTab === "app" ? (
-                messages.length === 0 ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
-                    <div style={{ width: 56, height: 56, marginBottom: 12, opacity: 0.3 }}>
-                      <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect width="56" height="56" rx="12" fill="#f0f0f0"/>
-                        <path d="M16 20h24v14a2 2 0 01-2 2H18a2 2 0 01-2-2V20z" stroke="#121a2e" strokeWidth="1.5" fill="none"/>
-                        <circle cx="22" cy="27" r="2" fill="#121a2e"/>
-                        <circle cx="28" cy="27" r="2" fill="#121a2e"/>
-                        <circle cx="34" cy="27" r="2" fill="#121a2e"/>
-                      </svg>
-                    </div>
-                    <p style={{ fontSize: 14, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>
-                      Aucun message pour l&apos;instant
-                    </p>
+            <div style={{ flex: 1, overflowY: "auto", background: "#fbfbfb", padding: "12px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {messages.length === 0 ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
+                  <div style={{ width: 48, height: 48, marginBottom: 12, opacity: 0.25 }}>
+                    <svg viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#e0e0e0"/><path d="M14 18h28v16a2 2 0 01-2 2H16a2 2 0 01-2-2V18z" stroke="#121a2e" strokeWidth="1.5" fill="none"/><circle cx="22" cy="26" r="2" fill="#121a2e"/><circle cx="28" cy="26" r="2" fill="#121a2e"/><circle cx="34" cy="26" r="2" fill="#121a2e"/></svg>
                   </div>
-                ) : (
-                  messages.map((msg) => {
-                    const isClient = msg.sender_role === "client";
-                    return (
-                      <div key={msg.id} style={{ display: "flex", justifyContent: isClient ? "flex-end" : "flex-start" }}>
-                        <div style={{
-                          maxWidth: "80%",
-                          padding: "10px 14px",
-                          background: isClient ? "linear-gradient(121deg, rgb(78,126,250), rgb(1,71,255))" : "#fff",
-                          border: isClient ? "none" : "1px solid rgba(0,0,0,0.08)",
-                          borderRadius: 10,
-                          fontSize: 13, lineHeight: "1.5",
-                          color: isClient ? "#fff" : "#121a2e",
-                          boxShadow: "0px 2px 5px rgba(0,0,0,0.03)",
-                        }}>
-                          {msg.content}
-                        </div>
-                      </div>
-                    );
-                  })
-                )
-              ) : (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-                  <p style={{ fontSize: 14, color: "rgba(18,26,46,0.3)", textAlign: "center" }}>
-                    Ouvrez {convTab === "docs" ? "Google Docs" : convTab.charAt(0).toUpperCase() + convTab.slice(1)}<br />pour accéder aux commentaires
-                  </p>
+                  <p style={{ fontSize: 13, color: "rgba(18,26,46,0.3)", letterSpacing: "-0.45px" }}>Aucun message</p>
                 </div>
+              ) : (
+                messages.map((msg) => {
+                  const isClient = msg.sender_role === "client";
+                  return (
+                    <div key={msg.id} style={{ display: "flex", justifyContent: isClient ? "flex-end" : "flex-start" }}>
+                      <div style={{
+                        maxWidth: "80%",
+                        padding: "10px 14px",
+                        background: isClient ? "linear-gradient(121deg, rgb(78,126,250), rgb(1,71,255))" : "#fff",
+                        border: isClient ? "none" : "1px solid rgba(0,0,0,0.08)",
+                        borderRadius: 10,
+                        fontSize: 13, lineHeight: "1.5",
+                        color: isClient ? "#fff" : "#121a2e",
+                        boxShadow: "0px 2px 5px rgba(0,0,0,0.03)",
+                      }}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
-            <div style={{
-              padding: "8px 12px 12px",
-              borderTop: "1px solid rgba(0,0,0,0.06)",
-              background: "#fff",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
+            <div style={{ padding: "8px 12px 12px", background: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
                 flex: 1,
                 background: "#fff",
                 border: "1px solid rgba(158,158,158,0.17)",
                 borderRadius: 10,
-                padding: "11px 13px",
-                boxShadow: "0px 8px 5px rgba(0,0,0,0.01), 0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)",
+                padding: "10px 13px",
+                boxShadow: "0px 4px 4px rgba(0,0,0,0.02), 0px 1px 2px rgba(0,0,0,0.03)",
               }}>
                 <input
                   type="text"
@@ -607,13 +656,13 @@ export default function ClientDashboard() {
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
                   style={{
                     width: "100%", border: "none", outline: "none",
-                    fontSize: 12, fontWeight: 600, letterSpacing: "-0.45px",
-                    color: "rgba(18,26,46,0.6)", background: "transparent",
+                    fontSize: 14, fontWeight: 500, letterSpacing: "-0.45px",
+                    color: "#121a2e", background: "transparent",
                   }}
                 />
               </div>
               <button
-                onClick={handleSend}
+                onClick={() => handleSend({})}
                 disabled={sending || !newMsg.trim()}
                 style={{
                   width: 38, height: 38,
@@ -624,8 +673,11 @@ export default function ClientDashboard() {
                   cursor: sending || !newMsg.trim() ? "not-allowed" : "pointer",
                   opacity: sending || !newMsg.trim() ? 0.5 : 1,
                   flexShrink: 0,
+                  boxShadow: "0px 4px 10px rgba(1,71,255,0.25)",
                 }}>
-                {sending ? <Loader2 size={14} style={{ color: "#fff", animation: "spin 1s linear infinite" }} /> : <Send size={14} style={{ color: "#fff" }} />}
+                {sending
+                  ? <Loader2 size={14} style={{ color: "#fff", animation: "spin 1s linear infinite" }} />
+                  : <Send size={14} style={{ color: "#fff" }} />}
               </button>
             </div>
           </div>

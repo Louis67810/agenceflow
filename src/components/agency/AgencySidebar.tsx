@@ -134,19 +134,18 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <nav className="flex-1 px-3 py-4" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {clientLinks.map((item) => {
             const isActive = item.exact
               ? pathname === item.href
               : pathname.startsWith(item.href);
 
             if (isActive) {
-              // Actif : fond blanc 7%, icône à gauche, texte blanc
               return (
                 <Link key={item.href} href={item.href}
                   style={{
                     display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 12px", borderRadius: 8,
+                    padding: "12px 14px", borderRadius: 9,
                     fontSize: 14, fontWeight: 500, lineHeight: "20px",
                     color: "rgb(255,255,255)",
                     background: "rgba(255,255,255,0.07)",
@@ -158,12 +157,11 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               );
             }
 
-            // Inactif : icône à gauche, texte à droite
             return (
               <Link key={item.href} href={item.href}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 12px", borderRadius: 8,
+                  padding: "12px 14px", borderRadius: 9,
                   fontSize: 14, lineHeight: "20px",
                   color: "rgb(156,163,175)",
                   textDecoration: "none",
@@ -175,13 +173,12 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
           })}
         </nav>
 
-        {/* Bottom — Aide + Paramètres */}
-        <div className="px-3 pb-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: 2 }}>
-          {/* Aide : icône gauche, texte droite */}
-          <Link href="/client/agenda"
+        {/* Bottom */}
+        <div className="px-3 pb-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: 4 }}>
+          <Link href="/client/aide"
             style={{
               display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 12px", borderRadius: 8,
+              padding: "12px 14px", borderRadius: 9,
               fontSize: 14, lineHeight: "20px",
               color: "rgb(156,163,175)",
               textDecoration: "none",
@@ -190,11 +187,10 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
             <span>Aide</span>
           </Link>
 
-          {/* Paramètres : icône gauche, texte droite */}
-          <Link href="/client"
+          <Link href="/client/parametres"
             style={{
               display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 12px", borderRadius: 8,
+              padding: "12px 14px", borderRadius: 9,
               fontSize: 14, lineHeight: "20px",
               color: "rgb(156,163,175)",
               textDecoration: "none",
@@ -203,12 +199,11 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
             <span>Paramètres</span>
           </Link>
 
-          {/* Déconnexion */}
           <form action="/api/auth/signout" method="POST">
             <button type="submit"
               style={{
                 display: "flex", alignItems: "center", gap: 12,
-                width: "100%", padding: "10px 12px", borderRadius: 8,
+                width: "100%", padding: "12px 14px", borderRadius: 9,
                 fontSize: 14, lineHeight: "20px",
                 color: "rgb(156,163,175)",
                 background: "none", border: "none", cursor: "pointer",
