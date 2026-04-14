@@ -180,7 +180,9 @@ export default function CoachPage() {
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && (
             <div className="max-w-2xl mx-auto text-center mt-12">
-              <div className="text-6xl mb-4">🤖</div>
+              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Bot size={32} className="text-indigo-600" />
+              </div>
               <h2 className="text-xl font-bold text-gray-900 mb-2">Coach Business IA</h2>
               <p className="text-gray-500 text-sm mb-8">Je connais vos projets, leads et données. Posez-moi n'importe quelle question sur votre agence.</p>
               <div className="grid grid-cols-1 gap-2 text-left">

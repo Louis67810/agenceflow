@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare, Bell, CheckCircle2, ClipboardCheck, Mail, Phone, Hash, ChevronRight, HelpCircle } from "lucide-react";
+import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare, Bell, CheckCircle2, ClipboardCheck, Mail, Phone, Hash, ChevronRight, HelpCircle, Sparkles, BarChart2, ArrowLeft } from "lucide-react";
 import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -101,8 +101,8 @@ export default function ClientDashboard() {
   const [reviews, setReviews]       = useState<StageReview[]>([]);
   const [validatingReview, setValidatingReview] = useState<string | null>(null);
   // Notifications
-  const [notifTab, setNotifTab]     = useState<"whatsapp" | "email" | "slack">("whatsapp");
-  const [waPhone, setWaPhone]       = useState("");
+  const [notifMethod, setNotifMethod] = useState<"whatsapp" | "email" | "slack" | null>(null);
+  const [waPhone, setWaPhone]         = useState("");
   const [savingNotif, setSavingNotif] = useState(false);
   // Tutorial
   const [showTutorial, setShowTutorial] = useState(false);
@@ -140,6 +140,9 @@ export default function ClientDashboard() {
       setUserId(session.user.id);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
       if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
+      if (proj.notif_whatsapp_enabled) setNotifMethod("whatsapp");
+      else if (proj.notif_email_enabled) setNotifMethod("email");
+      else if (proj.notif_slack_enabled) setNotifMethod("slack");
 
       const [fr, rr] = await Promise.all([
         fetch(`/api/files?project_id=${proj.id}`),
@@ -690,35 +693,81 @@ export default function ClientDashboard() {
               <span style={{ ...jakartaSans, fontSize: 17, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
                 Notifications
               </span>
-            </div>
-
-            {/* Tabs */}
-            <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "0 12px" }}>
-              {([
-                { key: "whatsapp", label: "WhatsApp" },
-                { key: "email", label: "Email" },
-                { key: "slack", label: "Slack" },
-              ] as const).map(({ key, label }) => (
-                <button key={key} onClick={() => setNotifTab(key)}
+              {notifMethod && (
+                <button
+                  onClick={() => setNotifMethod(null)}
                   style={{
-                    padding: "10px 12px", fontSize: 13, fontWeight: 600,
-                    letterSpacing: "-0.3px",
-                    color: notifTab === key ? "#0147ff" : "rgba(18,26,46,0.4)",
-                    background: "none", border: "none",
-                    borderBottom: `2px solid ${notifTab === key ? "#0147ff" : "transparent"}`,
-                    cursor: "pointer",
-                    marginBottom: -1,
+                    marginLeft: "auto", display: "flex", alignItems: "center", gap: 4,
+                    fontSize: 12, color: "rgba(18,26,46,0.4)",
+                    background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6,
                   }}>
-                  {label}
+                  <ArrowLeft size={12} />Changer
                 </button>
-              ))}
+              )}
             </div>
 
             {/* Content */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
 
-              {/* ── WhatsApp ── */}
-              {notifTab === "whatsapp" && (
+              {/* ── Écran de sélection ── */}
+              {!notifMethod && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <p style={{ ...jakartaSans, fontSize: 13, color: "rgba(18,26,46,0.5)", margin: "0 0 6px", lineHeight: "1.5" }}>
+                    Choisissez comment être notifié à chaque avancement de votre projet.
+                  </p>
+
+                  {/* WhatsApp */}
+                  <button onClick={() => setNotifMethod("whatsapp")} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px",
+                    background: "#f7f7f9", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12,
+                    cursor: "pointer", textAlign: "left", width: "100%",
+                  }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: "#25D366", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                    </div>
+                    <div style={{ flex: 1, textAlign: "left" }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>WhatsApp</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>Notifications instantanées sur votre téléphone</p>
+                    </div>
+                    <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.3)", flexShrink: 0 }} />
+                  </button>
+
+                  {/* Email */}
+                  <button onClick={() => setNotifMethod("email")} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px",
+                    background: "#f7f7f9", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12,
+                    cursor: "pointer", textAlign: "left", width: "100%",
+                  }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: "#4285f4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Mail size={18} style={{ color: "#fff" }} />
+                    </div>
+                    <div style={{ flex: 1, textAlign: "left" }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>Email</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>Alertes envoyées à votre adresse email</p>
+                    </div>
+                    <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.3)", flexShrink: 0 }} />
+                  </button>
+
+                  {/* Slack */}
+                  <button onClick={() => setNotifMethod("slack")} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px",
+                    background: "#f7f7f9", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12,
+                    cursor: "pointer", textAlign: "left", width: "100%",
+                  }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: "#4A154B", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Hash size={18} style={{ color: "#fff" }} />
+                    </div>
+                    <div style={{ flex: 1, textAlign: "left" }}>
+                      <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>Slack</p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>Notifications dans votre espace de travail Slack</p>
+                    </div>
+                    <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.3)", flexShrink: 0 }} />
+                  </button>
+                </div>
+              )}
+
+              {/* ── WhatsApp config ── */}
+              {notifMethod === "whatsapp" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: "#25D366", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -741,63 +790,41 @@ export default function ClientDashboard() {
                       }}>
                       <span style={{
                         position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                        transition: "left 0.2s",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
                         left: project.notif_whatsapp_enabled && project.notif_whatsapp_group ? 23 : 3,
                       }} />
                     </button>
                   </div>
-
                   {project.notif_whatsapp_group ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0 }}>Votre groupe WhatsApp est prêt :</p>
                       <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
-                          background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)",
-                          borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#16a34a",
-                        }}>
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#16a34a" }}>
                         <ChevronRight size={14} />Rejoindre le groupe
                       </a>
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <label style={{ ...jakartaSans, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>
-                        Numéro WhatsApp
-                      </label>
+                      <label style={{ ...jakartaSans, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>Numéro WhatsApp</label>
                       <div style={{ display: "flex", gap: 8 }}>
                         <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "#f7f7f9", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9 }}>
                           <Phone size={14} style={{ color: "rgba(18,26,46,0.35)", flexShrink: 0 }} />
-                          <input
-                            type="tel"
-                            value={waPhone}
-                            onChange={(e) => setWaPhone(e.target.value)}
-                            placeholder="+33 6 00 00 00 00"
-                            style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#121a2e" }}
-                          />
+                          <input type="tel" value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="+33 6 00 00 00 00"
+                            style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#121a2e" }} />
                         </div>
-                        <button
-                          onClick={() => saveNotification({ notif_whatsapp_phone: waPhone })}
-                          disabled={!waPhone.trim() || savingNotif}
-                          style={{
-                            padding: "0 14px", background: "#121a2e", color: "#fff",
-                            border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600,
-                            cursor: !waPhone.trim() ? "not-allowed" : "pointer",
-                            opacity: !waPhone.trim() ? 0.5 : 1,
-                          }}>
+                        <button onClick={() => saveNotification({ notif_whatsapp_phone: waPhone })} disabled={!waPhone.trim() || savingNotif}
+                          style={{ padding: "0 14px", background: "#121a2e", color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: !waPhone.trim() ? "not-allowed" : "pointer", opacity: !waPhone.trim() ? 0.5 : 1 }}>
                           {savingNotif ? "..." : "Envoyer"}
                         </button>
                       </div>
-                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>
-                        Un groupe WhatsApp sera créé et vous y serez invité.
-                      </p>
+                      <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>Un groupe WhatsApp sera créé et vous y serez invité.</p>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* ── Email ── */}
-              {notifTab === "email" && (
+              {/* ── Email config ── */}
+              {notifMethod === "email" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: "#4285f4", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -807,19 +834,9 @@ export default function ClientDashboard() {
                       <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>Email</p>
                       <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>Toujours configuré</p>
                     </div>
-                    <button
-                      onClick={() => saveNotification({ notif_email_enabled: !project.notif_email_enabled })}
-                      disabled={savingNotif}
-                      style={{
-                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                        background: project.notif_email_enabled ? "#0147ff" : "#e5e7eb",
-                        position: "relative", transition: "background 0.2s", flexShrink: 0,
-                      }}>
-                      <span style={{
-                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
-                        left: project.notif_email_enabled ? 23 : 3,
-                      }} />
+                    <button onClick={() => saveNotification({ notif_email_enabled: !project.notif_email_enabled })} disabled={savingNotif}
+                      style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: project.notif_email_enabled ? "#0147ff" : "#e5e7eb", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                      <span style={{ position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s", left: project.notif_email_enabled ? 23 : 3 }} />
                     </button>
                   </div>
                   <p style={{ ...jakartaSans, fontSize: 13, color: "rgba(18,26,46,0.6)", lineHeight: "1.5" }}>
@@ -828,8 +845,8 @@ export default function ClientDashboard() {
                 </div>
               )}
 
-              {/* ── Slack ── */}
-              {notifTab === "slack" && (
+              {/* ── Slack config ── */}
+              {notifMethod === "slack" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: "#4A154B", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -841,38 +858,17 @@ export default function ClientDashboard() {
                         {project.notif_slack_webhook ? "Webhook configuré" : "Non configuré"}
                       </p>
                     </div>
-                    <button
-                      onClick={() => saveNotification({ notif_slack_enabled: !project.notif_slack_enabled })}
-                      disabled={!project.notif_slack_webhook || savingNotif}
-                      style={{
-                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.notif_slack_webhook ? "pointer" : "not-allowed",
-                        background: project.notif_slack_enabled && project.notif_slack_webhook ? "#0147ff" : "#e5e7eb",
-                        position: "relative", transition: "background 0.2s", flexShrink: 0,
-                        opacity: !project.notif_slack_webhook ? 0.5 : 1,
-                      }}>
-                      <span style={{
-                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
-                        left: project.notif_slack_enabled && project.notif_slack_webhook ? 23 : 3,
-                      }} />
+                    <button onClick={() => saveNotification({ notif_slack_enabled: !project.notif_slack_enabled })} disabled={!project.notif_slack_webhook || savingNotif}
+                      style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.notif_slack_webhook ? "pointer" : "not-allowed", background: project.notif_slack_enabled && project.notif_slack_webhook ? "#0147ff" : "#e5e7eb", position: "relative", transition: "background 0.2s", flexShrink: 0, opacity: !project.notif_slack_webhook ? 0.5 : 1 }}>
+                      <span style={{ position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s", left: project.notif_slack_enabled && project.notif_slack_webhook ? 23 : 3 }} />
                     </button>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <label style={{ ...jakartaSans, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>Webhook URL</label>
-                    <input
-                      type="url"
-                      defaultValue={project.notif_slack_webhook ?? ""}
-                      placeholder="https://hooks.slack.com/services/..."
+                    <input type="url" defaultValue={project.notif_slack_webhook ?? ""} placeholder="https://hooks.slack.com/services/..."
                       onBlur={(e) => { if (e.target.value !== (project.notif_slack_webhook ?? "")) saveNotification({ notif_slack_webhook: e.target.value || null }); }}
-                      style={{
-                        padding: "10px 12px", border: "1px solid rgba(0,0,0,0.09)",
-                        borderRadius: 9, fontSize: 13, color: "#121a2e",
-                        background: "#f7f7f9", outline: "none",
-                      }}
-                    />
-                    <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>
-                      Obtenez votre webhook dans les paramètres de votre espace Slack.
-                    </p>
+                      style={{ padding: "10px 12px", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, fontSize: 13, color: "#121a2e", background: "#f7f7f9", outline: "none" }} />
+                    <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>Obtenez votre webhook dans les paramètres de votre espace Slack.</p>
                   </div>
                 </div>
               )}
@@ -994,16 +990,16 @@ export default function ClientDashboard() {
     {/* ── Tutoriel overlay ───────────────────────────────────────────────────── */}
     {showTutorial && (() => {
       const steps = [
-        { title: "Bienvenue dans votre espace !", body: "Retrouvez ici l'avancement de votre projet, les étapes, et toutes les ressources partagées par votre agence.", icon: "👋" },
-        { title: "Suivez vos étapes", body: "Le Gantt vous montre la progression de votre projet. Quand une étape est prête, vous pouvez la valider depuis le bouton en haut à droite.", icon: "📊" },
-        { title: "Tâches à review", body: "L'onglet \"À review\" vous notifie quand votre agence vous soumet quelque chose à valider (maquette, texte, etc.).", icon: "✅" },
-        { title: "Notifications", body: "Configurez vos alertes WhatsApp, Email ou Slack pour être notifié automatiquement à chaque avancement.", icon: "🔔" },
+        { title: "Bienvenue dans votre espace !", body: "Retrouvez ici l'avancement de votre projet, les étapes, et toutes les ressources partagées par votre agence.", icon: <Sparkles size={28} style={{ color: "#0147ff" }} /> },
+        { title: "Suivez vos étapes", body: "Le Gantt vous montre la progression de votre projet. Quand une étape est prête, vous pouvez la valider depuis le bouton en haut à droite.", icon: <BarChart2 size={28} style={{ color: "#0147ff" }} /> },
+        { title: "Tâches à review", body: "L'onglet \"À review\" vous notifie quand votre agence vous soumet quelque chose à valider (maquette, texte, etc.).", icon: <ClipboardCheck size={28} style={{ color: "#0147ff" }} /> },
+        { title: "Notifications", body: "Choisissez votre méthode préférée — WhatsApp, Email ou Slack — pour être notifié automatiquement à chaque avancement.", icon: <Bell size={28} style={{ color: "#0147ff" }} /> },
       ];
       const step = steps[tutorialStep];
       return (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(18,26,46,0.5)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: "#fff", borderRadius: 20, padding: "32px 28px 24px", maxWidth: 380, width: "100%", boxShadow: "0px 32px 64px rgba(18,26,46,0.2)" }}>
-            <div style={{ fontSize: 36, marginBottom: 16, textAlign: "center" }}>{step.icon}</div>
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: "#eef2ff", border: "1px solid rgba(1,71,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>{step.icon}</div>
             <h3 style={{ ...jakartaSans, fontSize: 20, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 10px", textAlign: "center" }}>
               {step.title}
             </h3>

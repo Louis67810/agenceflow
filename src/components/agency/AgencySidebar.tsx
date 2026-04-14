@@ -14,7 +14,6 @@ import {
   MessageSquare,
   Settings,
   LogOut,
-  Briefcase,
   PenLine,
   CheckSquare,
   ChevronDown,
@@ -26,6 +25,10 @@ import {
   Bot,
   HelpCircle,
   FolderOpen,
+  Target,
+  Repeat,
+  Timer,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -37,23 +40,24 @@ interface NavItem {
 }
 
 const agendaSubNav: NavItem[] = [
-  { href: "/admin/agenda", label: "Dashboard", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/calendar", label: "Calendrier", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/tasks", label: "Tâches", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/objectives", label: "Objectifs", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/habits", label: "Habitudes", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/recap", label: "Récap du jour", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/stats", label: "Statistiques", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/pomodoro", label: "Pomodoro", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/agenda/settings", label: "Paramètres", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/agenda", label: "Dashboard", icon: <LayoutDashboard size={13} /> },
+  { href: "/admin/agenda/calendar", label: "Calendrier", icon: <Calendar size={13} /> },
+  { href: "/admin/agenda/tasks", label: "Tâches", icon: <CheckSquare size={13} /> },
+  { href: "/admin/agenda/objectives", label: "Objectifs", icon: <Target size={13} /> },
+  { href: "/admin/agenda/habits", label: "Habitudes", icon: <Repeat size={13} /> },
+  { href: "/admin/agenda/recap", label: "Récap du jour", icon: <FileText size={13} /> },
+  { href: "/admin/agenda/stats", label: "Statistiques", icon: <BarChart2 size={13} /> },
+  { href: "/admin/agenda/pomodoro", label: "Pomodoro", icon: <Timer size={13} /> },
+  { href: "/admin/agenda/settings", label: "Paramètres", icon: <Settings size={13} /> },
 ];
 
 const linkedInSubNav: NavItem[] = [
-  { href: "/admin/linkedin/posts", label: "Posts", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/linkedin/planification", label: "Planification", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/linkedin/style", label: "Style", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/linkedin/idees", label: "Idées", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
-  { href: "/admin/linkedin/prospection", label: "Prospection", icon: <span className="w-1.5 h-1.5 rounded-full bg-current" /> },
+  { href: "/admin/linkedin/posts", label: "Posts", icon: <PenLine size={13} /> },
+  { href: "/admin/linkedin/planification", label: "Planification", icon: <CalendarDays size={13} /> },
+  { href: "/admin/linkedin/style", label: "Style", icon: <Palette size={13} /> },
+  { href: "/admin/linkedin/idees", label: "Idées", icon: <Lightbulb size={13} /> },
+  { href: "/admin/linkedin/prospection", label: "Prospection", icon: <UserCheck size={13} /> },
+  { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={13} /> },
 ];
 
 const adminNav: NavItem[] = [
@@ -64,9 +68,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/copywriting", label: "Copywriting", icon: <PenLine size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
-  { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={18} /> },
   { href: "/admin/agenda", label: "Habits", icon: <CalendarDays size={18} /> },
-  { href: "/admin/notes", label: "Notes & Idées", icon: <Lightbulb size={18} /> },
   { href: "/admin/tests", label: "Tests Prestataires", icon: <ClipboardList size={18} /> },
   { href: "/admin/coach", label: "Coach IA", icon: <Bot size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
@@ -228,17 +230,20 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 text-white flex flex-col z-30" style={{ background: "#121a2e" }}>
-      {/* Logo */}
-      <div className="px-6 py-5 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-            <Briefcase size={16} />
-          </div>
-          <div>
-            <p className="font-bold text-sm leading-tight">AgenceFlow</p>
-            <p className="text-xs text-gray-400">{roleLabel}</p>
-          </div>
-        </div>
+      {/* Header — même design que la sidebar client */}
+      <div className="flex items-center gap-3 px-5 py-4"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <svg width="44" height="28" viewBox="0 0 61 39" fill="none" style={{ flexShrink: 0 }}>
+          <path d="M0 12.5693C0 10.4559 1.55086 8.66264 3.64216 8.35791L56.1305 0.709556C58.6981 0.335424 61 2.32622 61 4.92089V33.9341C61 36.4665 58.8019 38.4386 56.2843 38.165L3.79593 32.4597C1.63623 32.2249 0 30.4012 0 28.2288V12.5693Z" fill="#4D5362"/>
+          <path d="M45.291 20.5469L45.329 32.6905L47.6887 33.0077L50.0536 33.3252V24.5752L50.0795 22.9212H52.7067H55.3598V20.3972V18.7136L52.7455 18.6887L50.1183 18.6512L50.0795 17.7408L50.0536 11.1598C50.0536 11.1598 51.954 10.8025 53.1759 10.5975C54.2205 10.4221 55.8552 10.1757 55.8552 10.1757L56.1363 10.1411V6.18944L50.5691 6.93708L45.291 7.646V20.5469Z" fill="#121A2E"/>
+          <path d="M33.3276 19.84V31.0784L35.6894 31.3951L38.0902 31.7178V23.8683L38.1161 22.2143H40.7433H43.3964V19.6903V18.0066L40.7821 17.9817L38.1549 17.9443L38.1161 17.0339L38.0902 11.9892L41.2143 11.453L43.8732 10.969L44.1729 10.9129V7.79574L38.7207 8.52819L33.3037 9.25597L33.3276 19.84Z" fill="#121A2E"/>
+          <path d="M19.4502 11.1183V13.1213V18.7551V25.375C19.4502 27.3295 20.6678 29.3628 21.9247 29.5482L27.8507 30.344C30.8293 30.7442 31.749 27.6117 31.749 25.5694V24.8906V18.6829V9.46617L29.6473 9.74815L27.2842 10.0654L27.3224 18.3211V25.2196C27.0851 26.3062 24.5136 26.2762 24.0423 25.2196C23.9923 25.099 23.9643 18.2586 23.9643 18.2586V10.5121L22.0801 10.7649L19.4502 11.1183Z" fill="#121A2E"/>
+          <path d="M5.52344 20.2215V27.344L7.81383 27.6512L9.55326 27.8845V25.1198V22.9705H10.5092C11.0503 22.9353 11.2489 22.9705 11.6863 23.4079C12.0452 23.7638 11.9748 23.9233 12.4278 25.1198L13.1614 28.3696L15.6204 28.6997L18.5032 29.0869L17.2849 25.7977L16.0697 23.158L15.6199 22.2833L16.1697 21.7085C17.2193 20.6339 17.6691 19.0094 17.4067 17.2851C17.0818 15.0608 15.8164 12.3734 13.6296 11.8986L9.22525 12.4899L5.52344 12.9863V20.2215ZM12.3179 16.754C12.724 17.1601 12.6803 18.4097 12.3179 18.8595C12.1055 19.1219 11.74 19.2094 10.8653 19.2469H9.55326V18.1722V16.3323H10.8653C11.6025 16.3323 12.0836 16.5197 12.3179 16.754Z" fill="#121A2E"/>
+        </svg>
+        <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+        <span style={{ fontSize: 14, fontWeight: 500, lineHeight: "20px", color: "rgb(255,255,255)" }}>
+          {roleLabel}
+        </span>
       </div>
 
       {/* Navigation */}

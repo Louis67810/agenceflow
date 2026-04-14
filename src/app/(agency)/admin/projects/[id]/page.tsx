@@ -512,20 +512,7 @@ export default function AdminProjectDetailPage({
               </div>
             )}
 
-            {/* Advance button */}
-            {stages.length > 0 && !allDone && (
-              <button
-                onClick={handleAdvanceStage}
-                disabled={advancing}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-              >
-                {advancing ? (
-                  <><Loader2 size={14} className="animate-spin" />Validation...</>
-                ) : (
-                  <><CheckCircle2 size={14} />Valider — {currentStage?.label}<ChevronRight size={14} /></>
-                )}
-              </button>
-            )}
+            {/* Note: validation is done by the client via the review system */}
             {allDone && stages.length > 0 && (
               <div className="mt-4 flex items-center gap-2 text-green-600 text-sm font-medium">
                 <CheckCircle2 size={15} />Projet terminé !
