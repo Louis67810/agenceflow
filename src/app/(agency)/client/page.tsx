@@ -57,7 +57,7 @@ interface StageReview {
   message: string | null;
   link_url: string | null;
   thumbnail_url: string | null;
-  status: "pending" | "validated";
+  status: "pending" | "validated" | "refused";
   created_at: string;
   validated_at: string | null;
 }
@@ -94,9 +94,12 @@ export default function ClientDashboard() {
   const [clientName, setClientName] = useState("Moi");
   const [userId, setUserId]         = useState<string | null>(null);
   const [advancing, setAdvancing]   = useState(false);
-  const [tab, setTab]               = useState<"liens" | "review" | "brief" | "fichiers">("liens");
+  const [tab, setTab]               = useState<"taches" | "liens" | "review" | "brief" | "fichiers">("taches");
   const [showConfirm, setShowConfirm] = useState(false);
-  const [confirmPressed, setConfirmPressed] = useState(false);
+  // Hold-to-confirm
+  const holdTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdCountRef  = useRef(0);
+  const [holdPct, setHoldPct] = useState(0);
   // Reviews (tâches à review)
   const [reviews, setReviews]       = useState<StageReview[]>([]);
   const [validatingReview, setValidatingReview] = useState<string | null>(null);
@@ -201,7 +204,7 @@ export default function ClientDashboard() {
     if (r.ok) setProject(d.project);
     setAdvancing(false);
     setShowConfirm(false);
-    setConfirmPressed(false);
+    setHoldPct(0);
   }
 
   async function handleValidateReview(reviewId: string) {
@@ -212,10 +215,45 @@ export default function ClientDashboard() {
       body: JSON.stringify({ status: "validated" }),
     });
     const d = await r.json();
-    if (r.ok) {
-      setReviews(prev => prev.map(rv => rv.id === reviewId ? d.review : rv));
-    }
+    if (r.ok) setReviews(prev => prev.map(rv => rv.id === reviewId ? d.review : rv));
     setValidatingReview(null);
+  }
+
+  async function handleRefuseReview(reviewId: string) {
+    setValidatingReview(reviewId);
+    const r = await fetch(`/api/reviews/${reviewId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "refused" }),
+    });
+    const d = await r.json();
+    if (r.ok) setReviews(prev => prev.map(rv => rv.id === reviewId ? d.review : rv));
+    setValidatingReview(null);
+  }
+
+  function startHold() {
+    if (advancing) return;
+    holdCountRef.current = 0;
+    setHoldPct(0);
+    holdTimerRef.current = setInterval(() => {
+      holdCountRef.current += 1;
+      const pct = Math.min(100, holdCountRef.current * 2); // 50 ticks × 100ms = 5s
+      setHoldPct(pct);
+      if (pct >= 100) {
+        clearInterval(holdTimerRef.current!);
+        holdTimerRef.current = null;
+        handleValidate();
+      }
+    }, 100);
+  }
+
+  function cancelHold() {
+    if (holdTimerRef.current) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    holdCountRef.current = 0;
+    setHoldPct(0);
   }
 
   async function saveNotification(updates: Record<string, unknown>) {
@@ -474,40 +512,129 @@ export default function ClientDashboard() {
                 padding: "10px 12px",
                 display: "flex", gap: 4,
               }}>
-                {([
-                  { key: "liens", label: "Liens" },
-                  { key: "review", label: reviews.filter(r => r.status === "pending").length > 0
-                    ? `À review (${reviews.filter(r => r.status === "pending").length})`
-                    : "À review" },
-                  { key: "brief", label: "Brief" },
-                  { key: "fichiers", label: "Fichiers" },
-                ] as const).map(({ key: t, label }) => (
-                  <button key={t} onClick={() => setTab(t)}
-                    style={{
-                      padding: "10px 13px",
-                      background: tab === t ? "#fff" : "transparent",
-                      border: tab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
-                      borderRadius: 9,
-                      fontSize: 13, fontWeight: 600,
-                      letterSpacing: "-0.45px",
-                      color: tab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
-                      cursor: "pointer",
-                      boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02)" : "none",
-                      position: "relative" as const,
-                    }}>
-                    {label}
-                    {t === "review" && reviews.filter(r => r.status === "pending").length > 0 && (
-                      <span style={{
-                        position: "absolute", top: 6, right: 6,
-                        width: 7, height: 7, borderRadius: "50%",
-                        background: "#ef4444",
-                      }} />
-                    )}
-                  </button>
-                ))}
+                {(() => {
+                  const pendingCount = reviews.filter(r => r.status === "pending").length + (notifMethod === null ? 1 : 0);
+                  return ([
+                    { key: "taches" as const, label: "Tâches", badge: pendingCount },
+                    { key: "liens" as const, label: "Liens", badge: 0 },
+                    { key: "brief" as const, label: "Brief", badge: 0 },
+                    { key: "fichiers" as const, label: "Fichiers", badge: 0 },
+                  ]).map(({ key: t, label, badge }) => (
+                    <button key={t} onClick={() => setTab(t)}
+                      style={{
+                        padding: "10px 13px",
+                        background: tab === t ? "#fff" : "transparent",
+                        border: tab === t ? "1px solid rgba(158,158,158,0.17)" : "1px solid transparent",
+                        borderRadius: 9,
+                        fontSize: 13, fontWeight: 600,
+                        letterSpacing: "-0.45px",
+                        color: tab === t ? "#121a2e" : "rgba(18,26,46,0.45)",
+                        cursor: "pointer",
+                        boxShadow: tab === t ? "0px 4px 4px rgba(0,0,0,0.02)" : "none",
+                        position: "relative" as const,
+                      }}>
+                      {label}
+                      {badge > 0 && (
+                        <span style={{
+                          position: "absolute", top: 6, right: 6,
+                          width: 7, height: 7, borderRadius: "50%",
+                          background: "#ef4444",
+                        }} />
+                      )}
+                    </button>
+                  ));
+                })()}
               </div>
 
               <div style={{ padding: "12px 16px" }}>
+                {tab === "taches" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {/* Tâche : configurer les notifications */}
+                    {notifMethod === null && (
+                      <div style={{
+                        display: "flex", alignItems: "flex-start", gap: 12,
+                        padding: "14px", background: "#fff7ed",
+                        border: "1px solid rgba(234,88,12,0.15)", borderRadius: 11,
+                      }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fde8d0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Bell size={15} style={{ color: "#ea580c" }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 700, color: "#9a3412", margin: "0 0 3px", letterSpacing: "-0.3px" }}>Configurer les notifications</p>
+                          <p style={{ ...jakartaSans, fontSize: 12, color: "#c2410c", margin: 0, lineHeight: "1.4" }}>Choisissez comment être notifié à chaque avancement de votre projet.</p>
+                        </div>
+                        <button
+                          onClick={() => {/* scroll to notif panel */}}
+                          style={{ fontSize: 12, fontWeight: 600, color: "#ea580c", background: "rgba(234,88,12,0.08)", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 6, whiteSpace: "nowrap" as const }}>
+                          Configurer →
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Tâches issues des reviews */}
+                    {reviews.filter(r => r.status === "pending").map((rv, i) => (
+                      <div key={rv.id} style={{
+                        padding: "14px", background: "#f0f3ff",
+                        border: "1px solid rgba(1,71,255,0.1)", borderRadius: 11,
+                        display: "flex", flexDirection: "column", gap: 10,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <ClipboardCheck size={15} style={{ color: "#0147ff" }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>À valider : {rv.stage_label}</p>
+                            {rv.message && <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.55)", margin: "3px 0 0", lineHeight: "1.4" }}>{rv.message}</p>}
+                          </div>
+                        </div>
+                        {rv.link_url && (
+                          <a href={rv.link_url} target="_blank" rel="noopener noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: "#0147ff", textDecoration: "none" }}>
+                            <ExternalLink size={12} />Ouvrir le lien
+                          </a>
+                        )}
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => handleValidateReview(rv.id)}
+                            disabled={validatingReview === rv.id}
+                            style={{
+                              flex: 1, padding: "10px", borderRadius: 9,
+                              background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                              color: "#fff", border: "1px solid #2f4d9d",
+                              fontSize: 12, fontWeight: 600, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              opacity: validatingReview === rv.id ? 0.7 : 1,
+                            }}>
+                            {validatingReview === rv.id ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={12} />}
+                            Valider
+                          </button>
+                          <button
+                            onClick={() => handleRefuseReview(rv.id)}
+                            disabled={validatingReview === rv.id}
+                            style={{
+                              flex: 1, padding: "10px", borderRadius: 9,
+                              background: "#fff", color: "#121a2e",
+                              border: "1px solid rgba(0,0,0,0.1)",
+                              fontSize: 12, fontWeight: 600, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              opacity: validatingReview === rv.id ? 0.5 : 1,
+                            }}>
+                            Refuser
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* État vide */}
+                    {notifMethod !== null && reviews.filter(r => r.status === "pending").length === 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 8 }}>
+                        <CheckCircle2 size={32} style={{ color: "#168b64" }} />
+                        <p style={{ ...jakartaSans, color: "rgba(18,26,46,0.4)", fontSize: 14, letterSpacing: "-0.3px", margin: 0 }}>Tout est à jour !</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {tab === "liens" && toolLinks.map((link, i) => (
                   <div key={link.label}>
                     <div style={{
@@ -935,19 +1062,20 @@ export default function ClientDashboard() {
             Une fois cette étape validée, vous ne pourrez plus y revenir. Nous passerons ensuite à la suivante, alors assurez-vous d&apos;être certain avant de valider.
           </p>
 
-          {/* Bouton confirmer */}
+          {/* Bouton hold-to-confirm */}
+          <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.45)", textAlign: "center", margin: "0 0 14px" }}>
+            {advancing ? "Validation en cours..." : holdPct > 0 ? `Maintenez appuyé... ${Math.round(holdPct)}%` : "Maintenez appuyé 5 secondes pour valider"}
+          </p>
           <button
-            onClick={async () => {
-              setConfirmPressed(true);
-              await handleValidate();
-              setConfirmPressed(false);
-            }}
+            onMouseDown={startHold}
+            onMouseUp={cancelHold}
+            onMouseLeave={cancelHold}
+            onTouchStart={startHold}
+            onTouchEnd={cancelHold}
             disabled={advancing}
             style={{
               width: "100%", padding: "15px 20px", marginBottom: 10,
-              background: confirmPressed || advancing
-                ? "linear-gradient(121deg, rgb(40,80,200) 9.99%, rgb(0,45,180) 82.49%)"
-                : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+              background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
               color: "#fff",
               border: "1px solid #2f4d9d",
               borderRadius: 12,
@@ -955,16 +1083,26 @@ export default function ClientDashboard() {
               letterSpacing: "-0.45px",
               cursor: advancing ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              boxShadow: confirmPressed || advancing
-                ? "inset 0px 3px 6px rgba(0,0,0,0.2)"
-                : "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.25)",
-              transition: "all 0.1s ease",
-              transform: confirmPressed ? "scale(0.99)" : "scale(1)",
+              boxShadow: "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.25)",
+              position: "relative", overflow: "hidden",
+              userSelect: "none",
             }}
           >
-            {advancing
-              ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Validation...</>
-              : `Valider : ${currentStage.label}`}
+            {/* Barre de progression */}
+            {holdPct > 0 && (
+              <div style={{
+                position: "absolute", left: 0, top: 0, bottom: 0,
+                width: `${holdPct}%`,
+                background: "rgba(255,255,255,0.25)",
+                transition: "width 0.1s linear",
+                pointerEvents: "none",
+              }} />
+            )}
+            <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+              {advancing
+                ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Validation...</>
+                : `Valider : ${currentStage.label}`}
+            </span>
           </button>
 
           <button
