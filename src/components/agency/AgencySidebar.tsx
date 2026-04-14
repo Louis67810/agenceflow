@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Lightbulb,
   ClipboardList,
+  ClipboardCheck,
   Bot,
   HelpCircle,
   FolderOpen,
@@ -109,6 +110,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   if (role === "client") {
     const clientLinks = [
       { href: "/client", label: "Mon projet", icon: <LayoutDashboard size={18} />, exact: true },
+      { href: "/client/taches", label: "Tâches", icon: <ClipboardCheck size={18} />, exact: false },
       { href: "/client/ressources", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
       { href: "/client/agenda", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },
     ];

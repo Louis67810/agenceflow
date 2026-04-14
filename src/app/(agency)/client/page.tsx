@@ -94,7 +94,7 @@ export default function ClientDashboard() {
   const [clientName, setClientName] = useState("Moi");
   const [userId, setUserId]         = useState<string | null>(null);
   const [advancing, setAdvancing]   = useState(false);
-  const [tab, setTab]               = useState<"taches" | "liens" | "review" | "brief" | "fichiers">("taches");
+  const [tab, setTab]               = useState<"liens" | "review" | "brief" | "fichiers">("liens");
   const [showConfirm, setShowConfirm] = useState(false);
   // Hold-to-confirm
   const holdTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -513,9 +513,7 @@ export default function ClientDashboard() {
                 display: "flex", gap: 4,
               }}>
                 {(() => {
-                  const pendingCount = reviews.filter(r => r.status === "pending").length + (notifMethod === null ? 1 : 0);
                   return ([
-                    { key: "taches" as const, label: "Tâches", badge: pendingCount },
                     { key: "liens" as const, label: "Liens", badge: 0 },
                     { key: "brief" as const, label: "Brief", badge: 0 },
                     { key: "fichiers" as const, label: "Fichiers", badge: 0 },
@@ -547,94 +545,6 @@ export default function ClientDashboard() {
               </div>
 
               <div style={{ padding: "12px 16px" }}>
-                {tab === "taches" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {/* Tâche : configurer les notifications */}
-                    {notifMethod === null && (
-                      <div style={{
-                        display: "flex", alignItems: "flex-start", gap: 12,
-                        padding: "14px", background: "#fff7ed",
-                        border: "1px solid rgba(234,88,12,0.15)", borderRadius: 11,
-                      }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fde8d0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <Bell size={15} style={{ color: "#ea580c" }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 700, color: "#9a3412", margin: "0 0 3px", letterSpacing: "-0.3px" }}>Configurer les notifications</p>
-                          <p style={{ ...jakartaSans, fontSize: 12, color: "#c2410c", margin: 0, lineHeight: "1.4" }}>Choisissez comment être notifié à chaque avancement de votre projet.</p>
-                        </div>
-                        <button
-                          onClick={() => {/* scroll to notif panel */}}
-                          style={{ fontSize: 12, fontWeight: 600, color: "#ea580c", background: "rgba(234,88,12,0.08)", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 6, whiteSpace: "nowrap" as const }}>
-                          Configurer →
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Tâches issues des reviews */}
-                    {reviews.filter(r => r.status === "pending").map((rv, i) => (
-                      <div key={rv.id} style={{
-                        padding: "14px", background: "#f0f3ff",
-                        border: "1px solid rgba(1,71,255,0.1)", borderRadius: 11,
-                        display: "flex", flexDirection: "column", gap: 10,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <ClipboardCheck size={15} style={{ color: "#0147ff" }} />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>À valider : {rv.stage_label}</p>
-                            {rv.message && <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.55)", margin: "3px 0 0", lineHeight: "1.4" }}>{rv.message}</p>}
-                          </div>
-                        </div>
-                        {rv.link_url && (
-                          <a href={rv.link_url} target="_blank" rel="noopener noreferrer"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: "#0147ff", textDecoration: "none" }}>
-                            <ExternalLink size={12} />Ouvrir le lien
-                          </a>
-                        )}
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            onClick={() => handleValidateReview(rv.id)}
-                            disabled={validatingReview === rv.id}
-                            style={{
-                              flex: 1, padding: "10px", borderRadius: 9,
-                              background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-                              color: "#fff", border: "1px solid #2f4d9d",
-                              fontSize: 12, fontWeight: 600, cursor: "pointer",
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                              opacity: validatingReview === rv.id ? 0.7 : 1,
-                            }}>
-                            {validatingReview === rv.id ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <CheckCircle2 size={12} />}
-                            Valider
-                          </button>
-                          <button
-                            onClick={() => handleRefuseReview(rv.id)}
-                            disabled={validatingReview === rv.id}
-                            style={{
-                              flex: 1, padding: "10px", borderRadius: 9,
-                              background: "#fff", color: "#121a2e",
-                              border: "1px solid rgba(0,0,0,0.1)",
-                              fontSize: 12, fontWeight: 600, cursor: "pointer",
-                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                              opacity: validatingReview === rv.id ? 0.5 : 1,
-                            }}>
-                            Refuser
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* État vide */}
-                    {notifMethod !== null && reviews.filter(r => r.status === "pending").length === 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 0", gap: 8 }}>
-                        <CheckCircle2 size={32} style={{ color: "#168b64" }} />
-                        <p style={{ ...jakartaSans, color: "rgba(18,26,46,0.4)", fontSize: 14, letterSpacing: "-0.3px", margin: 0 }}>Tout est à jour !</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {tab === "liens" && toolLinks.map((link, i) => (
                   <div key={link.label}>
                     <div style={{

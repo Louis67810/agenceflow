@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Search, Loader2, FolderOpen, ChevronRight } from "lucide-react";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 interface Project {
   id: string;
   name: string;
@@ -21,17 +23,17 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Terminé",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  in_progress: "bg-blue-50 text-blue-700 border-blue-200",
-  review: "bg-purple-50 text-purple-700 border-purple-200",
-  completed: "bg-green-50 text-green-700 border-green-200",
+const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
+  pending:     { bg: "#fee6d0", color: "#663b12" },
+  in_progress: { bg: "#d5eeff", color: "#073e63" },
+  review:      { bg: "#E1D1FA", color: "#6236AA" },
+  completed:   { bg: "#d1fae5", color: "#168b64" },
 };
 
 export default function AdminProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState("");
+  const [projects, setProjects]         = useState<Project[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => { loadProjects(); }, []);
@@ -42,17 +44,14 @@ export default function AdminProjectsPage() {
       const r = await fetch("/api/projects");
       const d = await r.json();
       setProjects(d.projects ?? []);
-    } catch {
-      setProjects([]);
-    }
+    } catch { setProjects([]); }
     setLoading(false);
   }
 
-  const filtered = projects.filter((p) => {
+  const filtered = projects.filter(p => {
     const q = search.toLowerCase();
-    const matchSearch = p.name.toLowerCase().includes(q) || (p.client_name ?? "").toLowerCase().includes(q);
-    const matchStatus = statusFilter === "all" || p.status === statusFilter;
-    return matchSearch && matchStatus;
+    return (p.name.toLowerCase().includes(q) || (p.client_name ?? "").toLowerCase().includes(q))
+      && (statusFilter === "all" || p.status === statusFilter);
   });
 
   const filterStatuses = [
@@ -64,37 +63,38 @@ export default function AdminProjectsPage() {
   ];
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ padding: "28px 24px", background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Projets</h1>
-          <p className="text-gray-500 mt-1">{projects.length} projet{projects.length !== 1 ? "s" : ""} au total</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: 0 }}>Projets</h1>
+          <p style={{ fontSize: 14, color: "rgba(18,26,46,0.45)", margin: "4px 0 0" }}>{projects.length} projet{projects.length !== 1 ? "s" : ""} au total</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6 flex-wrap">
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" as const }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 200, maxWidth: 320 }}>
+          <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.35)", pointerEvents: "none" }} />
           <input
             type="text"
             placeholder="Rechercher un projet ou client..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", paddingLeft: 36, paddingRight: 14, paddingTop: 10, paddingBottom: 10, fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, outline: "none", background: "#f7f7f9", color: "#121a2e", boxSizing: "border-box" as const }}
           />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {filterStatuses.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                statusFilter === f.value
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white border border-gray-200 text-gray-600 hover:border-indigo-300"
-              }`}
-            >
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+          {filterStatuses.map(f => (
+            <button key={f.value} onClick={() => setStatusFilter(f.value)}
+              style={{
+                padding: "9px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                cursor: "pointer", letterSpacing: "-0.3px",
+                background: statusFilter === f.value
+                  ? "linear-gradient(121deg,rgb(78,126,250) 10%,rgb(1,71,255) 82%)"
+                  : "#f7f7f9",
+                color: statusFilter === f.value ? "#fff" : "rgba(18,26,46,0.55)",
+                border: statusFilter === f.value ? "1px solid #2f4d9d" : "1px solid rgba(0,0,0,0.08)",
+              }}>
               {f.label}
             </button>
           ))}
@@ -102,57 +102,58 @@ export default function AdminProjectsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="animate-spin text-gray-400" size={28} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
+          <Loader2 size={28} style={{ color: "rgba(18,26,46,0.25)", animation: "spin 1s linear infinite" }} />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-24 bg-white rounded-xl border border-gray-200">
-          <FolderOpen size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">
+        <div style={{ textAlign: "center", padding: "64px 24px", background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.08)" }}>
+          <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.12)", margin: "0 auto 12px" }} />
+          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(18,26,46,0.5)", margin: "0 0 4px" }}>
             {projects.length === 0 ? "Aucun projet pour l'instant" : "Aucun résultat"}
           </p>
-          <p className="text-gray-400 text-sm mt-1">
-            {projects.length === 0
-              ? "Les projets seront créés automatiquement quand un client remplit son formulaire."
-              : "Modifiez vos filtres."}
+          <p style={{ fontSize: 13, color: "rgba(18,26,46,0.35)" }}>
+            {projects.length === 0 ? "Les projets sont créés automatiquement quand un client remplit son formulaire." : "Modifiez vos filtres."}
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full">
+        <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.13)", borderRadius: 13, overflow: "hidden", boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Projet</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Statut</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Créé le</th>
+              <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "#fbfbfb" }}>
+                {["Projet", "Client", "Statut", "Créé le"].map(h => (
+                  <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "rgba(18,26,46,0.4)", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>{h}</th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filtered.map((project) => (
-                <tr key={project.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-4">
-                    <Link href={`/admin/projects/${project.id}`} className="font-medium text-gray-900 text-sm hover:text-indigo-600 transition-colors flex items-center gap-1 group">
-                      {project.name}
-                      <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all" />
-                    </Link>
-                  </td>
-                  <td className="px-5 py-4">
-                    <p className="text-sm text-gray-700">{project.client_name ?? "—"}</p>
-                    {project.client_email && (
-                      <p className="text-xs text-gray-400 mt-0.5">{project.client_email}</p>
-                    )}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_COLORS[project.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
-                      {STATUS_LABELS[project.status] ?? project.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-xs text-gray-400">
-                    {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
-                  </td>
-                </tr>
-              ))}
+            <tbody>
+              {filtered.map((project, i) => {
+                const st = STATUS_STYLES[project.status] ?? { bg: "#f7f7f9", color: "rgba(18,26,46,0.5)" };
+                return (
+                  <tr key={project.id} style={{ borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,0,0,0.015)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <td style={{ padding: "14px 20px" }}>
+                      <Link href={`/admin/projects/${project.id}`}
+                        style={{ fontSize: 14, fontWeight: 600, color: "#121a2e", textDecoration: "none", letterSpacing: "-0.3px", display: "flex", alignItems: "center", gap: 4 }}>
+                        {project.name}
+                        <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.25)" }} />
+                      </Link>
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <p style={{ fontSize: 13, color: "#121a2e", margin: 0 }}>{project.client_name ?? "—"}</p>
+                      {project.client_email && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "2px 0 0" }}>{project.client_email}</p>}
+                    </td>
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 7, background: st.bg, color: st.color, letterSpacing: "-0.3px" }}>
+                        {STATUS_LABELS[project.status] ?? project.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "rgba(18,26,46,0.4)" }}>
+                      {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
