@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import type { CSSProperties } from "react";
 import {
   Wand2, Loader2, X, Check, Copy, Trash2, Link2,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
@@ -19,35 +20,31 @@ const STYLES_KEY = "linkedin_styles";
 const IDEAS_KEY = "linkedin_ideas";
 
 function loadPosts(): LinkedInPost[] {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY);
-    return s ? JSON.parse(s) : [];
-  } catch {
-    return [];
-  }
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
 }
-function savePosts(posts: LinkedInPost[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-}
+function savePosts(posts: LinkedInPost[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(posts)); }
 function loadStyles(): LinkedInStyle[] {
-  try {
-    const s = localStorage.getItem(STYLES_KEY);
-    return s ? JSON.parse(s) : DEFAULT_STYLES;
-  } catch {
-    return DEFAULT_STYLES;
-  }
+  try { const s = localStorage.getItem(STYLES_KEY); return s ? JSON.parse(s) : DEFAULT_STYLES; } catch { return DEFAULT_STYLES; }
 }
 function loadIdeas(): LinkedInIdea[] {
-  try {
-    const s = localStorage.getItem(IDEAS_KEY);
-    return s ? JSON.parse(s) : [];
-  } catch {
-    return [];
-  }
+  try { const s = localStorage.getItem(IDEAS_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
 }
-function saveIdeas(ideas: LinkedInIdea[]) {
-  localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas));
-}
+function saveIdeas(ideas: LinkedInIdea[]) { localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas)); }
+
+// ─── Style tokens ─────────────────────────────────────────────────────────────
+
+const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const inp: CSSProperties = { width: "100%", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "8px 12px", fontSize: 13, color: "#121a2e", outline: "none", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const btnGrad: CSSProperties = { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600 };
+
+const STATUS_STYLES: Record<"draft" | "scheduled" | "published", { bg: string; color: string }> = {
+  draft: { bg: "#f6f6f6", color: "rgba(18,26,46,0.5)" },
+  scheduled: { bg: "#d5eeff", color: "#073e63" },
+  published: { bg: "#d1fae5", color: "#168b64" },
+};
+const STATUS_LABELS = { draft: "Brouillon", scheduled: "Planifié", published: "Publié" };
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function PostsPage() {
   const [posts, setPosts] = useState<LinkedInPost[]>([]);
@@ -55,12 +52,11 @@ export default function PostsPage() {
   const [ideas, setIdeas] = useState<LinkedInIdea[]>([]);
   const [filter, setFilter] = useState<FilterTab>("all");
 
-  // Create panel
   const [sourceTab, setSourceTab] = useState<SourceTab>("idea");
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [postType, setPostType] = useState<"post" | "carousel">("post");
   const [carouselSlides, setCarouselSlides] = useState(5);
-  const [sourceInput, setSourceInput] = useState(""); // URL / YouTube URL
+  const [sourceInput, setSourceInput] = useState("");
   const [manualIdea, setManualIdea] = useState("");
   const [selectedIdeaId, setSelectedIdeaId] = useState("");
   const [scrapedContent, setScrapedContent] = useState("");
@@ -75,14 +71,9 @@ export default function PostsPage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Stats modal
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({ likes: 0, comments: 0, impressions: 0 });
-
-  // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Settings (OpenRouter key, model, carousel template)
   const [settings, setSettings] = useState<LinkedInSettings | null>(null);
 
   useEffect(() => {
@@ -91,7 +82,6 @@ export default function PostsPage() {
     setIdeas(loadIdeas());
     setSettings(loadLinkedInSettings());
 
-    // Prefill from idea page redirect
     const prefill = sessionStorage.getItem("linkedin_idea_prefill");
     if (prefill) {
       try {
@@ -104,108 +94,52 @@ export default function PostsPage() {
   }, []);
 
   const filteredPosts = posts
-    .filter((p) => filter === "all" || p.status === filter)
+    .filter(p => filter === "all" || p.status === filter)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Top posts for AI context
   const topPosts = [...posts]
-    .filter((p) => p.status === "published" && (p.likes + p.comments) > 0)
+    .filter(p => p.status === "published" && (p.likes + p.comments) > 0)
     .sort((a, b) => b.likes + b.comments * 3 - (a.likes + a.comments * 3))
     .slice(0, 5)
-    .map((p) => ({
-      content: p.content,
-      likes: p.likes,
-      comments: p.comments,
-      impressions: p.impressions,
-      styleName: p.styleName,
-    }));
+    .map(p => ({ content: p.content, likes: p.likes, comments: p.comments, impressions: p.impressions, styleName: p.styleName }));
 
   async function handleScrapeUrl() {
     if (!sourceInput.trim()) return;
-    setScraping(true);
-    setScrapedContent("");
+    setScraping(true); setScrapedContent("");
     try {
-      const isYoutube =
-        sourceTab === "youtube" ||
-        sourceInput.includes("youtube.com") ||
-        sourceInput.includes("youtu.be");
-
+      const isYoutube = sourceTab === "youtube" || sourceInput.includes("youtube.com") || sourceInput.includes("youtu.be");
       if (isYoutube) {
-        const res = await fetch("/api/linkedin/youtube-info", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: sourceInput }),
-        });
+        const res = await fetch("/api/linkedin/youtube-info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: sourceInput }) });
         const data = await res.json();
-        if (res.ok) {
-          setScrapedTitle(data.title);
-          setScrapedContent(
-            `Titre: ${data.title}\nAuteur: ${data.author}\n\n${data.description || "Pas de description disponible."}`
-          );
-        } else {
-          setGenerationError(data.error);
-        }
+        if (res.ok) { setScrapedTitle(data.title); setScrapedContent(`Titre: ${data.title}\nAuteur: ${data.author}\n\n${data.description || "Pas de description disponible."}`); }
+        else setGenerationError(data.error);
       } else {
-        const res = await fetch("/api/linkedin/scrape-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: sourceInput }),
-        });
+        const res = await fetch("/api/linkedin/scrape-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: sourceInput }) });
         const data = await res.json();
-        if (res.ok) {
-          setScrapedTitle(data.title);
-          setScrapedContent(data.content);
-        } else {
-          setGenerationError(data.error);
-        }
+        if (res.ok) { setScrapedTitle(data.title); setScrapedContent(data.content); }
+        else setGenerationError(data.error);
       }
-    } catch (e) {
-      setGenerationError(String(e));
-    }
+    } catch (e) { setGenerationError(String(e)); }
     setScraping(false);
   }
 
   async function handleGenerate() {
-    setGenerating(true);
-    setGenerationError("");
-    setGeneratedContent("");
-    setGeneratedSlides([]);
-
+    setGenerating(true); setGenerationError(""); setGeneratedContent(""); setGeneratedSlides([]);
     const currentSettings = settings ?? loadLinkedInSettings();
-    const selectedStyle = styles.find((s) => s.id === selectedStyleId);
-    const selectedIdea = ideas.find((i) => i.id === selectedIdeaId);
-
-    let sourceContent = "";
-    let sourceTitle = "";
-
+    const selectedStyle = styles.find(s => s.id === selectedStyleId);
+    const selectedIdea = ideas.find(i => i.id === selectedIdeaId);
+    let sourceContent = "", sourceTitle = "";
     switch (sourceTab) {
-      case "idea":
-        sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}` : manualIdea;
-        sourceTitle = selectedIdea?.title ?? "";
-        break;
-      case "url":
-      case "youtube":
-        sourceContent = scrapedContent || sourceInput;
-        sourceTitle = scrapedTitle;
-        break;
-      case "manual":
-        sourceContent = manualIdea;
-        break;
+      case "idea": sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}` : manualIdea; sourceTitle = selectedIdea?.title ?? ""; break;
+      case "url": case "youtube": sourceContent = scrapedContent || sourceInput; sourceTitle = scrapedTitle; break;
+      case "manual": sourceContent = manualIdea; break;
     }
+    if (!sourceContent.trim()) { setGenerationError("Veuillez entrer un contenu source."); setGenerating(false); return; }
 
-    if (!sourceContent.trim()) {
-      setGenerationError("Veuillez entrer un contenu source.");
-      setGenerating(false);
-      return;
-    }
-
-    // Fetch style examples from Supabase if a style is selected
     let styleExamples: { content: string }[] = [];
     if (selectedStyleId) {
       try {
-        const exRes = await fetch(
-          `/api/linkedin/style-examples?styleId=${encodeURIComponent(selectedStyleId)}`
-        );
+        const exRes = await fetch(`/api/linkedin/style-examples?styleId=${encodeURIComponent(selectedStyleId)}`);
         const exData = await exRes.json();
         styleExamples = (exData.examples ?? []).slice(0, 3);
       } catch {}
@@ -213,242 +147,141 @@ export default function PostsPage() {
 
     try {
       const res = await fetch("/api/linkedin/generate-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sourceType: sourceTab,
-          sourceContent,
-          sourceTitle,
-          style: selectedStyle
-            ? { name: selectedStyle.name, prompt: selectedStyle.prompt, category: selectedStyle.category }
-            : undefined,
-          styleExamples,
-          type: postType,
-          carouselSlides,
+          sourceType: sourceTab, sourceContent, sourceTitle,
+          style: selectedStyle ? { name: selectedStyle.name, prompt: selectedStyle.prompt, category: selectedStyle.category } : undefined,
+          styleExamples, type: postType, carouselSlides,
           carouselTemplate: postType === "carousel" ? currentSettings.carouselTemplate : undefined,
-          topPosts,
-          language: currentSettings.language,
-          openrouterApiKey: currentSettings.openrouterApiKey || undefined,
-          model: currentSettings.model,
+          topPosts, language: currentSettings.language,
+          openrouterApiKey: currentSettings.openrouterApiKey || undefined, model: currentSettings.model,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        if (data.type === "carousel" && data.slides) {
-          setGeneratedSlides(data.slides);
-          setActiveSlide(0);
-        } else {
-          setGeneratedContent(data.content);
-        }
-        // Mark idea as used
+        if (data.type === "carousel" && data.slides) { setGeneratedSlides(data.slides); setActiveSlide(0); }
+        else setGeneratedContent(data.content);
         if (selectedIdeaId) {
-          const updated = ideas.map((i) =>
-            i.id === selectedIdeaId ? { ...i, status: "used" as const, usedAt: new Date().toISOString() } : i
-          );
-          setIdeas(updated);
-          saveIdeas(updated);
+          const updated = ideas.map(i => i.id === selectedIdeaId ? { ...i, status: "used" as const, usedAt: new Date().toISOString() } : i);
+          setIdeas(updated); saveIdeas(updated);
         }
-      } else {
-        setGenerationError(data.error);
-      }
-    } catch (e) {
-      setGenerationError(String(e));
-    }
+      } else setGenerationError(data.error);
+    } catch (e) { setGenerationError(String(e)); }
     setGenerating(false);
   }
 
   function handleSave(status: "draft" | "scheduled" | "published") {
     const content = postType === "carousel" ? generatedSlides.join("\n\n---\n\n") : generatedContent;
     if (!content.trim()) return;
-
     setSaving(true);
-    const selectedStyle = styles.find((s) => s.id === selectedStyleId);
+    const selectedStyle = styles.find(s => s.id === selectedStyleId);
     const newPost: LinkedInPost = {
-      id: crypto.randomUUID(),
-      content,
-      type: postType,
+      id: crypto.randomUUID(), content, type: postType,
       slides: postType === "carousel" ? generatedSlides : undefined,
       sourceType: sourceTab === "idea" ? "idea" : sourceTab === "manual" ? "manual" : sourceTab,
       sourceUrl: ["url", "youtube"].includes(sourceTab) ? sourceInput : undefined,
       sourceTitle: scrapedTitle || undefined,
-      styleId: selectedStyleId || undefined,
-      styleName: selectedStyle?.name,
+      styleId: selectedStyleId || undefined, styleName: selectedStyle?.name,
       scheduledAt: status === "scheduled" && scheduleDate ? new Date(scheduleDate).toISOString() : undefined,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
-      likes: 0,
-      comments: 0,
-      impressions: 0,
-      status,
-      tags: tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
+      likes: 0, comments: 0, impressions: 0, status,
+      tags: tags.split(",").map(t => t.trim()).filter(Boolean),
       createdAt: new Date().toISOString(),
     };
-
     const updated = [newPost, ...posts];
-    setPosts(updated);
-    savePosts(updated);
-
-    // Reset form
-    setGeneratedContent("");
-    setGeneratedSlides([]);
-    setManualIdea("");
-    setSourceInput("");
-    setScrapedContent("");
-    setScrapedTitle("");
-    setTags("");
-    setScheduleDate("");
-    setSaving(false);
+    setPosts(updated); savePosts(updated);
+    setGeneratedContent(""); setGeneratedSlides([]); setManualIdea("");
+    setSourceInput(""); setScrapedContent(""); setScrapedTitle(""); setTags(""); setScheduleDate(""); setSaving(false);
   }
 
-  function deletePost(id: string) {
-    const updated = posts.filter((p) => p.id !== id);
-    setPosts(updated);
-    savePosts(updated);
-  }
+  function deletePost(id: string) { const updated = posts.filter(p => p.id !== id); setPosts(updated); savePosts(updated); }
 
   function saveStats(postId: string) {
-    const updated = posts.map((p) =>
-      p.id === postId
-        ? {
-            ...p,
-            likes: statsInput.likes,
-            comments: statsInput.comments,
-            impressions: statsInput.impressions,
-            status: "published" as const,
-            publishedAt: p.publishedAt ?? new Date().toISOString(),
-          }
-        : p
-    );
-    setPosts(updated);
-    savePosts(updated);
-    setStatsPost(null);
+    const updated = posts.map(p => p.id === postId ? { ...p, ...statsInput, status: "published" as const, publishedAt: p.publishedAt ?? new Date().toISOString() } : p);
+    setPosts(updated); savePosts(updated); setStatsPost(null);
   }
 
   function copyPost(post: LinkedInPost) {
-    navigator.clipboard.writeText(post.content).then(() => {
-      setCopiedId(post.id);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
+    navigator.clipboard.writeText(post.content).then(() => { setCopiedId(post.id); setTimeout(() => setCopiedId(null), 2000); });
   }
 
-  const hasGenerated =
-    (postType === "carousel" && generatedSlides.length > 0) ||
-    (postType === "post" && generatedContent.trim().length > 0);
-
+  const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
   const stats = {
-    total: posts.length,
-    drafts: posts.filter((p) => p.status === "draft").length,
-    scheduled: posts.filter((p) => p.status === "scheduled").length,
-    published: posts.filter((p) => p.status === "published").length,
-    totalLikes: posts.reduce((s, p) => s + p.likes, 0),
-    totalImpressions: posts.reduce((s, p) => s + p.impressions, 0),
+    total: posts.length, drafts: posts.filter(p => p.status === "draft").length,
+    scheduled: posts.filter(p => p.status === "scheduled").length, published: posts.filter(p => p.status === "published").length,
+    totalLikes: posts.reduce((s, p) => s + p.likes, 0), totalImpressions: posts.reduce((s, p) => s + p.impressions, 0),
   };
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div className="flex h-full overflow-hidden">
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", ...jk }}>
       {/* ── Left: Create panel ── */}
-      <div className="w-96 border-r border-gray-200 bg-white flex flex-col shrink-0 overflow-y-auto">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Créer un post</h2>
+      <div style={{ width: 384, borderRight: "1px solid rgba(0,0,0,0.09)", background: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, overflowY: "auto" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>Créer un post</h2>
 
           {/* Source tabs */}
-          <div className="flex gap-0.5 mt-3 bg-gray-100 rounded-lg p-0.5">
-            {(
-              [
-                { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
-                { id: "url", icon: <Link2 size={12} />, label: "URL" },
-                { id: "youtube", icon: <Youtube size={12} />, label: "YouTube" },
-                { id: "manual", icon: <AlignLeft size={12} />, label: "Libre" },
-              ] as { id: SourceTab; icon: React.ReactNode; label: string }[]
-            ).map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setSourceTab(t.id)}
-                className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  sourceTab === t.id ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
-                }`}
-              >
+          <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+            {([
+              { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
+              { id: "url", icon: <Link2 size={12} />, label: "URL" },
+              { id: "youtube", icon: <Youtube size={12} />, label: "YouTube" },
+              { id: "manual", icon: <AlignLeft size={12} />, label: "Libre" },
+            ] as { id: SourceTab; icon: React.ReactNode; label: string }[]).map(t => (
+              <button key={t.id} onClick={() => setSourceTab(t.id)} style={{
+                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "6px 4px",
+                fontSize: 12, fontWeight: 500, borderRadius: 7, cursor: "pointer", border: "none",
+                fontFamily: '"Plus Jakarta Sans", sans-serif',
+                ...(sourceTab === t.id ? { background: "#fff", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" } : { background: "transparent", color: "rgba(18,26,46,0.5)" }),
+              }}>
                 {t.icon} {t.label}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex-1 px-5 py-4 space-y-4">
+        <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Source input */}
           {sourceTab === "idea" && (
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Sélectionner une idée</label>
-              {ideas.filter((i) => i.status === "new").length > 0 ? (
-                <select
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
-                  value={selectedIdeaId}
-                  onChange={(e) => setSelectedIdeaId(e.target.value)}
-                >
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Sélectionner une idée</label>
+              {ideas.filter(i => i.status === "new").length > 0 ? (
+                <select value={selectedIdeaId} onChange={e => setSelectedIdeaId(e.target.value)} style={inp}>
                   <option value="">— Choisir une idée —</option>
-                  {ideas
-                    .filter((i) => i.status === "new")
-                    .map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.title}
-                      </option>
-                    ))}
+                  {ideas.filter(i => i.status === "new").map(i => <option key={i.id} value={i.id}>{i.title}</option>)}
                 </select>
               ) : (
-                <p className="text-xs text-gray-400 italic">
-                  Aucune idée disponible. Allez dans l'onglet Idées pour en générer.
-                </p>
+                <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic" }}>Aucune idée disponible. Allez dans l&apos;onglet Idées pour en générer.</p>
               )}
-              <div className="mt-2">
-                <label className="text-xs font-medium text-gray-600 mb-1.5 block">
-                  Ou entrer une idée libre
-                </label>
-                <textarea
-                  rows={3}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none"
+              <div style={{ marginTop: 8 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Ou entrer une idée libre</label>
+                <textarea rows={3} value={manualIdea} onChange={e => setManualIdea(e.target.value)}
                   placeholder="Ex: Ma méthode pour closer des clients sans être pushy..."
-                  value={manualIdea}
-                  onChange={(e) => setManualIdea(e.target.value)}
-                />
+                  style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
               </div>
             </div>
           )}
 
           {(sourceTab === "url" || sourceTab === "youtube") && (
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>
                 {sourceTab === "youtube" ? "URL de la vidéo YouTube" : "URL de l'article"}
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
-                  placeholder={
-                    sourceTab === "youtube" ? "https://youtube.com/watch?v=..." : "https://exemple.com/article"
-                  }
-                  value={sourceInput}
-                  onChange={(e) => setSourceInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleScrapeUrl()}
-                />
-                <button
-                  onClick={handleScrapeUrl}
-                  disabled={!sourceInput.trim() || scraping}
-                  className="px-3 py-2 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700 disabled:opacity-50"
-                >
-                  {scraping ? <Loader2 size={13} className="animate-spin" /> : "Analyser"}
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="url" value={sourceInput} onChange={e => setSourceInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleScrapeUrl()}
+                  placeholder={sourceTab === "youtube" ? "https://youtube.com/watch?v=..." : "https://exemple.com/article"}
+                  style={{ ...inp, flex: 1 }} />
+                <button onClick={handleScrapeUrl} disabled={!sourceInput.trim() || scraping}
+                  style={{ padding: "8px 14px", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#121a2e", opacity: !sourceInput.trim() || scraping ? 0.5 : 1, flexShrink: 0, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  {scraping ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : "Analyser"}
                 </button>
               </div>
               {scrapedContent && (
-                <div className="mt-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                  {scrapedTitle && (
-                    <p className="text-xs font-medium text-gray-700 mb-1">{scrapedTitle}</p>
-                  )}
-                  <p className="text-xs text-gray-500 line-clamp-3">{scrapedContent}</p>
-                  <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                    <Check size={10} /> Contenu extrait
-                  </p>
+                <div style={{ marginTop: 8, padding: "10px 12px", background: "#f6f6f6", borderRadius: 9, border: "1px solid rgba(0,0,0,0.07)" }}>
+                  {scrapedTitle && <p style={{ fontSize: 12, fontWeight: 600, color: "#121a2e", margin: 0, marginBottom: 4 }}>{scrapedTitle}</p>}
+                  <p style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{scrapedContent}</p>
+                  <p style={{ fontSize: 11, color: "#168b64", marginTop: 6, marginBottom: 0, display: "flex", alignItems: "center", gap: 4 }}><Check size={10} /> Contenu extrait</p>
                 </div>
               )}
             </div>
@@ -456,199 +289,128 @@ export default function PostsPage() {
 
           {sourceTab === "manual" && (
             <div>
-              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Votre idée / contenu</label>
-              <textarea
-                rows={5}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none"
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Votre idée / contenu</label>
+              <textarea rows={5} value={manualIdea} onChange={e => setManualIdea(e.target.value)}
                 placeholder="Décrivez votre idée, copiez un texte brut, vos notes..."
-                value={manualIdea}
-                onChange={(e) => setManualIdea(e.target.value)}
-              />
+                style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
             </div>
           )}
 
           {/* Style */}
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Style de rédaction</label>
-            <select
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
-              value={selectedStyleId}
-              onChange={(e) => setSelectedStyleId(e.target.value)}
-            >
+            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Style de rédaction</label>
+            <select value={selectedStyleId} onChange={e => setSelectedStyleId(e.target.value)} style={inp}>
               <option value="">— Style automatique —</option>
-              {styles.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              {styles.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 
           {/* Type */}
           <div>
-            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Type de contenu</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPostType("post")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                  postType === "post"
-                    ? "bg-[#0A66C2] border-[#0A66C2] text-white"
-                    : "border-gray-200 text-gray-600 hover:border-gray-300"
-                }`}
-              >
-                <Edit3 size={12} /> Post
-              </button>
-              <button
-                onClick={() => setPostType("carousel")}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                  postType === "carousel"
-                    ? "bg-[#0A66C2] border-[#0A66C2] text-white"
-                    : "border-gray-200 text-gray-600 hover:border-gray-300"
-                }`}
-              >
-                <LayoutTemplate size={12} /> Carrousel
-              </button>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Type de contenu</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["post", "carousel"] as const).map(t => (
+                <button key={t} onClick={() => setPostType(t)} style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0",
+                  fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", border: "1px solid",
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  ...(postType === t ? { background: "#e8edff", borderColor: "#0147ff", color: "#0147ff" } : { background: "#f6f6f6", borderColor: "rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                }}>
+                  {t === "post" ? <Edit3 size={12} /> : <LayoutTemplate size={12} />}
+                  {t === "post" ? "Post" : "Carrousel"}
+                </button>
+              ))}
             </div>
             {postType === "carousel" && (
-              <div className="space-y-2 mt-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Slides :</span>
-                  <input
-                    type="number"
-                    min={3}
-                    max={20}
-                    value={carouselSlides}
-                    onChange={(e) => setCarouselSlides(Number(e.target.value))}
-                    className="w-16 text-sm border border-gray-200 rounded px-2 py-1 text-center"
-                  />
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)" }}>Slides :</span>
+                  <input type="number" min={3} max={20} value={carouselSlides} onChange={e => setCarouselSlides(Number(e.target.value))}
+                    style={{ width: 64, padding: "5px 8px", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 7, fontSize: 13, textAlign: "center", background: "#f6f6f6", outline: "none", color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
                 </div>
-                <div className="flex items-start gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                  <Info size={12} className="text-blue-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-blue-600">
-                    Le contenu de chaque slide suivra le template défini dans les{" "}
-                    <span className="font-medium">Paramètres LinkedIn</span>
-                    {" "}(TITRE, SOUS-TITRE, TEXTE, VISUEL...)
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, background: "#e8edff", border: "1px solid #c7d3ff", borderRadius: 9, padding: "8px 12px" }}>
+                  <Info size={12} style={{ color: "#0147ff", marginTop: 1, flexShrink: 0 }} />
+                  <p style={{ fontSize: 12, color: "#073e63", margin: 0, lineHeight: 1.5 }}>
+                    Le contenu de chaque slide suivra le template défini dans les <strong>Paramètres LinkedIn</strong> (TITRE, SOUS-TITRE, TEXTE, VISUEL...)
                   </p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Generate */}
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#0A66C2] text-white text-sm font-semibold rounded-xl hover:bg-[#004182] disabled:opacity-60 transition-colors"
-          >
-            {generating ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+          {/* Generate button */}
+          <button onClick={handleGenerate} disabled={generating} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13, opacity: generating ? 0.7 : 1 }}>
+            {generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />}
             {generating ? "Génération..." : "Générer avec l'IA"}
           </button>
 
           {generationError && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <p style={{ fontSize: 12, color: "#c53030", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 9, padding: "8px 12px", margin: 0 }}>
               {generationError}
             </p>
           )}
 
           {/* Generated content */}
           {hasGenerated && (
-            <div className="space-y-3">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {postType === "carousel" && generatedSlides.length > 0 ? (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                      <Layers size={12} />
-                      Carrousel — {generatedSlides.length} slides
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
+                      <Layers size={12} />Carrousel — {generatedSlides.length} slides
                     </p>
-                    <div className="flex gap-1 flex-wrap justify-end">
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       {generatedSlides.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setActiveSlide(i)}
-                          className={`w-6 h-6 text-xs rounded-full font-medium transition-colors ${
-                            activeSlide === i
-                              ? "bg-[#0A66C2] text-white"
-                              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                          }`}
-                        >
+                        <button key={i} onClick={() => setActiveSlide(i)} style={{
+                          width: 24, height: 24, fontSize: 11, fontWeight: 500,
+                          cursor: "pointer", border: "none", fontFamily: '"Plus Jakarta Sans", sans-serif',
+                          ...(activeSlide === i
+                            ? { background: btnGrad.background, color: "#fff", borderRadius: "50%", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }
+                            : { background: "#f6f6f6", color: "rgba(18,26,46,0.5)", borderRadius: "50%" }),
+                        }}>
                           {i + 1}
                         </button>
                       ))}
                     </div>
                   </div>
-                  {/* Structured slide preview */}
-                  <SlidePreview
-                    content={generatedSlides[activeSlide] ?? ""}
-                    slideNum={activeSlide + 1}
-                    totalSlides={generatedSlides.length}
-                    onChange={(val) => {
-                      const updated = [...generatedSlides];
-                      updated[activeSlide] = val;
-                      setGeneratedSlides(updated);
-                    }}
-                  />
+                  <SlidePreview content={generatedSlides[activeSlide] ?? ""} slideNum={activeSlide + 1} totalSlides={generatedSlides.length}
+                    onChange={val => { const updated = [...generatedSlides]; updated[activeSlide] = val; setGeneratedSlides(updated); }} />
                 </div>
               ) : (
                 <div>
-                  <p className="text-xs font-medium text-gray-600 mb-1.5">Post généré</p>
-                  <textarea
-                    rows={10}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none"
-                    value={generatedContent}
-                    onChange={(e) => setGeneratedContent(e.target.value)}
-                  />
+                  <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6, marginTop: 0 }}>Post généré</p>
+                  <textarea rows={10} value={generatedContent} onChange={e => setGeneratedContent(e.target.value)}
+                    style={{ ...inp, background: "#f6f6f6", resize: "none", lineHeight: 1.6 }} />
                 </div>
               )}
 
               {/* Tags + schedule */}
-              <div className="grid grid-cols-2 gap-2">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block flex items-center gap-1">
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
                     <Tag size={10} /> Tags (virgule)
                   </label>
-                  <input
-                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0A66C2]/30"
-                    placeholder="linkedin, content..."
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                  />
+                  <input value={tags} onChange={e => setTags(e.target.value)} placeholder="linkedin, content..." style={{ ...inp, fontSize: 12 }} />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block flex items-center gap-1">
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
                     <Clock size={10} /> Programmer
                   </label>
-                  <input
-                    type="datetime-local"
-                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0A66C2]/30"
-                    value={scheduleDate}
-                    onChange={(e) => setScheduleDate(e.target.value)}
-                  />
+                  <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
                 </div>
               </div>
 
               {/* Save buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleSave("draft")}
-                  disabled={saving}
-                  className="flex-1 py-2 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700"
-                >
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => handleSave("draft")} disabled={saving} style={{ flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 500, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, cursor: "pointer", color: "rgba(18,26,46,0.6)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                   Brouillon
                 </button>
                 {scheduleDate && (
-                  <button
-                    onClick={() => handleSave("scheduled")}
-                    disabled={saving}
-                    className="flex-1 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                  >
+                  <button onClick={() => handleSave("scheduled")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "8px 0", fontSize: 12 }}>
                     Planifier
                   </button>
                 )}
-                <button
-                  onClick={() => handleSave("published")}
-                  disabled={saving}
-                  className="flex-1 py-2 text-xs font-medium bg-[#0A66C2] text-white rounded-lg hover:bg-[#004182]"
-                >
+                <button onClick={() => handleSave("published")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "8px 0", fontSize: 12 }}>
                   Publié
                 </button>
               </div>
@@ -658,183 +420,120 @@ export default function PostsPage() {
       </div>
 
       {/* ── Right: Posts list ── */}
-      <div className="flex-1 overflow-hidden flex flex-col bg-gray-50">
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#fbfbfb" }}>
         {/* Stats bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6">
+        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 24, flexShrink: 0 }}>
           {[
-            { label: "Total", value: stats.total, color: "text-gray-900" },
-            { label: "Brouillons", value: stats.drafts, color: "text-gray-500" },
-            { label: "Planifiés", value: stats.scheduled, color: "text-indigo-600" },
-            { label: "Publiés", value: stats.published, color: "text-green-600" },
-            { label: "Likes", value: stats.totalLikes, color: "text-[#0A66C2]", icon: <ThumbsUp size={11} /> },
-            {
-              label: "Impressions",
-              value: stats.totalImpressions > 1000
-                ? `${(stats.totalImpressions / 1000).toFixed(1)}k`
-                : stats.totalImpressions,
-              color: "text-purple-600",
-              icon: <Eye size={11} />,
-            },
-          ].map((s) => (
-            <div key={s.label} className="flex items-center gap-1.5">
-              {s.icon && <span className={s.color}>{s.icon}</span>}
-              <span className={`text-lg font-bold ${s.color}`}>{s.value}</span>
-              <span className="text-xs text-gray-400">{s.label}</span>
+            { label: "Total", value: stats.total, color: "#121a2e" },
+            { label: "Brouillons", value: stats.drafts, color: "rgba(18,26,46,0.5)" },
+            { label: "Planifiés", value: stats.scheduled, color: "#073e63" },
+            { label: "Publiés", value: stats.published, color: "#168b64" },
+            { label: "Likes", value: stats.totalLikes, color: "#0147ff", icon: <ThumbsUp size={11} /> },
+            { label: "Impressions", value: stats.totalImpressions > 1000 ? `${(stats.totalImpressions / 1000).toFixed(1)}k` : stats.totalImpressions, color: "#6236AA", icon: <Eye size={11} /> },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              {s.icon && <span style={{ color: s.color }}>{s.icon}</span>}
+              <span style={{ fontSize: 17, fontWeight: 700, color: s.color }}>{s.value}</span>
+              <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{s.label}</span>
             </div>
           ))}
         </div>
 
         {/* Filter tabs */}
-        <div className="bg-white border-b border-gray-100 px-6 flex items-center gap-0">
-          {(
-            [
-              { id: "all", label: "Tous" },
-              { id: "draft", label: "Brouillons" },
-              { id: "scheduled", label: "Planifiés" },
-              { id: "published", label: "Publiés" },
-            ] as { id: FilterTab; label: string }[]
-          ).map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                filter === f.id
-                  ? "border-[#0A66C2] text-[#0A66C2]"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
+        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "0 24px", display: "flex", flexShrink: 0 }}>
+          {([{ id: "all", label: "Tous" }, { id: "draft", label: "Brouillons" }, { id: "scheduled", label: "Planifiés" }, { id: "published", label: "Publiés" }] as { id: FilterTab; label: string }[]).map(f => (
+            <button key={f.id} onClick={() => setFilter(f.id)} style={{
+              padding: "10px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none",
+              borderBottom: `2px solid ${filter === f.id ? "#0147ff" : "transparent"}`,
+              color: filter === f.id ? "#0147ff" : "rgba(18,26,46,0.5)",
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
+            }}>
               {f.label}
             </button>
           ))}
         </div>
 
         {/* Posts grid */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
           {filteredPosts.length === 0 ? (
-            <div className="text-center py-16">
-              <Edit3 size={32} className="text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">Aucun post</p>
-              <p className="text-gray-400 text-sm mt-1">
-                Créez votre premier post depuis le panneau de gauche.
-              </p>
+            <div style={{ textAlign: "center", paddingTop: 64 }}>
+              <Edit3 size={32} style={{ color: "rgba(18,26,46,0.1)", margin: "0 auto 12px" }} />
+              <p style={{ fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.5)", margin: 0 }}>Aucun post</p>
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Créez votre premier post depuis le panneau de gauche.</p>
             </div>
           ) : (
-            <div className="grid gap-3 grid-cols-1 xl:grid-cols-2">
-              {filteredPosts.map((post) => (
-                <div key={post.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-                  {/* Post header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          post.status === "published"
-                            ? "bg-green-100 text-green-700"
-                            : post.status === "scheduled"
-                            ? "bg-indigo-100 text-indigo-700"
-                            : "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {post.status === "published"
-                          ? "Publié"
-                          : post.status === "scheduled"
-                          ? "Planifié"
-                          : "Brouillon"}
-                      </span>
-                      {post.type === "carousel" && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-                          Carrousel
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+              {filteredPosts.map(post => {
+                const ss = STATUS_STYLES[post.status];
+                return (
+                  <div key={post.id} style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: ss.bg, color: ss.color }}>
+                          {STATUS_LABELS[post.status]}
                         </span>
-                      )}
-                      {post.styleName && (
-                        <span className="text-xs text-gray-400">{post.styleName}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => copyPost(post)}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
-                        title="Copier"
-                      >
-                        {copiedId === post.id ? (
-                          <Check size={13} className="text-green-500" />
-                        ) : (
-                          <Copy size={13} />
+                        {post.type === "carousel" && (
+                          <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "#E1D1FA", color: "#6236AA" }}>Carrousel</span>
                         )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setStatsPost(post);
-                          setStatsInput({
-                            likes: post.likes,
-                            comments: post.comments,
-                            impressions: post.impressions,
-                          });
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-[#0A66C2] transition-colors"
-                        title="Statistiques"
-                      >
-                        <BarChart2 size={13} />
-                      </button>
-                      <button
-                        onClick={() => deletePost(post.id)}
-                        className="p-1.5 text-gray-300 hover:text-red-500 transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                        {post.styleName && <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{post.styleName}</span>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                        <button onClick={() => copyPost(post)} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
+                          {copiedId === post.id ? <Check size={13} style={{ color: "#168b64" }} /> : <Copy size={13} />}
+                        </button>
+                        <button onClick={() => { setStatsPost(post); setStatsInput({ likes: post.likes, comments: post.comments, impressions: post.impressions }); }} title="Statistiques" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
+                          <BarChart2 size={13} />
+                        </button>
+                        <button onClick={() => deletePost(post.id)} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Content preview */}
+                    <p style={{ fontSize: 13, color: "#121a2e", lineHeight: 1.6, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", whiteSpace: "pre-line" }}>
+                      {post.content}
+                    </p>
+
+                    {/* Stats */}
+                    {post.status === "published" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
+                          <ThumbsUp size={11} style={{ color: "#0147ff" }} /> {post.likes}
+                        </span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
+                          <MessageCircle size={11} style={{ color: "#168b64" }} /> {post.comments}
+                        </span>
+                        {post.impressions > 0 && (
+                          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
+                            <Eye size={11} style={{ color: "#6236AA" }} /> {post.impressions.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Schedule date */}
+                    {post.status === "scheduled" && post.scheduledAt && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#073e63" }}>
+                        <Calendar size={11} />
+                        {new Date(post.scheduledAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    {post.tags.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {post.tags.map(tag => (
+                          <span key={tag} style={{ fontSize: 11, padding: "2px 8px", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 20, color: "rgba(18,26,46,0.5)" }}>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Content preview */}
-                  <p className="text-sm text-gray-700 line-clamp-4 leading-relaxed whitespace-pre-line">
-                    {post.content}
-                  </p>
-
-                  {/* Stats (published) */}
-                  {post.status === "published" && (
-                    <div className="flex items-center gap-3 pt-1 border-t border-gray-50">
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <ThumbsUp size={11} className="text-[#0A66C2]" /> {post.likes}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs text-gray-500">
-                        <MessageCircle size={11} className="text-teal-500" /> {post.comments}
-                      </span>
-                      {post.impressions > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Eye size={11} className="text-purple-500" /> {post.impressions.toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Schedule date */}
-                  {post.status === "scheduled" && post.scheduledAt && (
-                    <div className="flex items-center gap-1 text-xs text-indigo-500">
-                      <Calendar size={11} />
-                      {new Date(post.scheduledAt).toLocaleDateString("fr-FR", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  )}
-
-                  {/* Tags */}
-                  {post.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {post.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-xs px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-gray-500"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -842,158 +541,107 @@ export default function PostsPage() {
 
       {/* Stats modal */}
       {statsPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Ajouter des statistiques</h3>
-              <button onClick={() => setStatsPost(null)} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)" }}>
+          <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", width: 320, padding: 24, display: "flex", flexDirection: "column", gap: 16, ...jk }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0 }}>Ajouter des statistiques</h3>
+              <button onClick={() => setStatsPost(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={18} /></button>
             </div>
-            <p className="text-xs text-gray-500 line-clamp-2 italic">"{statsPost.content.slice(0, 100)}..."</p>
-            {[
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic", margin: 0 }}>&quot;{statsPost.content.slice(0, 100)}...&quot;</p>
+            {([
               { key: "likes" as const, label: "Likes", icon: <ThumbsUp size={13} /> },
               { key: "comments" as const, label: "Commentaires", icon: <MessageCircle size={13} /> },
               { key: "impressions" as const, label: "Impressions", icon: <Eye size={13} /> },
-            ].map((s) => (
+            ]).map(s => (
               <div key={s.key}>
-                <label className="text-xs font-medium text-gray-600 mb-1 flex items-center gap-1.5">
-                  {s.icon} {s.label}
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={statsInput[s.key]}
-                  onChange={(e) =>
-                    setStatsInput((prev) => ({ ...prev, [s.key]: Number(e.target.value) }))
-                  }
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
-                />
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>{s.icon} {s.label}</label>
+                <input type="number" min={0} value={statsInput[s.key]} onChange={e => setStatsInput(prev => ({ ...prev, [s.key]: Number(e.target.value) }))} style={inp} />
               </div>
             ))}
-            <button
-              onClick={() => saveStats(statsPost.id)}
-              className="w-full py-2.5 bg-[#0A66C2] text-white text-sm font-semibold rounded-xl hover:bg-[#004182]"
-            >
+            <button onClick={() => saveStats(statsPost.id)} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13 }}>
               Sauvegarder
             </button>
           </div>
         </div>
       )}
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// --- Slide preview component ---
-// Parses the structured KEY: value format and renders it beautifully
-// Falls back to raw textarea if format is not detected
+// ─── Slide preview component ──────────────────────────────────────────────────
 
 const SLIDE_FIELD_LABELS: Record<string, { label: string; color: string }> = {
-  TITRE: { label: "Titre", color: "text-gray-900 font-semibold" },
-  "SOUS-TITRE": { label: "Sous-titre", color: "text-gray-700 font-medium" },
-  TEXTE: { label: "Texte", color: "text-gray-600" },
-  VISUEL: { label: "Visuel suggéré", color: "text-indigo-600" },
-  CTA: { label: "CTA", color: "text-[#0A66C2] font-medium" },
-  EXEMPLE: { label: "Exemple", color: "text-teal-600" },
-  STAT: { label: "Statistique", color: "text-orange-600 font-semibold" },
-  PROBLEMATIQUE: { label: "Problématique", color: "text-red-600" },
-  ACCROCHE: { label: "Accroche", color: "text-gray-900 font-semibold" },
+  TITRE: { label: "Titre", color: "font-semibold" },
+  "SOUS-TITRE": { label: "Sous-titre", color: "" },
+  TEXTE: { label: "Texte", color: "" },
+  VISUEL: { label: "Visuel suggéré", color: "" },
+  CTA: { label: "CTA", color: "" },
+  EXEMPLE: { label: "Exemple", color: "" },
+  STAT: { label: "Statistique", color: "" },
+  PROBLEMATIQUE: { label: "Problématique", color: "" },
+  ACCROCHE: { label: "Accroche", color: "" },
+};
+
+const SLIDE_FIELD_COLORS: Record<string, string> = {
+  TITRE: "#121a2e", "SOUS-TITRE": "#121a2e", TEXTE: "rgba(18,26,46,0.7)",
+  VISUEL: "#0147ff", CTA: "#0147ff", EXEMPLE: "#168b64",
+  STAT: "#d95b0a", PROBLEMATIQUE: "#c53030", ACCROCHE: "#121a2e",
 };
 
 function parseSlideFields(content: string): { key: string; value: string }[] | null {
-  // Detect if content has KEY: value structure
   const lines = content.split("\n");
   const fields: { key: string; value: string }[] = [];
-  let currentKey = "";
-  let currentValue: string[] = [];
-
+  let currentKey = "", currentValue: string[] = [];
   for (const line of lines) {
     const match = line.match(/^([A-ZÀ-Ü\-]+)\s*:\s*(.*)/);
     if (match) {
-      if (currentKey) {
-        fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
-      }
-      currentKey = match[1];
-      currentValue = [match[2]];
-    } else if (currentKey) {
-      currentValue.push(line);
-    }
+      if (currentKey) fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
+      currentKey = match[1]; currentValue = [match[2]];
+    } else if (currentKey) { currentValue.push(line); }
   }
-  if (currentKey) {
-    fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
-  }
-
+  if (currentKey) fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
   return fields.length >= 2 ? fields : null;
 }
 
-function SlidePreview({
-  content,
-  slideNum,
-  totalSlides,
-  onChange,
-}: {
-  content: string;
-  slideNum: number;
-  totalSlides: number;
-  onChange: (val: string) => void;
-}) {
+function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: string; slideNum: number; totalSlides: number; onChange: (val: string) => void }) {
   const [rawMode, setRawMode] = useState(false);
   const fields = parseSlideFields(content);
+  const jkSlide: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
 
   if (rawMode || !fields) {
     return (
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-400">Slide {slideNum}/{totalSlides} — mode brut</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <span style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", ...jkSlide }}>Slide {slideNum}/{totalSlides} — mode brut</span>
           {fields && (
-            <button
-              onClick={() => setRawMode(false)}
-              className="text-xs text-[#0A66C2] hover:underline"
-            >
-              Vue structurée
-            </button>
+            <button onClick={() => setRawMode(false)} style={{ fontSize: 11, color: "#0147ff", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", ...jkSlide }}>Vue structurée</button>
           )}
         </div>
-        <textarea
-          rows={8}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none font-mono"
-          value={content}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        <textarea rows={8} value={content} onChange={e => onChange(e.target.value)}
+          style={{ width: "100%", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "10px 12px", fontSize: 12, outline: "none", resize: "none", fontFamily: "monospace, monospace", color: "#121a2e", boxSizing: "border-box" }} />
       </div>
     );
   }
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      {/* Slide header */}
-      <div className="flex items-center justify-between bg-gray-50 px-3 py-2 border-b border-gray-200">
-        <span className="text-xs font-medium text-gray-500">
-          Slide {slideNum} / {totalSlides}
-        </span>
-        <button
-          onClick={() => setRawMode(true)}
-          className="text-xs text-gray-400 hover:text-gray-600"
-        >
-          Éditer brut
-        </button>
+    <div style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 11, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f6f6f6", padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(18,26,46,0.5)", ...jkSlide }}>Slide {slideNum} / {totalSlides}</span>
+        <button onClick={() => setRawMode(true)} style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Éditer brut</button>
       </div>
-
-      {/* Fields */}
-      <div className="p-3 space-y-2.5 bg-white">
-        {fields.map((f) => {
-          const meta = SLIDE_FIELD_LABELS[f.key];
-          return (
-            <div key={f.key} className="space-y-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                {meta?.label || f.key}
-              </p>
-              <p className={`text-sm leading-snug ${meta?.color || "text-gray-700"}`}>
-                {f.value || <span className="italic text-gray-300">—</span>}
-              </p>
-            </div>
-          );
-        })}
+      <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
+        {fields.map(f => (
+          <div key={f.key}>
+            <p style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(18,26,46,0.35)", margin: 0, marginBottom: 2, ...jkSlide }}>
+              {SLIDE_FIELD_LABELS[f.key]?.label || f.key}
+            </p>
+            <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: SLIDE_FIELD_COLORS[f.key] || "rgba(18,26,46,0.7)", ...jkSlide }}>
+              {f.value || <span style={{ color: "rgba(18,26,46,0.2)", fontStyle: "italic" }}>—</span>}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );

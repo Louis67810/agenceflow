@@ -5,8 +5,10 @@ import {
   Plus, Trash2, GripVertical, Save, FileText, Loader2,
   Type, AlignLeft, Mail, Link2, Phone, Hash, Calendar,
   ChevronDown, CircleDot, CheckSquare, Image, Paperclip,
-  X, Check, AlertCircle, Pencil,
+  X, Check, AlertCircle,
 } from "lucide-react";
+
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,12 @@ const FIELD_TYPES = [
 const typeConfig = Object.fromEntries(FIELD_TYPES.map((t) => [t.type, t]));
 const needsOptions = (t: string) => ["select", "radio", "checkbox"].includes(t);
 
+const inputStyle = {
+  width: "100%", fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9,
+  padding: "8px 12px", background: "#f6f6f6", color: "#121a2e", outline: "none",
+  boxSizing: "border-box" as const,
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function FormsPage() {
@@ -62,7 +70,6 @@ export default function FormsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Editor
   const [editorName, setEditorName]   = useState("");
   const [editorPages, setEditorPages] = useState<BuilderPage[]>([]);
   const [pageIdx, setPageIdx]         = useState(0);
@@ -70,18 +77,14 @@ export default function FormsPage() {
   const [saving, setSaving]           = useState(false);
   const [saveOk, setSaveOk]           = useState(false);
 
-  // Field UI
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [expandedField, setExpandedField]   = useState<string | null>(null);
   const [editingPageTitle, setEditingPageTitle] = useState<number | null>(null);
 
-  // Drag & drop
   const dragId  = useRef<string | null>(null);
   const dragOver = useRef<string | null>(null);
 
   useEffect(() => { loadForms(); }, []);
-
-  // ── API ────────────────────────────────────────────────────────────────────
 
   async function loadForms() {
     setLoading(true);
@@ -122,7 +125,7 @@ export default function FormsPage() {
       });
       const d = await r.json();
       if (!r.ok || !d.form) {
-        setCreateError(d.error ?? "Erreur création. Vérifie que la table 'forms' existe dans Supabase (exécute le SQL fourni).");
+        setCreateError(d.error ?? "Erreur création. Vérifie que la table 'forms' existe dans Supabase.");
         setCreating(false);
         return;
       }
@@ -161,8 +164,6 @@ export default function FormsPage() {
     setForms((prev) => prev.map((f) => f.id === selectedId ? { ...f, name: editorName, pages: editorPages } : f));
   }
 
-  // ── Pages ──────────────────────────────────────────────────────────────────
-
   function addPage() {
     const newPage: BuilderPage = {
       id: crypto.randomUUID().replace(/-/g, ""),
@@ -187,8 +188,6 @@ export default function FormsPage() {
     setEditorPages((p) => p.map((pg, i) => i === idx ? { ...pg, title } : pg));
     setHasChanges(true);
   }
-
-  // ── Fields ─────────────────────────────────────────────────────────────────
 
   const currentFields = editorPages[pageIdx]?.fields ?? [];
 
@@ -220,8 +219,6 @@ export default function FormsPage() {
     if (expandedField === id) setExpandedField(null);
   }
 
-  // ── Drag & Drop ────────────────────────────────────────────────────────────
-
   function onDragStart(id: string) { dragId.current = id; }
   function onDragOver(e: React.DragEvent, id: string) { e.preventDefault(); dragOver.current = id; }
   function onDrop() {
@@ -238,8 +235,6 @@ export default function FormsPage() {
     dragOver.current = null;
   }
   function onDragEnd() { dragId.current = null; dragOver.current = null; }
-
-  // ── Options editor helpers ─────────────────────────────────────────────────
 
   function addOption(fieldId: string) {
     const f = currentFields.find((x) => x.id === fieldId);
@@ -261,56 +256,86 @@ export default function FormsPage() {
     updateField(fieldId, { options: f.options.filter((_, i) => i !== idx) });
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const btnGradient = {
+    background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+    border: "1px solid #2f4d9d",
+    color: "#fff",
+    cursor: "pointer",
+    borderRadius: 9,
+  };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
 
-      {/* ── Left sidebar: forms list ───────────────────────────────────────── */}
-      <aside className="w-64 shrink-0 bg-white border-r border-gray-200 flex flex-col">
-        <div className="px-4 py-5 border-b border-gray-100">
-          <h1 className="text-base font-bold text-gray-900">Formulaires</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Gérez vos templates</p>
+      {/* ── Left sidebar ─────────────────────────────────────────────────────── */}
+      <aside style={{ width: 256, flexShrink: 0, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.08)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "20px 16px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+          <h1 style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>Formulaires</h1>
+          <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginTop: 2, marginBottom: 0 }}>Gérez vos templates</p>
         </div>
 
-        <div className="p-3 space-y-2">
+        <div style={{ padding: "12px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           <button
             onClick={createForm}
             disabled={creating}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-60"
+            style={{
+              ...btnGradient,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: "9px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              opacity: creating ? 0.6 : 1,
+            }}
           >
-            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            {creating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={14} />}
             {creating ? "Création..." : "Nouveau formulaire"}
           </button>
           {createError && (
-            <div className="px-1 py-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-xs text-red-600">{createError}</p>
+            <div style={{ marginTop: 8, padding: 8, background: "#fee6d0", border: "1px solid #f59e0b", borderRadius: 8 }}>
+              <p style={{ fontSize: 12, color: "#663b12", margin: 0 }}>{createError}</p>
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
           {loading ? (
-            <div className="flex justify-center py-8"><Loader2 className="animate-spin text-gray-300" size={20} /></div>
+            <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}>
+              <Loader2 size={20} style={{ color: "rgba(18,26,46,0.2)", animation: "spin 1s linear infinite" }} />
+            </div>
           ) : loadError ? (
-            <div className="px-2 py-3 bg-red-50 border border-red-200 rounded-lg mx-1">
-              <p className="text-xs text-red-600">{loadError}</p>
-              <p className="text-xs text-red-400 mt-1">Exécute le SQL fourni dans Supabase SQL Editor.</p>
+            <div style={{ margin: 4, padding: 12, background: "#fee6d0", border: "1px solid #f59e0b", borderRadius: 9 }}>
+              <p style={{ fontSize: 12, color: "#663b12", margin: 0 }}>{loadError}</p>
             </div>
           ) : forms.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">Aucun formulaire.<br/>Crée-en un ci-dessus.</p>
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: "32px 8px" }}>Aucun formulaire.<br />Crée-en un ci-dessus.</p>
           ) : (
             forms.map((form) => (
               <div
                 key={form.id}
                 onClick={() => selectForm(form)}
-                className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${selectedId === form.id ? "bg-indigo-50 text-indigo-800 border border-indigo-200" : "hover:bg-gray-50 text-gray-700"}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 12px",
+                  borderRadius: 9,
+                  marginBottom: 2,
+                  cursor: "pointer",
+                  background: selectedId === form.id ? "#e8edff" : "transparent",
+                  border: selectedId === form.id ? "1px solid #c7d3ff" : "1px solid transparent",
+                }}
               >
-                <FileText size={14} className="shrink-0 text-gray-400" />
-                <span className="text-sm font-medium flex-1 truncate">{form.name}</span>
+                <FileText size={14} style={{ color: "rgba(18,26,46,0.4)", flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: selectedId === form.id ? 600 : 400, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: selectedId === form.id ? "#0147ff" : "rgba(18,26,46,0.7)" }}>{form.name}</span>
                 <button
                   onClick={(e) => deleteForm(form.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-300 hover:text-red-500 transition-all"
+                  style={{ padding: 2, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", opacity: 0 }}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = "0")}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -320,41 +345,52 @@ export default function FormsPage() {
         </div>
       </aside>
 
-      {/* ── Main editor ────────────────────────────────────────────────────── */}
+      {/* ── Main editor ──────────────────────────────────────────────────────── */}
       {!selectedId ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <FileText size={40} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-gray-400 text-sm">Sélectionne ou crée un formulaire</p>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ textAlign: "center" }}>
+            <FileText size={40} style={{ color: "rgba(18,26,46,0.15)", margin: "0 auto 12px" }} />
+            <p style={{ color: "rgba(18,26,46,0.4)", fontSize: 14, margin: 0 }}>Sélectionne ou crée un formulaire</p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
           {/* Top bar */}
-          <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-4">
+          <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "12px 24px", display: "flex", alignItems: "center", gap: 16 }}>
             <input
               value={editorName}
               onChange={(e) => { setEditorName(e.target.value); setHasChanges(true); }}
-              className="text-lg font-bold text-gray-900 bg-transparent border-none outline-none focus:ring-0 flex-1"
+              style={{ flex: 1, fontSize: 17, fontWeight: 700, color: "#121a2e", background: "transparent", border: "none", outline: "none", fontFamily: '"Plus Jakarta Sans", sans-serif', letterSpacing: "-0.3px" }}
               placeholder="Nom du formulaire"
             />
-            {hasChanges && <span className="text-xs text-amber-500 font-medium">Modifications non sauvegardées</span>}
+            {hasChanges && <span style={{ fontSize: 12, color: "#d97706", fontWeight: 500 }}>Modifications non sauvegardées</span>}
             <button
               onClick={saveForm}
               disabled={saving}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${saveOk ? "bg-green-500 text-white" : "bg-indigo-600 text-white hover:bg-indigo-700"} disabled:opacity-60`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: saving ? 0.6 : 1,
+                ...(saveOk
+                  ? { background: "#d1fae5", border: "1px solid #86efac", color: "#168b64", borderRadius: 9, cursor: "not-allowed" }
+                  : { ...btnGradient, cursor: saving ? "not-allowed" : "pointer" }),
+              }}
             >
-              {saving ? <><Loader2 size={14} className="animate-spin" />Enregistrement...</>
+              {saving ? <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />Enregistrement...</>
                : saveOk ? <><Check size={14} />Enregistré</>
                : <><Save size={14} />Sauvegarder</>}
             </button>
           </div>
 
           {/* Page tabs */}
-          <div className="bg-white border-b border-gray-100 px-6 flex items-center gap-1 overflow-x-auto">
+          <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "0 24px", display: "flex", alignItems: "center", gap: 4, overflowX: "auto" }}>
             {editorPages.map((page, idx) => (
-              <div key={page.id} className="flex items-center shrink-0">
+              <div key={page.id} style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
                 {editingPageTitle === idx ? (
                   <input
                     autoFocus
@@ -362,20 +398,34 @@ export default function FormsPage() {
                     onChange={(e) => updatePageTitle(idx, e.target.value)}
                     onBlur={() => setEditingPageTitle(null)}
                     onKeyDown={(e) => e.key === "Enter" && setEditingPageTitle(null)}
-                    className="px-2 py-2 text-sm border-b-2 border-indigo-400 outline-none bg-transparent w-28"
+                    style={{ padding: "8px 8px", fontSize: 13, borderBottom: "2px solid #0147ff", background: "transparent", border: "none", outline: "none", width: 112, fontFamily: '"Plus Jakarta Sans", sans-serif' }}
                   />
                 ) : (
                   <button
                     onClick={() => setPageIdx(idx)}
                     onDoubleClick={() => setEditingPageTitle(idx)}
                     title="Double-cliquer pour renommer"
-                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${pageIdx === idx ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "12px 16px",
+                      fontSize: 13,
+                      fontWeight: pageIdx === idx ? 600 : 400,
+                      background: "none",
+                      border: "none",
+                      borderBottom: pageIdx === idx ? "2px solid #0147ff" : "2px solid transparent",
+                      color: pageIdx === idx ? "#0147ff" : "rgba(18,26,46,0.5)",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      fontFamily: '"Plus Jakarta Sans", sans-serif',
+                    }}
                   >
                     {page.title}
                     {editorPages.length > 1 && pageIdx === idx && (
                       <button
                         onClick={(e) => { e.stopPropagation(); deletePage(idx); }}
-                        className="ml-1 text-gray-300 hover:text-red-400 transition-colors"
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", padding: 0, display: "flex" }}
                       >
                         <X size={12} />
                       </button>
@@ -386,22 +436,22 @@ export default function FormsPage() {
             ))}
             <button
               onClick={addPage}
-              className="flex items-center gap-1 px-3 py-3 text-xs text-gray-400 hover:text-indigo-600 transition-colors whitespace-nowrap"
+              style={{ display: "flex", alignItems: "center", gap: 4, padding: "12px", fontSize: 12, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
               <Plus size={13} />Ajouter une page
             </button>
           </div>
 
           {/* Fields area */}
-          <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="max-w-2xl mx-auto space-y-2">
+          <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
+            <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
 
               {currentFields.length === 0 && !showTypePicker && (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-xl">
-                  <p className="text-gray-400 text-sm mb-3">Cette page est vide</p>
+                <div style={{ textAlign: "center", padding: "48px 0", border: "2px dashed rgba(0,0,0,0.1)", borderRadius: 13 }}>
+                  <p style={{ color: "rgba(18,26,46,0.4)", fontSize: 13, marginBottom: 12 }}>Cette page est vide</p>
                   <button
                     onClick={() => setShowTypePicker(true)}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                    style={{ ...btnGradient, display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600 }}
                   >
                     <Plus size={14} />Ajouter un champ
                   </button>
@@ -421,32 +471,37 @@ export default function FormsPage() {
                     onDragOver={(e) => onDragOver(e, field.id)}
                     onDrop={onDrop}
                     onDragEnd={onDragEnd}
-                    className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:border-indigo-200 transition-colors"
+                    style={{
+                      background: "#fff",
+                      border: "1px solid rgba(0,0,0,0.09)",
+                      borderRadius: 11,
+                      overflow: "hidden",
+                    }}
                   >
                     {/* Field header */}
                     <div
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }}
                       onClick={() => setExpandedField(expanded ? null : field.id)}
                     >
-                      <div className="cursor-grab text-gray-300 hover:text-gray-400" onClick={(e) => e.stopPropagation()}>
+                      <div style={{ cursor: "grab", color: "rgba(18,26,46,0.25)" }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                       </div>
-                      <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-500">
-                        <Icon size={14} />
+                      <div style={{ padding: 6, background: "#e8edff", borderRadius: 8 }}>
+                        <Icon size={14} style={{ color: "#0147ff", display: "block" }} />
                       </div>
-                      <span className="text-xs font-medium text-gray-400 w-24 shrink-0">{cfg?.label ?? field.type}</span>
-                      <span className="flex-1 text-sm font-medium text-gray-800 truncate">{field.label}</span>
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+                      <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(18,26,46,0.4)", width: 96, flexShrink: 0 }}>{cfg?.label ?? field.type}</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{field.label}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "rgba(18,26,46,0.4)", cursor: "pointer", userSelect: "none" }}>
                           <input
                             type="checkbox"
                             checked={field.required}
                             onChange={(e) => updateField(field.id, { required: e.target.checked })}
-                            className="accent-indigo-600 rounded"
+                            style={{ accentColor: "#0147ff" }}
                           />
                           Requis
                         </label>
-                        <button onClick={() => deleteField(field.id)} className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                        <button onClick={() => deleteField(field.id)} style={{ padding: 4, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.25)", display: "flex" }}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -454,45 +509,37 @@ export default function FormsPage() {
 
                     {/* Expanded editor */}
                     {expanded && (
-                      <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3 bg-gray-50">
+                      <div style={{ padding: "12px 16px 16px", borderTop: "1px solid rgba(0,0,0,0.06)", background: "#f9f9f9", display: "flex", flexDirection: "column", gap: 12 }}>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Label de la question</label>
-                          <input
-                            value={field.label}
-                            onChange={(e) => updateField(field.id, { label: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                          />
+                          <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Label de la question</label>
+                          <input value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} style={{ ...inputStyle, background: "#fff" }} />
                         </div>
                         {!needsOptions(field.type) && (
                           <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Texte d&apos;aide (optionnel)</label>
+                            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Texte d&apos;aide (optionnel)</label>
                             <input
                               value={field.placeholder ?? ""}
                               onChange={(e) => updateField(field.id, { placeholder: e.target.value })}
                               placeholder="Ex : Entrez votre réponse..."
-                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                              style={{ ...inputStyle, background: "#fff" }}
                             />
                           </div>
                         )}
                         {needsOptions(field.type) && (
                           <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-2">Options</label>
-                            <div className="space-y-1.5">
+                            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 8 }}>Options</label>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                               {(field.options ?? []).map((opt, i) => (
-                                <div key={i} className="flex items-center gap-2">
-                                  <input
-                                    value={opt}
-                                    onChange={(e) => updateOption(field.id, i, e.target.value)}
-                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                                  />
-                                  <button onClick={() => removeOption(field.id, i)} className="text-gray-300 hover:text-red-400 transition-colors">
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <input value={opt} onChange={(e) => updateOption(field.id, i, e.target.value)} style={{ ...inputStyle, flex: 1, background: "#fff" }} />
+                                  <button onClick={() => removeOption(field.id, i)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", display: "flex" }}>
                                     <X size={14} />
                                   </button>
                                 </div>
                               ))}
                               <button
                                 onClick={() => addOption(field.id)}
-                                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium mt-1"
+                                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#0147ff", background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 500, padding: "4px 0" }}
                               >
                                 <Plus size={12} />Ajouter une option
                               </button>
@@ -507,24 +554,37 @@ export default function FormsPage() {
 
               {/* Type picker */}
               {showTypePicker ? (
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm font-semibold text-gray-700">Choisir un type de champ</p>
-                    <button onClick={() => setShowTypePicker(false)} className="text-gray-400 hover:text-gray-600">
+                <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 13, padding: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "#121a2e", margin: 0 }}>Choisir un type de champ</p>
+                    <button onClick={() => setShowTypePicker(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}>
                       <X size={16} />
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                     {FIELD_TYPES.map((ft) => {
                       const Ic = ft.icon;
                       return (
                         <button
                           key={ft.type}
                           onClick={() => addField(ft.type)}
-                          className="flex items-center gap-2.5 px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 transition-colors text-left"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            border: "1px solid rgba(0,0,0,0.09)",
+                            borderRadius: 9,
+                            fontSize: 12,
+                            color: "#121a2e",
+                            background: "#f6f6f6",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            fontFamily: '"Plus Jakarta Sans", sans-serif',
+                          }}
                         >
-                          <Ic size={15} className="shrink-0 text-gray-400" />
-                          <span className="text-xs font-medium">{ft.label}</span>
+                          <Ic size={15} style={{ color: "rgba(18,26,46,0.4)", flexShrink: 0 }} />
+                          <span style={{ fontWeight: 500 }}>{ft.label}</span>
                         </button>
                       );
                     })}
@@ -533,7 +593,7 @@ export default function FormsPage() {
               ) : currentFields.length > 0 && (
                 <button
                   onClick={() => setShowTypePicker(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors"
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, border: "2px dashed rgba(0,0,0,0.1)", borderRadius: 11, fontSize: 13, color: "rgba(18,26,46,0.4)", background: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
                 >
                   <Plus size={15} />Ajouter un champ
                 </button>
@@ -542,12 +602,12 @@ export default function FormsPage() {
           </div>
 
           {/* Bottom hint */}
-          <div className="bg-white border-t border-gray-100 px-6 py-2 flex items-center gap-2">
-            <AlertCircle size={12} className="text-gray-300" />
-            <p className="text-xs text-gray-400">
+          <div style={{ background: "#fff", borderTop: "1px solid rgba(0,0,0,0.06)", padding: "8px 24px", display: "flex", alignItems: "center", gap: 8 }}>
+            <AlertCircle size={12} style={{ color: "rgba(18,26,46,0.25)" }} />
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>
               Double-cliquez sur un onglet de page pour le renommer · Glissez les champs pour les réordonner
             </p>
-            <span className="ml-auto text-xs text-gray-300">{currentFields.length} champ{currentFields.length !== 1 ? "s" : ""} · {editorPages.length} page{editorPages.length !== 1 ? "s" : ""}</span>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "rgba(18,26,46,0.3)" }}>{currentFields.length} champ{currentFields.length !== 1 ? "s" : ""} · {editorPages.length} page{editorPages.length !== 1 ? "s" : ""}</span>
           </div>
         </div>
       )}

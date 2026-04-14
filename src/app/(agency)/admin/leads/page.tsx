@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { CSSProperties } from "react";
 import {
   Search, Plus, Download, RefreshCw,
   Mail, MessageSquare, Linkedin, Globe, Zap,
@@ -19,28 +20,12 @@ type Channel = "email" | "whatsapp" | "linkedin_dm";
 type View = "leads" | "stats";
 
 interface Lead {
-  id: string;
-  email: string | null;
-  name: string | null;
-  company: string | null;
-  sector: string | null;
-  phone: string | null;
-  source: Source;
-  source_ref: string | null;
-  status: Status;
-  channel_preference: Channel;
-  metadata: Record<string, unknown>;
-  notes: string | null;
-  last_contact_at: string | null;
-  created_at: string;
+  id: string; email: string | null; name: string | null; company: string | null;
+  sector: string | null; phone: string | null; source: Source; source_ref: string | null;
+  status: Status; channel_preference: Channel; metadata: Record<string, unknown>;
+  notes: string | null; last_contact_at: string | null; created_at: string;
 }
-
-interface StatsData {
-  bySource: Record<string, number>;
-  byStatus: Record<string, number>;
-  total: number;
-}
-
+interface StatsData { bySource: Record<string, number>; byStatus: Record<string, number>; total: number; }
 interface FullStats {
   funnel: Record<string, number>;
   channelStats: Record<string, { sent: number; opened: number; responded: number }>;
@@ -48,85 +33,49 @@ interface FullStats {
   sectorStats: Record<string, { total: number; contacted: number; responded: number; converted: number }>;
   monthly: Record<string, { leads: number; contacted: number }>;
   rates: { openRate: number; responseRate: number; contactRate: number; conversionRate: number; meetingRate: number };
-  totalAttempts: number;
-  totalSent: number;
+  totalAttempts: number; totalSent: number;
 }
-
 interface MessageTemplate {
-  id: string;
-  variant_label: string;
-  sent_count: number;
-  score: number;
-  is_exploration: boolean;
-  ai_hypothesis: string | null;
+  id: string; variant_label: string; sent_count: number; score: number;
+  is_exploration: boolean; ai_hypothesis: string | null;
 }
-
 interface AnalysisRun {
-  id: string;
-  triggered_at: string;
-  insights: string | null;
-  hypotheses: string | null;
-  templates_created: number;
-  total_leads: number;
-  model_used: string | null;
-  status: string;
+  id: string; triggered_at: string; insights: string | null; hypotheses: string | null;
+  templates_created: number; total_leads: number; model_used: string | null; status: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SOURCE_LABELS: Record<Source, string> = {
-  lead_magnet: "Lead Magnet",
-  linkedin: "LinkedIn",
-  google_maps: "Google Maps",
-  manual: "Manuel",
-  webhook: "Agent / API",
+const SOURCE_LABELS: Record<Source, string> = { lead_magnet: "Lead Magnet", linkedin: "LinkedIn", google_maps: "Google Maps", manual: "Manuel", webhook: "Agent / API" };
+const SOURCE_STYLES: Record<Source, { bg: string; color: string }> = {
+  lead_magnet: { bg: "#E1D1FA", color: "#6236AA" },
+  linkedin: { bg: "#d5eeff", color: "#073e63" },
+  google_maps: { bg: "#d1fae5", color: "#168b64" },
+  manual: { bg: "#f6f6f6", color: "rgba(18,26,46,0.55)" },
+  webhook: { bg: "#fee6d0", color: "#663b12" },
 };
-
-const SOURCE_COLORS: Record<Source, string> = {
-  lead_magnet: "bg-purple-100 text-purple-700",
-  linkedin: "bg-blue-100 text-blue-700",
-  google_maps: "bg-green-100 text-green-700",
-  manual: "bg-gray-100 text-gray-600",
-  webhook: "bg-orange-100 text-orange-700",
-};
-
 const SOURCE_ICONS: Record<Source, React.ReactNode> = {
-  lead_magnet: <Zap size={11} />,
-  linkedin: <Linkedin size={11} />,
-  google_maps: <Globe size={11} />,
-  manual: <Plus size={11} />,
-  webhook: <RefreshCw size={11} />,
+  lead_magnet: <Zap size={11} />, linkedin: <Linkedin size={11} />,
+  google_maps: <Globe size={11} />, manual: <Plus size={11} />, webhook: <RefreshCw size={11} />,
 };
+const STATUS_LABELS: Record<Status, string> = { new: "Nouveau", contacted: "Contacté", responded: "A répondu", meeting: "RDV", converted: "Converti", lost: "Perdu" };
+const STATUS_STYLES: Record<Status, { bg: string; color: string; dot: string }> = {
+  new:       { bg: "#d5eeff",  color: "#073e63",  dot: "#0ea5e9" },
+  contacted: { bg: "#fee6d0",  color: "#663b12",  dot: "#f59e0b" },
+  responded: { bg: "#E1D1FA",  color: "#6236AA",  dot: "#6366f1" },
+  meeting:   { bg: "#d1fae5",  color: "#168b64",  dot: "#22c55e" },
+  converted: { bg: "#d1fae5",  color: "#0a5c40",  dot: "#10b981" },
+  lost:      { bg: "#ffe4e4",  color: "#c53030",  dot: "#ef4444" },
+};
+const CHANNEL_ICONS: Record<Channel, React.ReactNode> = { email: <Mail size={13} />, whatsapp: <MessageSquare size={13} />, linkedin_dm: <Linkedin size={13} /> };
+const CHANNEL_LABELS: Record<Channel, string> = { email: "Email", whatsapp: "WhatsApp", linkedin_dm: "LinkedIn DM" };
 
-const STATUS_LABELS: Record<Status, string> = {
-  new: "Nouveau",
-  contacted: "Contacté",
-  responded: "A répondu",
-  meeting: "RDV",
-  converted: "Converti",
-  lost: "Perdu",
-};
+// ─── Style tokens ─────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<Status, string> = {
-  new: "bg-sky-100 text-sky-700",
-  contacted: "bg-amber-100 text-amber-700",
-  responded: "bg-indigo-100 text-indigo-700",
-  meeting: "bg-green-100 text-green-700",
-  converted: "bg-emerald-100 text-emerald-700",
-  lost: "bg-red-100 text-red-600",
-};
-
-const CHANNEL_ICONS: Record<Channel, React.ReactNode> = {
-  email: <Mail size={13} />,
-  whatsapp: <MessageSquare size={13} />,
-  linkedin_dm: <Linkedin size={13} />,
-};
-
-const CHANNEL_LABELS: Record<Channel, string> = {
-  email: "Email",
-  whatsapp: "WhatsApp",
-  linkedin_dm: "LinkedIn DM",
-};
+const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const inp: CSSProperties = { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "8px 12px", fontSize: 13, color: "#121a2e", outline: "none", width: "100%", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const btnGrad: CSSProperties = { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600 };
+const card: CSSProperties = { background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)" };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -139,22 +88,18 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(false);
 
-  // Filtres
   const [search, setSearch] = useState("");
   const [filterSource, setFilterSource] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
 
-  // Modal ajout
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", email: "", company: "", sector: "", phone: "", channel_preference: "email" as Channel });
   const [addLoading, setAddLoading] = useState(false);
 
-  // Modal détail
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
-  // Modal outreach
   const [outreachLead, setOutreachLead] = useState<Lead | null>(null);
   const [outreachChannel, setOutreachChannel] = useState<Channel>("email");
   const [outreachSubject, setOutreachSubject] = useState("");
@@ -166,14 +111,10 @@ export default function LeadsPage() {
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
 
-  // Confirm delete
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Sync
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number } | null>(null);
 
-  // Analyse IA
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisRuns, setAnalysisRuns] = useState<AnalysisRun[]>([]);
   const [analysisTemplates, setAnalysisTemplates] = useState<Record<string, unknown>[]>([]);
@@ -182,7 +123,6 @@ export default function LeadsPage() {
   const [showAiConfig, setShowAiConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Modal "Contacter" (template pré-généré)
   const [contactLead, setContactLead] = useState<Lead | null>(null);
   const [contactChannel, setContactChannel] = useState<Channel>("email");
   const [contactTemplate, setContactTemplate] = useState<MessageTemplate | null>(null);
@@ -193,14 +133,10 @@ export default function LeadsPage() {
   const [contactSent, setContactSent] = useState(false);
   const [contactError, setContactError] = useState("");
 
-  // Load stored API key
   useEffect(() => {
     try {
       const stored = localStorage.getItem("linkedin_settings");
-      if (stored) {
-        const s = JSON.parse(stored);
-        if (s.openrouterApiKey) setApiKey(s.openrouterApiKey);
-      }
+      if (stored) { const s = JSON.parse(stored); if (s.openrouterApiKey) setApiKey(s.openrouterApiKey); }
     } catch {}
   }, []);
 
@@ -211,116 +147,62 @@ export default function LeadsPage() {
       if (search) params.set("search", search);
       if (filterSource) params.set("source", filterSource);
       if (filterStatus) params.set("status", filterStatus);
-
       const res = await fetch(`/api/leads?${params}`);
       const data = await res.json();
-      setLeads(data.leads ?? []);
-      setTotal(data.total ?? 0);
+      setLeads(data.leads ?? []); setTotal(data.total ?? 0);
       setStats({ bySource: data.bySource ?? {}, byStatus: data.byStatus ?? {}, total: data.total ?? 0 });
     } catch {}
     setLoading(false);
   }, [search, filterSource, filterStatus]);
 
-  // Charger les données d'analyse (runs + templates)
   const fetchAnalysisData = useCallback(async () => {
     try {
-      const [runsRes, templatesRes, configRes] = await Promise.all([
-        fetch("/api/leads/analysis-runs"),
-        fetch("/api/leads/templates"),
-        fetch("/api/leads/config"),
-      ]);
+      const [runsRes, templatesRes, configRes] = await Promise.all([fetch("/api/leads/analysis-runs"), fetch("/api/leads/templates"), fetch("/api/leads/config")]);
       if (runsRes.ok) { const d = await runsRes.json(); setAnalysisRuns(d.runs ?? []); }
       if (templatesRes.ok) { const d = await templatesRes.json(); setAnalysisTemplates(d.templates ?? []); }
       if (configRes.ok) {
         const d = await configRes.json();
-        setAiConfig({
-          threshold: d.analysis_threshold ?? "10",
-          exploration: d.exploration_rate ?? "0.20",
-          minSamples: d.min_sample_size ?? "5",
-          autoEnabled: d.auto_analysis_enabled !== "false",
-        });
+        setAiConfig({ threshold: d.analysis_threshold ?? "10", exploration: d.exploration_rate ?? "0.20", minSamples: d.min_sample_size ?? "5", autoEnabled: d.auto_analysis_enabled !== "false" });
       }
     } catch {}
   }, []);
 
-  useEffect(() => {
-    if (view === "stats") fetchAnalysisData();
-  }, [view, fetchAnalysisData]);
+  useEffect(() => { if (view === "stats") fetchAnalysisData(); }, [view, fetchAnalysisData]);
 
   async function handleAnalyze() {
     if (!apiKey) { setShowApiKeyInput(true); return; }
-    setAnalyzing(true);
-    setAnalysisResult(null);
+    setAnalyzing(true); setAnalysisResult(null);
     try {
-      const res = await fetch("/api/leads/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openrouterApiKey: apiKey }),
-      });
+      const res = await fetch("/api/leads/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ openrouterApiKey: apiKey }) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setAnalysisResult({
-        insights: data.insights ?? "",
-        hypotheses: data.hypotheses ?? "",
-        templatesCreated: data.templatesCreated ?? 0,
-      });
+      setAnalysisResult({ insights: data.insights ?? "", hypotheses: data.hypotheses ?? "", templatesCreated: data.templatesCreated ?? 0 });
       fetchAnalysisData();
-    } catch (e) {
-      setAnalysisResult({ insights: `Erreur : ${e}`, hypotheses: "", templatesCreated: 0 });
-    }
+    } catch (e) { setAnalysisResult({ insights: `Erreur : ${e}`, hypotheses: "", templatesCreated: 0 }); }
     setAnalyzing(false);
   }
 
   async function handleSaveConfig() {
     setSavingConfig(true);
     try {
-      await fetch("/api/leads/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analysis_threshold: aiConfig.threshold,
-          exploration_rate: aiConfig.exploration,
-          min_sample_size: aiConfig.minSamples,
-          auto_analysis_enabled: aiConfig.autoEnabled ? "true" : "false",
-        }),
-      });
+      await fetch("/api/leads/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analysis_threshold: aiConfig.threshold, exploration_rate: aiConfig.exploration, min_sample_size: aiConfig.minSamples, auto_analysis_enabled: aiConfig.autoEnabled ? "true" : "false" }) });
       setShowAiConfig(false);
     } catch {}
     setSavingConfig(false);
   }
 
   async function openContact(lead: Lead) {
-    setContactLead(lead);
-    setContactChannel(lead.channel_preference);
-    setContactTemplate(null);
-    setContactSubject("");
-    setContactContent("");
-    setContactSent(false);
-    setContactError("");
-    setContactLoading(true);
-
-    const key = apiKey;
-    const params = new URLSearchParams({
-      leadId: lead.id,
-      channel: lead.channel_preference,
-    });
-    if (key) params.set("openrouterApiKey", key);
-
+    setContactLead(lead); setContactChannel(lead.channel_preference); setContactTemplate(null);
+    setContactSubject(""); setContactContent(""); setContactSent(false); setContactError(""); setContactLoading(true);
+    const params = new URLSearchParams({ leadId: lead.id, channel: lead.channel_preference });
+    if (apiKey) params.set("openrouterApiKey", apiKey);
     try {
       const res = await fetch(`/api/leads/template?${params}`);
       const data = await res.json();
-      if (data.noTemplates) {
-        setContactError("Aucun template disponible. Lancez une analyse IA dans l'onglet Statistiques.");
-      } else if (data.error) {
-        setContactError(data.error);
-      } else {
-        setContactTemplate(data.template);
-        setContactSubject(data.adapted?.subject ?? "");
-        setContactContent(data.adapted?.content ?? "");
-      }
-    } catch {
-      setContactError("Erreur lors du chargement du template.");
-    }
+      if (data.noTemplates) setContactError("Aucun template disponible. Lancez une analyse IA dans l'onglet Statistiques.");
+      else if (data.error) setContactError(data.error);
+      else { setContactTemplate(data.template); setContactSubject(data.adapted?.subject ?? ""); setContactContent(data.adapted?.content ?? ""); }
+    } catch { setContactError("Erreur lors du chargement du template."); }
     setContactLoading(false);
   }
 
@@ -328,42 +210,17 @@ export default function LeadsPage() {
     if (!contactLead || !contactContent) return;
     setContactSending(true);
     try {
-      await fetch(`/api/leads/${contactLead.id}/outreach`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send",
-          channel: contactChannel,
-          subject: contactSubject,
-          content: contactContent,
-        }),
-      });
-
-      // Tracker la performance du template
-      if (contactTemplate) {
-        fetch("/api/leads/template", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ templateId: contactTemplate.id, event: "sent" }),
-        }).catch(() => {});
-      }
-
+      await fetch(`/api/leads/${contactLead.id}/outreach`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send", channel: contactChannel, subject: contactSubject, content: contactContent }) });
+      if (contactTemplate) fetch("/api/leads/template", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId: contactTemplate.id, event: "sent" }) }).catch(() => {});
       setContactSent(true);
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === contactLead.id
-            ? { ...l, status: l.status === "new" ? "contacted" : l.status }
-            : l
-        )
-      );
+      setLeads(prev => prev.map(l => l.id === contactLead.id ? { ...l, status: l.status === "new" ? "contacted" : l.status } : l));
       setTimeout(() => { setContactLead(null); setContactSent(false); }, 1800);
     } catch {}
     setContactSending(false);
   }
 
   async function handleSync() {
-    setSyncing(true);
-    setSyncResult(null);
+    setSyncing(true); setSyncResult(null);
     try {
       const res = await fetch("/api/leads/sync", { method: "POST" });
       const data = await res.json();
@@ -376,64 +233,40 @@ export default function LeadsPage() {
 
   const fetchFullStats = useCallback(async () => {
     setStatsLoading(true);
-    try {
-      const res = await fetch("/api/leads/stats");
-      const data = await res.json();
-      setFullStats(data);
-    } catch {}
+    try { const res = await fetch("/api/leads/stats"); const data = await res.json(); setFullStats(data); } catch {}
     setStatsLoading(false);
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(fetchLeads, 200);
-    return () => clearTimeout(t);
-  }, [fetchLeads]);
-
-  useEffect(() => {
-    if (view === "stats") fetchFullStats();
-  }, [view, fetchFullStats]);
+  useEffect(() => { const t = setTimeout(fetchLeads, 200); return () => clearTimeout(t); }, [fetchLeads]);
+  useEffect(() => { if (view === "stats") fetchFullStats(); }, [view, fetchFullStats]);
 
   async function handleAddLead() {
     if (!addForm.email && !addForm.name) return;
     setAddLoading(true);
     try {
-      await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...addForm, source: "manual" }),
-      });
-      setShowAdd(false);
-      setAddForm({ name: "", email: "", company: "", sector: "", phone: "", channel_preference: "email" });
-      fetchLeads();
+      await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...addForm, source: "manual" }) });
+      setShowAdd(false); setAddForm({ name: "", email: "", company: "", sector: "", phone: "", channel_preference: "email" }); fetchLeads();
     } catch {}
     setAddLoading(false);
   }
 
   async function handleStatusChange(lead: Lead, status: Status) {
-    await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    setLeads((prev) => prev.map((l) => l.id === lead.id ? { ...l, status } : l));
+    await fetch(`/api/leads/${lead.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status } : l));
     if (selectedLead?.id === lead.id) setSelectedLead({ ...selectedLead, status });
   }
 
   async function handleSaveNotes(lead: Lead) {
     setSavingNotes(true);
-    await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes: editNotes }),
-    });
-    setLeads((prev) => prev.map((l) => l.id === lead.id ? { ...l, notes: editNotes } : l));
+    await fetch(`/api/leads/${lead.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes: editNotes }) });
+    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, notes: editNotes } : l));
     if (selectedLead) setSelectedLead({ ...selectedLead, notes: editNotes });
     setSavingNotes(false);
   }
 
   async function handleDelete(id: string) {
     await fetch(`/api/leads/${id}`, { method: "DELETE" });
-    setLeads((prev) => prev.filter((l) => l.id !== id));
+    setLeads(prev => prev.filter(l => l.id !== id));
     setDeleteId(null);
     if (selectedLead?.id === id) setSelectedLead(null);
   }
@@ -441,32 +274,17 @@ export default function LeadsPage() {
   async function handleEnrichGoogleMaps(lead: Lead) {
     if (!lead.company) return;
     try {
-      const res = await fetch("/api/leads/enrich", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: lead.id, company: lead.company }),
-      });
+      const res = await fetch("/api/leads/enrich", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, company: lead.company }) });
       const data = await res.json();
       if (data.enriched) {
-        setLeads(prev => prev.map(l => l.id === lead.id
-          ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } }
-          : l
-        ));
-        if (selectedLead?.id === lead.id) {
-          setSelectedLead(l => l ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } } : l);
-        }
+        setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } } : l));
+        if (selectedLead?.id === lead.id) setSelectedLead(l => l ? { ...l, metadata: { ...(l.metadata ?? {}), ...data.enriched } } : l);
       }
     } catch {}
   }
 
-  // ── Outreach ──────────────────────────────────────────────────────────────
-
   function openOutreach(lead: Lead) {
-    setOutreachLead(lead);
-    setOutreachChannel(lead.channel_preference);
-    setOutreachSubject("");
-    setOutreachContent("");
-    setOutreachSent(false);
+    setOutreachLead(lead); setOutreachChannel(lead.channel_preference); setOutreachSubject(""); setOutreachContent(""); setOutreachSent(false);
   }
 
   async function handleGenerate() {
@@ -474,15 +292,7 @@ export default function LeadsPage() {
     if (!apiKey) { setShowApiKeyInput(true); return; }
     setOutreachGenerating(true);
     try {
-      const res = await fetch(`/api/leads/${outreachLead.id}/outreach`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "generate",
-          channel: outreachChannel,
-          openrouterApiKey: apiKey,
-        }),
-      });
+      const res = await fetch(`/api/leads/${outreachLead.id}/outreach`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate", channel: outreachChannel, openrouterApiKey: apiKey }) });
       const data = await res.json();
       if (data.subject) setOutreachSubject(data.subject);
       if (data.content) setOutreachContent(data.content);
@@ -494,25 +304,9 @@ export default function LeadsPage() {
     if (!outreachLead || !outreachContent) return;
     setOutreachSending(true);
     try {
-      await fetch(`/api/leads/${outreachLead.id}/outreach`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send",
-          channel: outreachChannel,
-          subject: outreachSubject,
-          content: outreachContent,
-        }),
-      });
+      await fetch(`/api/leads/${outreachLead.id}/outreach`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send", channel: outreachChannel, subject: outreachSubject, content: outreachContent }) });
       setOutreachSent(true);
-      // Update lead status in list
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.id === outreachLead.id
-            ? { ...l, status: l.status === "new" ? "contacted" : l.status }
-            : l
-        )
-      );
+      setLeads(prev => prev.map(l => l.id === outreachLead.id ? { ...l, status: l.status === "new" ? "contacted" : l.status } : l));
       setTimeout(() => { setOutreachLead(null); setOutreachSent(false); }, 1800);
     } catch {}
     setOutreachSending(false);
@@ -520,113 +314,88 @@ export default function LeadsPage() {
 
   function exportCsv() {
     const headers = ["Nom", "Email", "Entreprise", "Secteur", "Téléphone", "Source", "Statut", "Canal", "Date"];
-    const rows = leads.map((l) => [
-      l.name ?? "", l.email ?? "", l.company ?? "", l.sector ?? "", l.phone ?? "",
-      SOURCE_LABELS[l.source], STATUS_LABELS[l.status], CHANNEL_LABELS[l.channel_preference],
-      new Date(l.created_at).toLocaleDateString("fr-FR"),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const rows = leads.map(l => [l.name ?? "", l.email ?? "", l.company ?? "", l.sector ?? "", l.phone ?? "", SOURCE_LABELS[l.source], STATUS_LABELS[l.status], CHANNEL_LABELS[l.channel_preference], new Date(l.created_at).toLocaleDateString("fr-FR")]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url; a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
-  const statCards = [
-    { label: "Total leads", value: stats.total, icon: <Users size={18} />, color: "text-indigo-600 bg-indigo-50" },
-    { label: "Nouveaux", value: stats.byStatus["new"] ?? 0, icon: <TrendingUp size={18} />, color: "text-sky-600 bg-sky-50" },
-    { label: "RDV obtenus", value: stats.byStatus["meeting"] ?? 0, icon: <Calendar size={18} />, color: "text-green-600 bg-green-50" },
-    { label: "Convertis", value: stats.byStatus["converted"] ?? 0, icon: <MousePointerClick size={18} />, color: "text-emerald-600 bg-emerald-50" },
+  const kpiCards = [
+    { label: "Total leads", value: stats.total, icon: <Users size={18} />, iconBg: "#e8edff", iconColor: "#0147ff" },
+    { label: "Nouveaux", value: stats.byStatus["new"] ?? 0, icon: <TrendingUp size={18} />, iconBg: "#d5eeff", iconColor: "#073e63" },
+    { label: "RDV obtenus", value: stats.byStatus["meeting"] ?? 0, icon: <Calendar size={18} />, iconBg: "#d1fae5", iconColor: "#168b64" },
+    { label: "Convertis", value: stats.byStatus["converted"] ?? 0, icon: <MousePointerClick size={18} />, iconBg: "#d1fae5", iconColor: "#0a5c40" },
   ];
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-gray-50">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jk }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "14px 24px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">Leads</h1>
-              <p className="text-xs text-gray-400 mt-0.5">CRM & prospection automatisée</p>
+              <h1 style={{ fontSize: 17, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.4px" }}>Leads</h1>
+              <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", marginTop: 2, marginBottom: 0 }}>CRM & prospection automatisée</p>
             </div>
             {/* View toggle */}
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => setView("leads")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  view === "leads" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <Users size={13} />
-                Leads
-              </button>
-              <button
-                onClick={() => setView("stats")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  view === "stats" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <BarChart2 size={13} />
-                Statistiques
-              </button>
+            <div style={{ display: "flex", alignItems: "center", background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+              {(["leads", "stats"] as View[]).map(v => (
+                <button key={v} onClick={() => setView(v)} style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  ...(view === v ? { background: "#fff", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" } : { background: "transparent", color: "rgba(18,26,46,0.5)" }),
+                }}>
+                  {v === "leads" ? <Users size={13} /> : <BarChart2 size={13} />}
+                  {v === "leads" ? "Leads" : "Statistiques"}
+                </button>
+              ))}
             </div>
           </div>
 
           {view === "leads" && (
-            <div className="flex items-center gap-2">
-              <button onClick={exportCsv} disabled={leads.length === 0} className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-40">
-                <Download size={13} />
-                CSV
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={exportCsv} disabled={leads.length === 0} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.55)", border: "1px solid rgba(0,0,0,0.09)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", opacity: leads.length === 0 ? 0.4 : 1, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <Download size={13} />CSV
               </button>
-              <button onClick={fetchLeads} className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50">
-                <RefreshCw size={13} />
-                Rafraîchir
+              <button onClick={fetchLeads} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.55)", border: "1px solid rgba(0,0,0,0.09)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <RefreshCw size={13} />Rafraîchir
               </button>
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                title="Importer les leads des lead magnets et de LinkedIn dans le CRM"
-                className="flex items-center gap-1.5 text-xs text-purple-600 border border-purple-200 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-              >
-                <ArrowDownToLine size={13} className={syncing ? "animate-bounce" : ""} />
+              <button onClick={handleSync} disabled={syncing} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#6236AA", border: "1px solid #c4b5fd", padding: "7px 12px", borderRadius: 9, background: "#f3f0ff", cursor: "pointer", opacity: syncing ? 0.6 : 1, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <ArrowDownToLine size={13} style={{ animation: syncing ? "bounce 0.8s infinite" : "none" }} />
                 {syncing ? "Sync..." : "Importer"}
               </button>
               {syncResult && (
-                <span className="text-xs text-emerald-600 font-medium">
+                <span style={{ fontSize: 12, color: "#168b64", fontWeight: 600 }}>
                   {syncResult.imported > 0 ? `+${syncResult.imported} importé${syncResult.imported > 1 ? "s" : ""}` : "Déjà à jour"}
                 </span>
               )}
-              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700">
-                <Plus size={14} />
-                Ajouter
+              <button onClick={() => setShowAdd(true)} style={{ ...btnGrad, padding: "8px 16px", fontSize: 13 }}>
+                <Plus size={14} />Ajouter
               </button>
             </div>
           )}
           {view === "stats" && (
-            <button onClick={fetchFullStats} className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50">
-              <RefreshCw size={13} className={statsLoading ? "animate-spin" : ""} />
-              Actualiser
+            <button onClick={fetchFullStats} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.55)", border: "1px solid rgba(0,0,0,0.09)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <RefreshCw size={13} style={{ animation: statsLoading ? "spin 1s linear infinite" : "none" }} />Actualiser
             </button>
           )}
         </div>
       </div>
 
-      {/* ── LEADS VIEW ─────────────────────────────────────────────────────── */}
+      {/* ── LEADS VIEW ── */}
       {view === "leads" && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Stats mini */}
-          <div className="grid grid-cols-4 gap-4">
-            {statCards.map((s) => (
-              <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${s.color}`}>{s.icon}</div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* KPI cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+            {kpiCards.map(c => (
+              <div key={c.label} style={{ ...card, padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ padding: 8, borderRadius: 10, background: c.iconBg, color: c.iconColor }}>{c.icon}</div>
                 <div>
-                  <p className="text-xl font-bold text-gray-900">{s.value}</p>
-                  <p className="text-xs text-gray-400">{s.label}</p>
+                  <p style={{ fontSize: 22, fontWeight: 700, color: "#121a2e", margin: 0 }}>{c.value}</p>
+                  <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", marginTop: 1, marginBottom: 0 }}>{c.label}</p>
                 </div>
               </div>
             ))}
@@ -634,129 +403,96 @@ export default function LeadsPage() {
 
           {/* Source pills */}
           {Object.keys(stats.bySource).length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Par source</p>
-              <div className="flex flex-wrap gap-2">
-                {(Object.entries(stats.bySource) as [Source, number][]).map(([source, count]) => (
-                  <button
-                    key={source}
-                    onClick={() => setFilterSource(filterSource === source ? "" : source)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                      filterSource === source ? "border-gray-900 ring-2 ring-gray-900/10" : "border-transparent"
-                    } ${SOURCE_COLORS[source]}`}
-                  >
-                    {SOURCE_ICONS[source]}
-                    {SOURCE_LABELS[source]}
-                    <span className="font-bold">{count}</span>
-                  </button>
-                ))}
+            <div style={{ ...card, padding: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12, marginTop: 0 }}>Par source</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(Object.entries(stats.bySource) as [Source, number][]).map(([source, count]) => {
+                  const ss = SOURCE_STYLES[source];
+                  const isActive = filterSource === source;
+                  return (
+                    <button key={source} onClick={() => setFilterSource(filterSource === source ? "" : source)}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', background: ss.bg, color: ss.color, border: isActive ? `2px solid ${ss.color}` : "2px solid transparent" }}>
+                      {SOURCE_ICONS[source]}{SOURCE_LABELS[source]}<strong>{count}</strong>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Filtres */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Rechercher nom, email, entreprise..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900/20 bg-white"
-              />
+          {/* Filters */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Search size={13} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.35)" }} />
+              <input type="text" placeholder="Rechercher nom, email, entreprise..." value={search} onChange={e => setSearch(e.target.value)}
+                style={{ ...inp, paddingLeft: 36, paddingRight: search ? 36 : 12 }} />
               {search && (
-                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X size={13} />
-                </button>
+                <button onClick={() => setSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={13} /></button>
               )}
             </div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none text-gray-600"
-            >
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, width: "auto", flexShrink: 0, paddingRight: 12 }}>
               <option value="">Tous les statuts</option>
-              {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
-              ))}
+              {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
             {(filterSource || filterStatus || search) && (
-              <button onClick={() => { setFilterSource(""); setFilterStatus(""); setSearch(""); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
-                <X size={13} />
-                Réinitialiser
+              <button onClick={() => { setFilterSource(""); setFilterStatus(""); setSearch(""); }} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <X size={13} />Réinitialiser
               </button>
             )}
-            <p className="text-xs text-gray-400 shrink-0">{total} lead{total > 1 ? "s" : ""}</p>
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", flexShrink: 0 }}>{total} lead{total > 1 ? "s" : ""}</p>
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div style={{ ...card, overflow: "hidden" }}>
             {loading ? (
-              <div className="text-center py-16 text-gray-400 text-sm">Chargement...</div>
+              <div style={{ textAlign: "center", padding: "64px 0", color: "rgba(18,26,46,0.4)", fontSize: 13 }}>Chargement...</div>
             ) : leads.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">
-                <Users size={32} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">Aucun lead pour l'instant</p>
-                <p className="text-xs mt-1">Créez votre premier lead ou configurez votre lead magnet</p>
+              <div style={{ textAlign: "center", padding: "64px 0" }}>
+                <Users size={32} style={{ color: "rgba(18,26,46,0.1)", margin: "0 auto 12px" }} />
+                <p style={{ fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.5)", margin: 0 }}>Aucun lead pour l&apos;instant</p>
+                <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Créez votre premier lead ou configurez votre lead magnet</p>
               </div>
             ) : (
-              <table className="w-full text-sm">
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Contact</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Source</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Statut</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Canal</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Actions</th>
+                  <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)", background: "#f9f9f9" }}>
+                    {["Contact", "Source", "Statut", "Canal", "Date", ""].map(h => (
+                      <th key={h} style={{ padding: "10px 16px", textAlign: h === "" ? "right" : "left", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {leads.map((lead) => (
-                    <tr
-                      key={lead.id}
-                      onClick={() => { setSelectedLead(lead); setEditNotes(lead.notes ?? ""); }}
-                      className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors cursor-pointer"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900 text-sm">
-                          {lead.name || <span className="text-gray-400 italic">Sans nom</span>}
+                  {leads.map(lead => (
+                    <tr key={lead.id} onClick={() => { setSelectedLead(lead); setEditNotes(lead.notes ?? ""); }} style={{ borderBottom: "1px solid rgba(0,0,0,0.05)", cursor: "pointer" }}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <p style={{ fontWeight: 600, color: "#121a2e", margin: 0 }}>
+                          {lead.name || <span style={{ color: "rgba(18,26,46,0.35)", fontStyle: "italic" }}>Sans nom</span>}
                         </p>
-                        {lead.email && <p className="text-xs text-gray-400 mt-0.5">{lead.email}</p>}
-                        {lead.company && <p className="text-xs text-gray-500 mt-0.5">{lead.company}</p>}
+                        {lead.email && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", marginTop: 2, marginBottom: 0 }}>{lead.email}</p>}
+                        {lead.company && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.55)", marginTop: 1, marginBottom: 0 }}>{lead.company}</p>}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${SOURCE_COLORS[lead.source]}`}>
-                          {SOURCE_ICONS[lead.source]}
-                          {SOURCE_LABELS[lead.source]}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 600, ...SOURCE_STYLES[lead.source] }}>
+                          {SOURCE_ICONS[lead.source]}{SOURCE_LABELS[lead.source]}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td style={{ padding: "12px 16px" }}>
                         <StatusDropdown lead={lead} onStatusChange={handleStatusChange} />
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                          {CHANNEL_ICONS[lead.channel_preference]}
-                          {CHANNEL_LABELS[lead.channel_preference]}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.55)" }}>
+                          {CHANNEL_ICONS[lead.channel_preference]}{CHANNEL_LABELS[lead.channel_preference]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      <td style={{ padding: "12px 16px", fontSize: 12, color: "rgba(18,26,46,0.4)", whiteSpace: "nowrap" }}>
                         {new Date(lead.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => openContact(lead)}
-                            className="flex items-center gap-1 text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors font-medium"
-                          >
-                            <Send size={12} />
-                            Contacter
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => openContact(lead)} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "#0147ff", background: "#e8edff", border: "none", padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                            <Send size={11} />Contacter
                           </button>
-                          <button
-                            onClick={() => setDeleteId(lead.id)}
-                            className="text-gray-300 hover:text-red-400 transition-colors p-1"
-                          >
+                          <button onClick={() => setDeleteId(lead.id)} style={{ padding: 4, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -770,124 +506,118 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── STATS VIEW ─────────────────────────────────────────────────────── */}
+      {/* ── STATS VIEW ── */}
       {view === "stats" && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
           {statsLoading || !fullStats ? (
-            <div className="text-center py-20 text-gray-400 text-sm">Chargement des statistiques...</div>
+            <div style={{ textAlign: "center", paddingTop: 80, fontSize: 13, color: "rgba(18,26,46,0.4)" }}>Chargement des statistiques...</div>
           ) : (
             <>
               {/* KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 16 }}>
                 {[
-                  { label: "Taux de contact", value: `${fullStats.rates.contactRate}%`, desc: "leads contactés / total", color: "text-blue-600 bg-blue-50" },
-                  { label: "Taux d'ouverture", value: `${fullStats.rates.openRate}%`, desc: "emails ouverts / envoyés", color: "text-indigo-600 bg-indigo-50" },
-                  { label: "Taux de réponse", value: `${fullStats.rates.responseRate}%`, desc: "réponses / envoyés", color: "text-purple-600 bg-purple-50" },
-                  { label: "Taux de RDV", value: `${fullStats.rates.meetingRate}%`, desc: "RDV / total leads", color: "text-amber-600 bg-amber-50" },
-                  { label: "Taux de conversion", value: `${fullStats.rates.conversionRate}%`, desc: "convertis / total leads", color: "text-emerald-600 bg-emerald-50" },
-                ].map((kpi) => (
-                  <div key={kpi.label} className="bg-white rounded-xl border border-gray-200 p-4">
-                    <div className={`text-2xl font-bold mb-1 ${kpi.color.split(" ")[0]}`}>{kpi.value}</div>
-                    <p className="text-xs font-semibold text-gray-700">{kpi.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{kpi.desc}</p>
+                  { label: "Taux de contact",    value: `${fullStats.rates.contactRate}%`,    desc: "leads contactés / total",     color: "#0147ff" },
+                  { label: "Taux d'ouverture",   value: `${fullStats.rates.openRate}%`,        desc: "emails ouverts / envoyés",    color: "#073e63" },
+                  { label: "Taux de réponse",    value: `${fullStats.rates.responseRate}%`,    desc: "réponses / envoyés",          color: "#6236AA" },
+                  { label: "Taux de RDV",        value: `${fullStats.rates.meetingRate}%`,     desc: "RDV / total leads",           color: "#663b12" },
+                  { label: "Taux de conversion", value: `${fullStats.rates.conversionRate}%`,  desc: "convertis / total leads",     color: "#168b64" },
+                ].map(kpi => (
+                  <div key={kpi.label} style={{ ...card, padding: 16 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: kpi.color, marginBottom: 4 }}>{kpi.value}</div>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#121a2e", margin: 0 }}>{kpi.label}</p>
+                    <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", marginTop: 2, marginBottom: 0 }}>{kpi.desc}</p>
                   </div>
                 ))}
               </div>
 
               {/* Funnel */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-800 mb-4">Funnel de conversion</h3>
-                <div className="flex items-end gap-2 h-28">
-                  {(["new", "contacted", "responded", "meeting", "converted"] as Status[]).map((s) => {
+              <div style={{ ...card, padding: 20 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 16 }}>Funnel de conversion</h3>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 112 }}>
+                  {(["new", "contacted", "responded", "meeting", "converted"] as Status[]).map(s => {
                     const val = fullStats.funnel[s] ?? 0;
                     const max = fullStats.funnel.total || 1;
                     const pct = Math.round((val / max) * 100);
+                    const ss = STATUS_STYLES[s];
                     return (
-                      <div key={s} className="flex-1 flex flex-col items-center gap-1">
-                        <span className="text-xs font-bold text-gray-700">{val}</span>
-                        <div className="w-full rounded-t-lg" style={{ height: `${Math.max(4, pct)}%`, background: s === "converted" ? "#10b981" : s === "meeting" ? "#22c55e" : s === "responded" ? "#6366f1" : s === "contacted" ? "#f59e0b" : "#0ea5e9" }} />
-                        <span className="text-xs text-gray-400">{STATUS_LABELS[s]}</span>
-                        <span className="text-xs text-gray-300">{pct}%</span>
+                      <div key={s} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#121a2e" }}>{val}</span>
+                        <div style={{ width: "100%", borderRadius: "4px 4px 0 0", background: ss.dot, height: `${Math.max(4, pct)}%` }} />
+                        <span style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", textAlign: "center" }}>{STATUS_LABELS[s]}</span>
+                        <span style={{ fontSize: 10, color: "rgba(18,26,46,0.3)" }}>{pct}%</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
                 {/* Par canal */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-4">Performance par canal</h3>
-                  <div className="space-y-3">
+                <div style={{ ...card, padding: 20 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 16 }}>Performance par canal</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {(Object.entries(fullStats.channelStats) as [Channel, { sent: number; opened: number; responded: number }][]).map(([ch, data]) => {
                       const openRate = data.sent > 0 ? Math.round((data.opened / data.sent) * 100) : 0;
                       const replyRate = data.sent > 0 ? Math.round((data.responded / data.sent) * 100) : 0;
                       return (
-                        <div key={ch} className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                              {CHANNEL_ICONS[ch]}
-                              {CHANNEL_LABELS[ch]}
-                            </div>
-                            <div className="flex gap-3 text-xs text-gray-400">
+                        <div key={ch}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#121a2e" }}>{CHANNEL_ICONS[ch]}{CHANNEL_LABELS[ch]}</div>
+                            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "rgba(18,26,46,0.5)" }}>
                               <span>{data.sent} envoyés</span>
-                              <span className="text-indigo-600 font-medium">{openRate}% ouv.</span>
-                              <span className="text-purple-600 font-medium">{replyRate}% rép.</span>
+                              <span style={{ color: "#073e63", fontWeight: 600 }}>{openRate}% ouv.</span>
+                              <span style={{ color: "#6236AA", fontWeight: 600 }}>{replyRate}% rép.</span>
                             </div>
                           </div>
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${openRate}%` }} />
+                          <div style={{ height: 6, background: "#f2f2f2", borderRadius: 4, overflow: "hidden" }}>
+                            <div style={{ height: "100%", background: "#0147ff", borderRadius: 4, width: `${openRate}%` }} />
                           </div>
                         </div>
                       );
                     })}
-                    {Object.keys(fullStats.channelStats).every((k) => fullStats.channelStats[k].sent === 0) && (
-                      <p className="text-xs text-gray-400 text-center py-4">Aucun message envoyé encore</p>
+                    {Object.keys(fullStats.channelStats).every(k => fullStats.channelStats[k].sent === 0) && (
+                      <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", textAlign: "center", padding: "16px 0" }}>Aucun message envoyé encore</p>
                     )}
                   </div>
                 </div>
 
                 {/* Par source */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-4">Performance par source</h3>
-                  <div className="space-y-2">
+                <div style={{ ...card, padding: 20 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 16 }}>Performance par source</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {(Object.entries(fullStats.sourceStats) as [Source, { total: number; contacted: number; responded: number; meeting: number; converted: number }][])
                       .sort((a, b) => b[1].total - a[1].total)
                       .map(([src, data]) => {
                         const convRate = data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0;
                         return (
-                          <div key={src} className="flex items-center gap-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${SOURCE_COLORS[src]}`}>
-                              {SOURCE_ICONS[src]}
-                              {SOURCE_LABELS[src]}
+                          <div key={src} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 600, flexShrink: 0, ...SOURCE_STYLES[src] }}>
+                              {SOURCE_ICONS[src]}{SOURCE_LABELS[src]}
                             </span>
-                            <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${convRate}%` }} />
+                            <div style={{ flex: 1, height: 6, background: "#f2f2f2", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{ height: "100%", background: "#168b64", borderRadius: 4, width: `${convRate}%` }} />
                             </div>
-                            <div className="text-xs text-gray-500 shrink-0 text-right w-24">
-                              <span className="font-medium text-gray-700">{data.total}</span> leads · <span className="text-emerald-600">{convRate}%</span>
+                            <div style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", flexShrink: 0, textAlign: "right", width: 96 }}>
+                              <strong style={{ color: "#121a2e" }}>{data.total}</strong> leads · <span style={{ color: "#168b64" }}>{convRate}%</span>
                             </div>
                           </div>
                         );
-                    })}
+                      })}
                   </div>
                 </div>
               </div>
 
               {/* Par secteur */}
               {Object.keys(fullStats.sectorStats).length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-4">Performance par secteur</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                <div style={{ ...card, padding: 20 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 16 }}>Performance par secteur</h3>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="text-left py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Secteur</th>
-                          <th className="text-center py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Leads</th>
-                          <th className="text-center py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Contactés</th>
-                          <th className="text-center py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Réponses</th>
-                          <th className="text-center py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Convertis</th>
-                          <th className="text-center py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Taux conv.</th>
+                        <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                          {["Secteur", "Leads", "Contactés", "Réponses", "Convertis", "Taux conv."].map((h, i) => (
+                            <th key={h} style={{ padding: "8px 0", textAlign: i === 0 ? "left" : "center", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
@@ -895,21 +625,20 @@ export default function LeadsPage() {
                           .sort((a, b) => b[1].total - a[1].total)
                           .map(([sector, data]) => {
                             const conv = data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0;
+                            const convStyle = conv >= 20 ? { bg: "#d1fae5", color: "#168b64" } : conv >= 5 ? { bg: "#fee6d0", color: "#663b12" } : { bg: "#f6f6f6", color: "rgba(18,26,46,0.5)" };
                             return (
-                              <tr key={sector} className="border-b border-gray-50">
-                                <td className="py-2.5 text-sm font-medium text-gray-700">{sector}</td>
-                                <td className="py-2.5 text-center text-sm text-gray-600">{data.total}</td>
-                                <td className="py-2.5 text-center text-sm text-gray-600">{data.contacted}</td>
-                                <td className="py-2.5 text-center text-sm text-gray-600">{data.responded}</td>
-                                <td className="py-2.5 text-center text-sm text-emerald-600 font-medium">{data.converted}</td>
-                                <td className="py-2.5 text-center">
-                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${conv >= 20 ? "bg-emerald-100 text-emerald-700" : conv >= 5 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-                                    {conv}%
-                                  </span>
+                              <tr key={sector} style={{ borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
+                                <td style={{ padding: "10px 0", fontWeight: 500, color: "#121a2e" }}>{sector}</td>
+                                <td style={{ padding: "10px 0", textAlign: "center", color: "rgba(18,26,46,0.6)" }}>{data.total}</td>
+                                <td style={{ padding: "10px 0", textAlign: "center", color: "rgba(18,26,46,0.6)" }}>{data.contacted}</td>
+                                <td style={{ padding: "10px 0", textAlign: "center", color: "rgba(18,26,46,0.6)" }}>{data.responded}</td>
+                                <td style={{ padding: "10px 0", textAlign: "center", fontWeight: 600, color: "#168b64" }}>{data.converted}</td>
+                                <td style={{ padding: "10px 0", textAlign: "center" }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, ...convStyle }}>{conv}%</span>
                                 </td>
                               </tr>
                             );
-                        })}
+                          })}
                       </tbody>
                     </table>
                   </div>
@@ -917,191 +646,150 @@ export default function LeadsPage() {
               )}
 
               {/* Évolution mensuelle */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-800 mb-4">Évolution mensuelle (12 derniers mois)</h3>
-                <div className="flex items-end gap-2 h-24">
+              <div style={{ ...card, padding: 20 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 16 }}>Évolution mensuelle (12 derniers mois)</h3>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 96 }}>
                   {Object.entries(fullStats.monthly).map(([month, data]) => {
-                    const maxLeads = Math.max(...Object.values(fullStats.monthly).map((m) => m.leads), 1);
+                    const maxLeads = Math.max(...Object.values(fullStats.monthly).map(m => m.leads), 1);
                     const pct = Math.round((data.leads / maxLeads) * 100);
-                    const label = month.slice(5); // MM
+                    const pctContacted = Math.round((data.contacted / maxLeads) * 100);
                     return (
-                      <div key={month} className="flex-1 flex flex-col items-center gap-1">
-                        <div className="w-full relative rounded-t-sm overflow-hidden" style={{ height: "60px" }}>
-                          <div className="absolute bottom-0 left-0 right-0 bg-indigo-200 rounded-t-sm" style={{ height: `${pct}%` }} />
-                          {data.contacted > 0 && (
-                            <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 rounded-t-sm" style={{ height: `${Math.round((data.contacted / maxLeads) * 100)}%` }} />
-                          )}
+                      <div key={month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: "100%", position: "relative", height: 60 }}>
+                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#d5eeff", borderRadius: "3px 3px 0 0", height: `${pct}%` }} />
+                          {data.contacted > 0 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#0147ff", borderRadius: "3px 3px 0 0", height: `${pctContacted}%` }} />}
                         </div>
-                        <span className="text-xs text-gray-400">{label}</span>
+                        <span style={{ fontSize: 10, color: "rgba(18,26,46,0.4)" }}>{month.slice(5)}</span>
                       </div>
                     );
                   })}
                 </div>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-200 rounded-sm inline-block" /> Leads totaux</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-500 rounded-sm inline-block" /> Leads contactés</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8, fontSize: 11, color: "rgba(18,26,46,0.5)" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 8, background: "#d5eeff", borderRadius: 2, display: "inline-block" }} />Leads totaux</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 12, height: 8, background: "#0147ff", borderRadius: 2, display: "inline-block" }} />Leads contactés</span>
                 </div>
               </div>
 
-              {/* ── Analyse IA ── */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <BrainCircuit size={18} className="text-indigo-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">Boucle d'amélioration IA</h3>
-                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
-                      {analysisTemplates.length} templates actifs
-                    </span>
+              {/* Analyse IA */}
+              <div style={{ ...card, padding: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <BrainCircuit size={18} style={{ color: "#0147ff" }} />
+                    <h3 style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", margin: 0 }}>Boucle d&apos;amélioration IA</h3>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#073e63", background: "#d5eeff", padding: "2px 8px", borderRadius: 20 }}>{analysisTemplates.length} templates actifs</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowAiConfig(!showAiConfig)}
-                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 px-2 py-1 rounded-lg"
-                    >
-                      <Settings2 size={12} />
-                      Config
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button onClick={() => setShowAiConfig(!showAiConfig)} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.55)", border: "1px solid rgba(0,0,0,0.09)", padding: "5px 10px", borderRadius: 8, background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      <Settings2 size={12} />Config
                     </button>
-                    <button
-                      onClick={handleAnalyze}
-                      disabled={analyzing}
-                      className="flex items-center gap-1.5 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                    >
-                      <BrainCircuit size={14} className={analyzing ? "animate-pulse" : ""} />
+                    <button onClick={handleAnalyze} disabled={analyzing} style={{ ...btnGrad, padding: "8px 14px", fontSize: 12, opacity: analyzing ? 0.7 : 1 }}>
+                      <BrainCircuit size={13} style={{ animation: analyzing ? "pulse 1s infinite" : "none" }} />
                       {analyzing ? "Analyse en cours..." : "Lancer une analyse"}
                     </button>
                   </div>
                 </div>
 
-                {/* Config panel */}
                 {showAiConfig && (
-                  <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-600 mb-3">Configuration de la boucle</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-500 block mb-1">Seuil déclenchement</label>
-                        <div className="flex items-center gap-1">
-                          <input type="number" min="5" max="100" value={aiConfig.threshold}
-                            onChange={(e) => setAiConfig((p) => ({ ...p, threshold: e.target.value }))}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
-                          <span className="text-xs text-gray-400 shrink-0">leads</span>
+                  <div style={{ background: "#f6f6f6", borderRadius: 11, padding: 16, marginBottom: 16, border: "1px solid rgba(0,0,0,0.07)" }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: "#121a2e", marginTop: 0, marginBottom: 12 }}>Configuration de la boucle</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+                      {[
+                        { label: "Seuil déclenchement", key: "threshold" as const, suffix: "leads", type: "number", min: 5, max: 100, step: 1 },
+                        { label: "Taux exploration", key: "exploration" as const, suffix: "(0-1)", type: "number", min: 0.05, max: 0.5, step: 0.05 },
+                        { label: "Échantillon minimum", key: "minSamples" as const, suffix: "", type: "number", min: 3, max: 50, step: 1 },
+                      ].map(f => (
+                        <div key={f.key}>
+                          <label style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", display: "block", marginBottom: 4 }}>{f.label}</label>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <input type={f.type} min={f.min} max={f.max} step={f.step} value={aiConfig[f.key]} onChange={e => setAiConfig(p => ({ ...p, [f.key]: e.target.value }))}
+                              style={{ ...inp, width: "100%", textAlign: "center", padding: "6px 8px" }} />
+                            {f.suffix && <span style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", flexShrink: 0 }}>{f.suffix}</span>}
+                          </div>
                         </div>
-                      </div>
+                      ))}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Taux exploration</label>
-                        <div className="flex items-center gap-1">
-                          <input type="number" min="0.05" max="0.5" step="0.05" value={aiConfig.exploration}
-                            onChange={(e) => setAiConfig((p) => ({ ...p, exploration: e.target.value }))}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
-                          <span className="text-xs text-gray-400 shrink-0">(0-1)</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 block mb-1">Échantillon minimum</label>
-                        <input type="number" min="3" max="50" value={aiConfig.minSamples}
-                          onChange={(e) => setAiConfig((p) => ({ ...p, minSamples: e.target.value }))}
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none text-center" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500 block mb-1">Analyse auto</label>
-                        <button
-                          onClick={() => setAiConfig((p) => ({ ...p, autoEnabled: !p.autoEnabled }))}
-                          className={`w-full py-1.5 rounded-lg text-sm border transition-all ${
-                            aiConfig.autoEnabled ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-gray-50 text-gray-500 border-gray-200"
-                          }`}
-                        >
+                        <label style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", display: "block", marginBottom: 4 }}>Analyse auto</label>
+                        <button onClick={() => setAiConfig(p => ({ ...p, autoEnabled: !p.autoEnabled }))} style={{ width: "100%", padding: "6px 8px", borderRadius: 9, fontSize: 12, cursor: "pointer", border: "1px solid", fontFamily: '"Plus Jakarta Sans", sans-serif', ...(aiConfig.autoEnabled ? { background: "#e8edff", borderColor: "#0147ff", color: "#0147ff", fontWeight: 600 } : { background: "#f6f6f6", borderColor: "rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.5)" }) }}>
                           {aiConfig.autoEnabled ? "Activée" : "Désactivée"}
                         </button>
                       </div>
                     </div>
-                    <div className="flex justify-end mt-3">
-                      <button onClick={handleSaveConfig} disabled={savingConfig}
-                        className="text-xs bg-gray-900 text-white px-4 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                      <button onClick={handleSaveConfig} disabled={savingConfig} style={{ ...btnGrad, padding: "6px 14px", fontSize: 12, opacity: savingConfig ? 0.7 : 1 }}>
                         {savingConfig ? "Sauvegarde..." : "Enregistrer"}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Résultat dernier run */}
                 {analysisResult && (
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Check size={14} className="text-indigo-600" />
-                      <p className="text-sm font-semibold text-indigo-700">
+                  <div style={{ background: "#e8edff", border: "1px solid #c7d3ff", borderRadius: 11, padding: 16, marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                      <Check size={13} style={{ color: "#0147ff" }} />
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#0147ff", margin: 0 }}>
                         Analyse terminée — {analysisResult.templatesCreated} nouveau{analysisResult.templatesCreated > 1 ? "x" : ""} template{analysisResult.templatesCreated > 1 ? "s" : ""} créé{analysisResult.templatesCreated > 1 ? "s" : ""}
                       </p>
                     </div>
-                    {analysisResult.insights && (
-                      <p className="text-xs text-indigo-700 mb-2"><strong>Observations :</strong> {analysisResult.insights}</p>
-                    )}
-                    {analysisResult.hypotheses && (
-                      <p className="text-xs text-indigo-600"><strong>Hypothèses testées :</strong> {analysisResult.hypotheses}</p>
-                    )}
+                    {analysisResult.insights && <p style={{ fontSize: 12, color: "#073e63", marginBottom: 4, marginTop: 0 }}><strong>Observations :</strong> {analysisResult.insights}</p>}
+                    {analysisResult.hypotheses && <p style={{ fontSize: 12, color: "#073e63", margin: 0 }}><strong>Hypothèses testées :</strong> {analysisResult.hypotheses}</p>}
                   </div>
                 )}
 
-                {/* Historique des runs */}
                 {analysisRuns.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Historique des analyses</p>
-                    <div className="space-y-2">
-                      {analysisRuns.slice(0, 3).map((run) => (
-                        <div key={run.id} className="border border-gray-100 rounded-xl p-3 bg-gray-50">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-xs font-medium text-gray-700">
-                              {new Date(run.triggered_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-indigo-600">{run.templates_created} templates créés</span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${run.status === "completed" ? "bg-green-100 text-green-700" : run.status === "failed" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
-                                {run.status}
-                              </span>
+                  <div style={{ marginBottom: 16 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: 0 }}>Historique des analyses</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {analysisRuns.slice(0, 3).map(run => {
+                        const runSt = run.status === "completed" ? { bg: "#d1fae5", color: "#168b64" } : run.status === "failed" ? { bg: "#ffe4e4", color: "#c53030" } : { bg: "#fee6d0", color: "#663b12" };
+                        return (
+                          <div key={run.id} style={{ border: "1px solid rgba(0,0,0,0.07)", borderRadius: 10, padding: 12, background: "#f9f9f9" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", margin: 0 }}>
+                                {new Date(run.triggered_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 11, color: "#0147ff" }}>{run.templates_created} templates créés</span>
+                                <span style={{ fontSize: 11, fontWeight: 600, padding: "1px 7px", borderRadius: 20, ...runSt }}>{run.status}</span>
+                              </div>
                             </div>
+                            {run.insights && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0 }}>{run.insights}</p>}
                           </div>
-                          {run.insights && <p className="text-xs text-gray-500 line-clamp-2">{run.insights}</p>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* Templates actifs */}
                 {analysisTemplates.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Templates A/B actifs</p>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8, marginTop: 0 }}>Templates A/B actifs</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 256, overflowY: "auto" }}>
                       {analysisTemplates.map((t: Record<string, unknown>) => {
                         const sent = t.sent_count as number;
                         const score = t.score as number;
+                        const isExp = !!t.is_exploration;
                         return (
-                          <div key={t.id as string} className="border border-gray-100 rounded-xl p-3 flex items-start gap-3">
-                            <div className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shrink-0 ${
-                              t.is_exploration ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
-                            }`}>
+                          <div key={t.id as string} style={{ border: "1px solid rgba(0,0,0,0.07)", borderRadius: 10, padding: 12, display: "flex", alignItems: "flex-start", gap: 12 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, ...(isExp ? { background: "#fee6d0", color: "#663b12" } : { background: "#e8edff", color: "#0147ff" }) }}>
                               {t.variant_label as string}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="text-xs font-medium text-gray-700">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                <span style={{ fontSize: 12, fontWeight: 500, color: "#121a2e" }}>
                                   {(t.source_filter as string) || "Toutes sources"} · {(t.channel as string)} · {(t.sector_filter as string) || "Tous secteurs"}
                                 </span>
-                                {!!t.is_exploration && (
-                                  <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                    <FlaskConical size={9} />
-                                    Test
+                                {isExp && (
+                                  <span style={{ fontSize: 10, fontWeight: 600, color: "#663b12", background: "#fee6d0", padding: "1px 6px", borderRadius: 20, display: "flex", alignItems: "center", gap: 3 }}>
+                                    <FlaskConical size={8} />Test
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-gray-400 truncate">{t.content as string}</p>
-                              {!!t.ai_hypothesis && (
-                                <p className="text-xs text-indigo-400 mt-0.5 truncate">💡 {t.ai_hypothesis as string}</p>
-                              )}
+                              <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.content as string}</p>
+                              {!!t.ai_hypothesis && <p style={{ fontSize: 11, color: "#0147ff", marginTop: 2, marginBottom: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>💡 {t.ai_hypothesis as string}</p>}
                             </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-xs font-bold text-gray-700">{sent} envois</p>
-                              <p className={`text-xs ${score > 0.3 ? "text-emerald-600" : score > 0.1 ? "text-amber-600" : "text-gray-400"}`}>
-                                score {(score * 100).toFixed(0)}
-                              </p>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              <p style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", margin: 0 }}>{sent} envois</p>
+                              <p style={{ fontSize: 11, margin: 0, color: score > 0.3 ? "#168b64" : score > 0.1 ? "#663b12" : "rgba(18,26,46,0.4)" }}>score {(score * 100).toFixed(0)}</p>
                             </div>
                           </div>
                         );
@@ -1111,10 +799,10 @@ export default function LeadsPage() {
                 )}
 
                 {analysisTemplates.length === 0 && !analyzing && (
-                  <div className="text-center py-8 text-gray-400">
-                    <AlertCircle size={24} className="mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">Aucun template généré pour l'instant</p>
-                    <p className="text-xs mt-1">Lancez une première analyse pour démarrer la boucle d'apprentissage</p>
+                  <div style={{ textAlign: "center", padding: "32px 0", color: "rgba(18,26,46,0.35)" }}>
+                    <AlertCircle size={24} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
+                    <p style={{ fontSize: 13, margin: 0 }}>Aucun template généré pour l&apos;instant</p>
+                    <p style={{ fontSize: 12, marginTop: 4 }}>Lancez une première analyse pour démarrer la boucle d&apos;apprentissage</p>
                   </div>
                 )}
               </div>
@@ -1123,126 +811,75 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Modal Outreach (Générer + Envoyer) ───────────────────────────── */}
+      {/* ── Modal Outreach ── */}
       {outreachLead && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setOutreachLead(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="px-6 py-5 border-b border-gray-100 shrink-0">
-              <div className="flex items-start justify-between">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setOutreachLead(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", maxHeight: "90vh", ...jk }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
-                  <h2 className="font-semibold text-gray-900">Générer un message</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <h2 style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", margin: 0 }}>Générer un message</h2>
+                  <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", marginTop: 3, marginBottom: 0 }}>
                     Pour {outreachLead.name || outreachLead.email || "ce lead"}
                     {outreachLead.company && ` — ${outreachLead.company}`}
                   </p>
                 </div>
-                <button onClick={() => setOutreachLead(null)} className="text-gray-400 hover:text-gray-600">
-                  <X size={18} />
-                </button>
+                <button onClick={() => setOutreachLead(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={18} /></button>
               </div>
-
-              {/* Canal selector */}
-              <div className="flex gap-2 mt-4">
-                {(["email", "whatsapp", "linkedin_dm"] as Channel[]).map((ch) => (
-                  <button
-                    key={ch}
-                    onClick={() => setOutreachChannel(ch)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      outreachChannel === ch
-                        ? "bg-gray-900 text-white border-gray-900"
-                        : "border-gray-200 text-gray-500 hover:border-gray-400"
-                    }`}
-                  >
-                    {CHANNEL_ICONS[ch]}
-                    {CHANNEL_LABELS[ch]}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                {(["email", "whatsapp", "linkedin_dm"] as Channel[]).map(ch => (
+                  <button key={ch} onClick={() => setOutreachChannel(ch)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 9, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', border: "1px solid", ...(outreachChannel === ch ? { background: "#e8edff", borderColor: "#0147ff", color: "#0147ff" } : { background: "#f6f6f6", borderColor: "rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.55)" }) }}>
+                    {CHANNEL_ICONS[ch]}{CHANNEL_LABELS[ch]}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* API Key input (if needed) */}
             {showApiKeyInput && (
-              <div className="px-6 py-3 bg-amber-50 border-b border-amber-100 shrink-0">
-                <p className="text-xs text-amber-700 mb-2 font-medium">Clé OpenRouter requise pour la génération IA</p>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type={showApiKey ? "text" : "password"}
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="sk-or-v1-..."
-                      className="w-full text-xs border border-amber-200 rounded-lg px-3 py-2 pr-8 focus:outline-none bg-white"
-                    />
-                    <button onClick={() => setShowApiKey((s) => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">
+              <div style={{ padding: "12px 24px", background: "#fffbeb", borderBottom: "1px solid #fef3c7", flexShrink: 0 }}>
+                <p style={{ fontSize: 12, color: "#92400e", fontWeight: 600, marginTop: 0, marginBottom: 8 }}>Clé OpenRouter requise pour la génération IA</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <input type={showApiKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-v1-..."
+                      style={{ ...inp, paddingRight: 36, fontSize: 12 }} />
+                    <button onClick={() => setShowApiKey(s => !s)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}>
                       {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
                     </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      try {
-                        const stored = localStorage.getItem("linkedin_settings") ?? "{}";
-                        localStorage.setItem("linkedin_settings", JSON.stringify({ ...JSON.parse(stored), openrouterApiKey: apiKey }));
-                      } catch {}
-                      setShowApiKeyInput(false);
-                      handleGenerate();
-                    }}
-                    disabled={!apiKey}
-                    className="text-xs bg-amber-500 text-white px-3 py-2 rounded-lg hover:bg-amber-600 disabled:opacity-50"
-                  >
+                  <button onClick={() => { try { const stored = localStorage.getItem("linkedin_settings") ?? "{}"; localStorage.setItem("linkedin_settings", JSON.stringify({ ...JSON.parse(stored), openrouterApiKey: apiKey })); } catch {} setShowApiKeyInput(false); handleGenerate(); }} disabled={!apiKey}
+                    style={{ padding: "8px 14px", background: "#f59e0b", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 600, color: "#fff", cursor: "pointer", opacity: !apiKey ? 0.5 : 1, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     Sauvegarder
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
               {outreachChannel === "email" && (
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1.5 block">Objet de l'email</label>
-                  <input
-                    type="text"
-                    value={outreachSubject}
-                    onChange={(e) => setOutreachSubject(e.target.value)}
-                    placeholder="L'objet sera généré automatiquement..."
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
-                  />
+                  <label style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", display: "block", marginBottom: 5 }}>Objet de l&apos;email</label>
+                  <input type="text" value={outreachSubject} onChange={e => setOutreachSubject(e.target.value)} placeholder="L'objet sera généré automatiquement..." style={inp} />
                 </div>
               )}
-
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-gray-500">Message</label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, color: "rgba(18,26,46,0.5)" }}>Message</label>
                   {outreachContent && (
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(outreachContent); }}
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
-                    >
-                      <Copy size={11} />
-                      Copier
+                    <button onClick={() => navigator.clipboard.writeText(outreachContent)} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      <Copy size={10} />Copier
                     </button>
                   )}
                 </div>
-                <textarea
-                  value={outreachContent}
-                  onChange={(e) => setOutreachContent(e.target.value)}
-                  placeholder={outreachGenerating ? "Génération en cours..." : "Cliquez sur 'Générer' pour créer un message personnalisé avec l'IA..."}
+                <textarea value={outreachContent} onChange={e => setOutreachContent(e.target.value)}
+                  placeholder={outreachGenerating ? "Génération en cours..." : "Cliquez sur 'Générer' pour créer un message personnalisé..."}
                   rows={outreachChannel === "linkedin_dm" ? 5 : 10}
-                  className={`w-full text-sm border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900/20 resize-none leading-relaxed ${
-                    outreachGenerating ? "opacity-50 animate-pulse" : ""
-                  }`}
-                />
+                  style={{ ...inp, resize: "none", lineHeight: 1.6, opacity: outreachGenerating ? 0.5 : 1 }} />
                 {outreachChannel === "linkedin_dm" && outreachContent && (
-                  <p className={`text-xs mt-1 ${outreachContent.length > 300 ? "text-red-500" : "text-gray-400"}`}>
-                    {outreachContent.length}/300 caractères
-                  </p>
+                  <p style={{ fontSize: 11, marginTop: 3, color: outreachContent.length > 300 ? "#c53030" : "rgba(18,26,46,0.4)" }}>{outreachContent.length}/300 caractères</p>
                 )}
               </div>
-
-              {/* Infos lead */}
-              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 space-y-1">
-                <p className="font-medium text-gray-600 mb-1.5">Contexte utilisé par l'IA</p>
+              <div style={{ background: "#f6f6f6", borderRadius: 10, padding: 12, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
+                <p style={{ fontWeight: 600, color: "#121a2e", marginTop: 0, marginBottom: 6 }}>Contexte utilisé par l&apos;IA</p>
                 {[
                   outreachLead.name && `Nom : ${outreachLead.name}`,
                   outreachLead.company && `Entreprise : ${outreachLead.company}`,
@@ -1250,36 +887,20 @@ export default function LeadsPage() {
                   outreachLead.email && `Email : ${outreachLead.email}`,
                   outreachLead.notes && `Notes : ${outreachLead.notes}`,
                   `Source : ${SOURCE_LABELS[outreachLead.source]}`,
-                ].filter(Boolean).map((line, i) => (
-                  <p key={i}>{line}</p>
-                ))}
+                ].filter(Boolean).map((line, i) => <p key={i} style={{ margin: "2px 0" }}>{line}</p>)}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0">
-              <button
-                onClick={handleGenerate}
-                disabled={outreachGenerating}
-                className="flex items-center gap-1.5 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors font-medium disabled:opacity-50"
-              >
-                <Sparkles size={14} className={outreachGenerating ? "animate-spin" : ""} />
+            <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+              <button onClick={handleGenerate} disabled={outreachGenerating} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#0147ff", background: "#e8edff", border: "1px solid #c7d3ff", padding: "8px 14px", borderRadius: 9, cursor: "pointer", opacity: outreachGenerating ? 0.6 : 1, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <Sparkles size={13} style={{ animation: outreachGenerating ? "spin 1s linear infinite" : "none" }} />
                 {outreachGenerating ? "Génération..." : "Générer avec l'IA"}
               </button>
-
               {outreachSent ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                  <Check size={16} />
-                  Message envoyé !
-                </div>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#168b64" }}><Check size={15} />Message envoyé !</span>
               ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={outreachSending || !outreachContent}
-                  className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
-                >
-                  <Send size={13} />
-                  {outreachSending ? "Envoi..." : outreachChannel === "email" ? "Envoyer l'email" : "Enregistrer"}
+                <button onClick={handleSend} disabled={outreachSending || !outreachContent} style={{ ...btnGrad, padding: "8px 18px", fontSize: 13, opacity: outreachSending || !outreachContent ? 0.5 : 1 }}>
+                  <Send size={12} />{outreachSending ? "Envoi..." : outreachChannel === "email" ? "Envoyer l'email" : "Enregistrer"}
                 </button>
               )}
             </div>
@@ -1287,94 +908,78 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Modal Contacter (template pré-généré) ────────────────────────────── */}
+      {/* ── Modal Contacter ── */}
       {contactLead && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setContactLead(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 shrink-0">
-              <div className="flex items-start justify-between">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setContactLead(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", maxHeight: "90vh", ...jk }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
-                  <h2 className="font-semibold text-gray-900">Contacter</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <h2 style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", margin: 0 }}>Contacter</h2>
+                  <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", marginTop: 3, marginBottom: 0 }}>
                     {contactLead.name || contactLead.email || "Ce lead"}
                     {contactLead.company && ` — ${contactLead.company}`}
                   </p>
                 </div>
-                <button onClick={() => setContactLead(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+                <button onClick={() => setContactLead(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={18} /></button>
               </div>
-              {/* Canal selector */}
-              <div className="flex gap-2 mt-3">
-                {(["email", "whatsapp", "linkedin_dm"] as Channel[]).map((ch) => (
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                {(["email", "whatsapp", "linkedin_dm"] as Channel[]).map(ch => (
                   <button key={ch} onClick={() => { setContactChannel(ch); openContact({ ...contactLead, channel_preference: ch }); }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      contactChannel === ch ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-500 hover:border-gray-400"
-                    }`}
-                  >
-                    {CHANNEL_ICONS[ch]}
-                    {CHANNEL_LABELS[ch]}
+                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 9, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', border: "1px solid", ...(contactChannel === ch ? { background: "#e8edff", borderColor: "#0147ff", color: "#0147ff" } : { background: "#f6f6f6", borderColor: "rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.55)" }) }}>
+                    {CHANNEL_ICONS[ch]}{CHANNEL_LABELS[ch]}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
               {contactLoading ? (
-                <div className="flex items-center justify-center py-12 text-gray-400 gap-2">
-                  <RefreshCw size={16} className="animate-spin" />
-                  <span className="text-sm">Sélection du meilleur template...</span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0", gap: 8, color: "rgba(18,26,46,0.4)" }}>
+                  <RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontSize: 13 }}>Sélection du meilleur template...</span>
                 </div>
               ) : contactError ? (
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-center">
-                  <AlertCircle size={20} className="mx-auto mb-2 text-amber-500" />
-                  <p className="text-sm text-amber-700">{contactError}</p>
-                  <button onClick={() => { setView("stats"); setContactLead(null); }}
-                    className="mt-3 text-xs text-amber-600 underline flex items-center gap-1 mx-auto">
-                    Aller dans Statistiques → Lancer une analyse <ChevronRight size={11} />
+                <div style={{ background: "#fffbeb", border: "1px solid #fef3c7", borderRadius: 11, padding: 16, textAlign: "center" }}>
+                  <AlertCircle size={20} style={{ color: "#f59e0b", margin: "0 auto 8px" }} />
+                  <p style={{ fontSize: 13, color: "#92400e", margin: 0 }}>{contactError}</p>
+                  <button onClick={() => { setView("stats"); setContactLead(null); }} style={{ marginTop: 12, fontSize: 12, color: "#92400e", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", display: "flex", alignItems: "center", gap: 3, margin: "12px auto 0", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    Aller dans Statistiques → Lancer une analyse <ChevronRight size={10} />
                   </button>
                 </div>
               ) : (
                 <>
                   {contactTemplate && (
-                    <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                        contactTemplate.is_exploration ? "bg-amber-200 text-amber-800" : "bg-indigo-200 text-indigo-800"
-                      }`}>
+                    <div style={{ background: "#e8edff", border: "1px solid #c7d3ff", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, ...(contactTemplate.is_exploration ? { background: "#fee6d0", color: "#663b12" } : { background: "#d5eeff", color: "#073e63" }) }}>
                         {contactTemplate.variant_label}
                       </div>
-                      <div className="flex-1">
-                        <p className="text-xs text-indigo-700 font-medium">
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 12, color: "#073e63", fontWeight: 600, margin: 0 }}>
                           Template {contactTemplate.is_exploration ? "(en test)" : `— score ${(contactTemplate.score * 100).toFixed(0)}`}
                           {" · "}{contactTemplate.sent_count} envois
                         </p>
-                        {contactTemplate.ai_hypothesis && (
-                          <p className="text-xs text-indigo-500 mt-0.5">💡 {contactTemplate.ai_hypothesis}</p>
-                        )}
+                        {contactTemplate.ai_hypothesis && <p style={{ fontSize: 11, color: "#0147ff", marginTop: 2, marginBottom: 0 }}>💡 {contactTemplate.ai_hypothesis}</p>}
                       </div>
                     </div>
                   )}
-
                   {contactChannel === "email" && (
                     <div>
-                      <label className="text-xs font-medium text-gray-500 mb-1.5 block">Objet</label>
-                      <input type="text" value={contactSubject} onChange={(e) => setContactSubject(e.target.value)}
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20" />
+                      <label style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", display: "block", marginBottom: 5 }}>Objet</label>
+                      <input type="text" value={contactSubject} onChange={e => setContactSubject(e.target.value)} style={inp} />
                     </div>
                   )}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-medium text-gray-500">Message</label>
-                      <button onClick={() => navigator.clipboard.writeText(contactContent)}
-                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
-                        <Copy size={11} />Copier
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label style={{ fontSize: 12, color: "rgba(18,26,46,0.5)" }}>Message</label>
+                      <button onClick={() => navigator.clipboard.writeText(contactContent)} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                        <Copy size={10} />Copier
                       </button>
                     </div>
-                    <textarea value={contactContent} onChange={(e) => setContactContent(e.target.value)}
-                      rows={contactChannel === "linkedin_dm" ? 5 : 9}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900/20 resize-none leading-relaxed" />
+                    <textarea value={contactContent} onChange={e => setContactContent(e.target.value)} rows={contactChannel === "linkedin_dm" ? 5 : 9}
+                      style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
                     {contactChannel === "linkedin_dm" && (
-                      <p className={`text-xs mt-1 ${contactContent.length > 300 ? "text-red-500" : "text-gray-400"}`}>
-                        {contactContent.length}/300 caractères
-                      </p>
+                      <p style={{ fontSize: 11, marginTop: 3, color: contactContent.length > 300 ? "#c53030" : "rgba(18,26,46,0.4)" }}>{contactContent.length}/300 caractères</p>
                     )}
                   </div>
                 </>
@@ -1382,16 +987,12 @@ export default function LeadsPage() {
             </div>
 
             {!contactError && !contactLoading && (
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end shrink-0">
+              <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", flexShrink: 0 }}>
                 {contactSent ? (
-                  <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
-                    <Check size={16} />Message envoyé !
-                  </div>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#168b64" }}><Check size={15} />Message envoyé !</span>
                 ) : (
-                  <button onClick={handleContactSend} disabled={contactSending || !contactContent}
-                    className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
-                    <Send size={13} />
-                    {contactSending ? "Envoi..." : contactChannel === "email" ? "Envoyer l'email" : "Enregistrer"}
+                  <button onClick={handleContactSend} disabled={contactSending || !contactContent} style={{ ...btnGrad, padding: "8px 18px", fontSize: 13, opacity: contactSending || !contactContent ? 0.5 : 1 }}>
+                    <Send size={12} />{contactSending ? "Envoi..." : contactChannel === "email" ? "Envoyer l'email" : "Enregistrer"}
                   </button>
                 )}
               </div>
@@ -1400,42 +1001,46 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Modal Ajout ──────────────────────────────────────────────────────── */}
+      {/* ── Modal Ajout ── */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAdd(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900">Ajouter un lead</h2>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowAdd(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 448, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", ...jk }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", margin: 0 }}>Ajouter un lead</h2>
             </div>
-            <div className="px-6 py-5 space-y-4">
-              <FormRow label="Nom">
-                <input type="text" value={addForm.name} onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} placeholder="Jean Dupont" className="modal-input" />
-              </FormRow>
-              <FormRow label="Email">
-                <input type="email" value={addForm.email} onChange={(e) => setAddForm((p) => ({ ...p, email: e.target.value }))} placeholder="jean@exemple.fr" className="modal-input" />
-              </FormRow>
-              <FormRow label="Entreprise">
-                <input type="text" value={addForm.company} onChange={(e) => setAddForm((p) => ({ ...p, company: e.target.value }))} placeholder="ACME SAS" className="modal-input" />
-              </FormRow>
-              <div className="grid grid-cols-2 gap-3">
-                <FormRow label="Secteur">
-                  <input type="text" value={addForm.sector} onChange={(e) => setAddForm((p) => ({ ...p, sector: e.target.value }))} placeholder="Marketing" className="modal-input" />
-                </FormRow>
-                <FormRow label="Téléphone">
-                  <input type="text" value={addForm.phone} onChange={(e) => setAddForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+33 6 00 00 00 00" className="modal-input" />
-                </FormRow>
+            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+              {[
+                { label: "Nom", key: "name" as const, type: "text", placeholder: "Jean Dupont" },
+                { label: "Email", key: "email" as const, type: "email", placeholder: "jean@exemple.fr" },
+                { label: "Entreprise", key: "company" as const, type: "text", placeholder: "ACME SAS" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 5 }}>{f.label}</label>
+                  <input type={f.type} value={addForm[f.key]} onChange={e => setAddForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} style={inp} />
+                </div>
+              ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 5 }}>Secteur</label>
+                  <input type="text" value={addForm.sector} onChange={e => setAddForm(p => ({ ...p, sector: e.target.value }))} placeholder="Marketing" style={inp} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 5 }}>Téléphone</label>
+                  <input type="text" value={addForm.phone} onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))} placeholder="+33 6 00 00 00 00" style={inp} />
+                </div>
               </div>
-              <FormRow label="Canal préféré">
-                <select value={addForm.channel_preference} onChange={(e) => setAddForm((p) => ({ ...p, channel_preference: e.target.value as Channel }))} className="modal-input">
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 5 }}>Canal préféré</label>
+                <select value={addForm.channel_preference} onChange={e => setAddForm(p => ({ ...p, channel_preference: e.target.value as Channel }))} style={inp}>
                   <option value="email">Email</option>
                   <option value="whatsapp">WhatsApp</option>
                   <option value="linkedin_dm">LinkedIn DM</option>
                 </select>
-              </FormRow>
+              </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => setShowAdd(false)} className="text-sm text-gray-500 px-4 py-2 rounded-lg hover:bg-gray-50">Annuler</button>
-              <button onClick={handleAddLead} disabled={addLoading || (!addForm.email && !addForm.name)} className="text-sm bg-gray-900 text-white px-5 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50">
+            <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={() => setShowAdd(false)} style={{ fontSize: 13, color: "rgba(18,26,46,0.55)", padding: "8px 16px", borderRadius: 9, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Annuler</button>
+              <button onClick={handleAddLead} disabled={addLoading || (!addForm.email && !addForm.name)} style={{ ...btnGrad, padding: "8px 18px", fontSize: 13, opacity: addLoading || (!addForm.email && !addForm.name) ? 0.5 : 1 }}>
                 {addLoading ? "Ajout..." : "Ajouter"}
               </button>
             </div>
@@ -1443,77 +1048,73 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Modal Détail Lead ─────────────────────────────────────────────────── */}
+      {/* ── Modal Détail Lead ── */}
       {selectedLead && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4" onClick={() => setSelectedLead(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }} onClick={() => setSelectedLead(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 512, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", ...jk }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
               <div>
-                <h2 className="font-semibold text-gray-900 text-base">
-                  {selectedLead.name || selectedLead.email || "Lead sans nom"}
-                </h2>
-                {selectedLead.company && <p className="text-sm text-gray-500 mt-0.5">{selectedLead.company}</p>}
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", margin: 0 }}>{selectedLead.name || selectedLead.email || "Lead sans nom"}</h2>
+                {selectedLead.company && <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", marginTop: 2, marginBottom: 0 }}>{selectedLead.company}</p>}
               </div>
-              <button onClick={() => setSelectedLead(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => setSelectedLead(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={18} /></button>
             </div>
 
-            <div className="px-6 py-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
+            <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
                 {selectedLead.email && (
-                  <InfoItem label="Email" value={
-                    <a href={`mailto:${selectedLead.email}`} className="flex items-center gap-1 text-indigo-600 hover:underline">
-                      {selectedLead.email} <ExternalLink size={11} />
+                  <div>
+                    <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Email</p>
+                    <a href={`mailto:${selectedLead.email}`} style={{ display: "flex", alignItems: "center", gap: 4, color: "#0147ff", textDecoration: "none", fontSize: 13 }}>
+                      {selectedLead.email} <ExternalLink size={10} />
                     </a>
-                  } />
+                  </div>
                 )}
-                {selectedLead.phone && <InfoItem label="Téléphone" value={selectedLead.phone} />}
-                {selectedLead.sector && <InfoItem label="Secteur" value={selectedLead.sector} />}
-                <InfoItem label="Source" value={
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_COLORS[selectedLead.source]}`}>
-                    {SOURCE_ICONS[selectedLead.source]}
-                    {SOURCE_LABELS[selectedLead.source]}
+                {selectedLead.phone && <div><p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Téléphone</p><p style={{ fontSize: 13, color: "#121a2e", margin: 0 }}>{selectedLead.phone}</p></div>}
+                {selectedLead.sector && <div><p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Secteur</p><p style={{ fontSize: 13, color: "#121a2e", margin: 0 }}>{selectedLead.sector}</p></div>}
+                <div>
+                  <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Source</p>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 20, fontSize: 11, fontWeight: 600, ...SOURCE_STYLES[selectedLead.source] }}>
+                    {SOURCE_ICONS[selectedLead.source]}{SOURCE_LABELS[selectedLead.source]}
                   </span>
-                } />
-                <InfoItem label="Canal" value={
-                  <span className="inline-flex items-center gap-1 text-xs text-gray-600">
-                    {CHANNEL_ICONS[selectedLead.channel_preference]}
-                    {CHANNEL_LABELS[selectedLead.channel_preference]}
-                  </span>
-                } />
-                <InfoItem label="Ajouté le" value={new Date(selectedLead.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} />
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Canal</p>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.6)" }}>{CHANNEL_ICONS[selectedLead.channel_preference]}{CHANNEL_LABELS[selectedLead.channel_preference]}</span>
+                </div>
+                <div>
+                  <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0, marginBottom: 2 }}>Ajouté le</p>
+                  <p style={{ fontSize: 13, color: "#121a2e", margin: 0 }}>{new Date(selectedLead.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
+                </div>
                 {selectedLead.company && (
-                  <button
-                    onClick={() => handleEnrichGoogleMaps(selectedLead)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors mt-1 px-2 py-1 rounded-lg hover:bg-indigo-50"
-                  >
+                  <button onClick={() => handleEnrichGoogleMaps(selectedLead)} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 8, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     <span>📍</span>Enrichir via Google Maps
                   </button>
                 )}
               </div>
 
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Statut</p>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([s, l]) => (
-                    <button key={s} onClick={() => handleStatusChange(selectedLead, s)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                        selectedLead.status === s ? `${STATUS_COLORS[s]} border-current ring-2 ring-current/20` : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-                      }`}
-                    >
-                      {selectedLead.status === s && <Check size={11} />}
-                      {l}
-                    </button>
-                  ))}
+                <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 8, marginTop: 0 }}>Statut</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([s, l]) => {
+                    const ss = STATUS_STYLES[s];
+                    const isActive = selectedLead.status === s;
+                    return (
+                      <button key={s} onClick={() => handleStatusChange(selectedLead, s)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', border: "1px solid", ...(isActive ? { background: ss.bg, color: ss.color, borderColor: ss.color, boxShadow: `0 0 0 2px ${ss.color}22` } : { background: "#f6f6f6", color: "rgba(18,26,46,0.5)", borderColor: "rgba(0,0,0,0.09)" }) }}>
+                        {isActive && <Check size={10} />}{l}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {Object.keys(selectedLead.metadata).length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Données source</p>
-                  <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 space-y-1 max-h-28 overflow-y-auto">
+                  <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 8, marginTop: 0 }}>Données source</p>
+                  <div style={{ background: "#f6f6f6", borderRadius: 9, padding: 12, fontSize: 12, color: "rgba(18,26,46,0.6)", maxHeight: 112, overflowY: "auto" }}>
                     {Object.entries(selectedLead.metadata).map(([k, v]) => (
-                      <div key={k} className="flex gap-2">
-                        <span className="text-gray-400 shrink-0">{k}:</span>
+                      <div key={k} style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                        <span style={{ color: "rgba(18,26,46,0.35)", flexShrink: 0 }}>{k}:</span>
                         <span>{String(v)}</span>
                       </div>
                     ))}
@@ -1522,28 +1123,21 @@ export default function LeadsPage() {
               )}
 
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Notes</p>
-                <textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} rows={3} placeholder="Notes sur ce lead..." className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20 resize-none" />
+                <p style={{ fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.5)", marginBottom: 8, marginTop: 0 }}>Notes</p>
+                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={3} placeholder="Notes sur ce lead..." style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setDeleteId(selectedLead.id)} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1">
-                  <Trash2 size={13} />
-                  Supprimer
+            <div style={{ padding: "14px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <button onClick={() => setDeleteId(selectedLead.id)} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#c53030", background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <Trash2 size={13} />Supprimer
+              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={() => { setSelectedLead(null); openOutreach(selectedLead); }} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, fontWeight: 600, color: "#0147ff", background: "#e8edff", border: "1px solid #c7d3ff", padding: "7px 14px", borderRadius: 9, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <Sparkles size={12} />Générer message
                 </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => { setSelectedLead(null); openOutreach(selectedLead); }}
-                  className="flex items-center gap-1.5 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg font-medium"
-                >
-                  <Sparkles size={13} />
-                  Générer message
-                </button>
-                <button onClick={() => handleSaveNotes(selectedLead)} disabled={savingNotes} className="text-sm bg-gray-900 text-white px-4 py-1.5 rounded-lg hover:bg-gray-700 disabled:opacity-50 flex items-center gap-1.5">
-                  {savingNotes ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                <button onClick={() => handleSaveNotes(selectedLead)} disabled={savingNotes} style={{ ...btnGrad, padding: "7px 14px", fontSize: 13, opacity: savingNotes ? 0.7 : 1 }}>
+                  {savingNotes ? <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Check size={12} />}
                   Enregistrer
                 </button>
               </div>
@@ -1552,35 +1146,21 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* ── Confirm Delete ─────────────────────────────────────────────────── */}
+      {/* ── Confirm Delete ── */}
       {deleteId && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center">
-            <p className="font-semibold text-gray-900 mb-2">Supprimer ce lead ?</p>
-            <p className="text-sm text-gray-400 mb-6">Cette action est irréversible.</p>
-            <div className="flex gap-3 justify-center">
-              <button onClick={() => setDeleteId(null)} className="px-5 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Annuler</button>
-              <button onClick={() => handleDelete(deleteId)} className="px-5 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">Supprimer</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 360, padding: 24, textAlign: "center", boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", ...jk }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#121a2e", marginTop: 0, marginBottom: 8 }}>Supprimer ce lead ?</p>
+            <p style={{ fontSize: 13, color: "rgba(18,26,46,0.45)", marginBottom: 24 }}>Cette action est irréversible.</p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => setDeleteId(null)} style={{ padding: "8px 20px", fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", color: "rgba(18,26,46,0.6)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Annuler</button>
+              <button onClick={() => handleDelete(deleteId)} style={{ padding: "8px 20px", fontSize: 13, background: "#ef4444", border: "none", borderRadius: 9, color: "#fff", cursor: "pointer", fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Supprimer</button>
             </div>
           </div>
         </div>
       )}
 
-      <style>{`
-        .modal-input {
-          width: 100%;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 8px 12px;
-          font-size: 14px;
-          outline: none;
-          background: white;
-        }
-        .modal-input:focus {
-          border-color: #111827;
-          box-shadow: 0 0 0 3px rgba(17,24,39,0.08);
-        }
-      `}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }`}</style>
     </div>
   );
 }
@@ -1589,51 +1169,29 @@ export default function LeadsPage() {
 
 function StatusDropdown({ lead, onStatusChange }: { lead: Lead; onStatusChange: (lead: Lead, s: Status) => void }) {
   const [open, setOpen] = useState(false);
+  const ss = STATUS_STYLES[lead.status];
   return (
-    <div className="relative">
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[lead.status]}`}
-      >
-        {STATUS_LABELS[lead.status]}
-        <ChevronDown size={10} />
+    <div style={{ position: "relative" }}>
+      <button onClick={e => { e.stopPropagation(); setOpen(o => !o); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none", fontFamily: '"Plus Jakarta Sans", sans-serif', background: ss.bg, color: ss.color }}>
+        {STATUS_LABELS[lead.status]}<ChevronDown size={10} />
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
-          <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[140px]">
-            {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([s, l]) => (
-              <button
-                key={s}
-                onClick={(e) => { e.stopPropagation(); onStatusChange(lead, s); setOpen(false); }}
-                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-50 ${lead.status === s ? "font-semibold" : ""}`}
-              >
-                <span className={`w-2 h-2 rounded-full ${STATUS_COLORS[s].split(" ")[0]}`} />
-                {l}
-                {lead.status === s && <Check size={10} className="ml-auto" />}
-              </button>
-            ))}
+          <div style={{ position: "fixed", inset: 0, zIndex: 10 }} onClick={e => { e.stopPropagation(); setOpen(false); }} />
+          <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 4, zIndex: 20, background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 11, boxShadow: "0px 8px 24px rgba(0,0,0,0.1)", padding: "4px 0", minWidth: 148 }}>
+            {(Object.entries(STATUS_LABELS) as [Status, string][]).map(([s, l]) => {
+              const ds = STATUS_STYLES[s];
+              return (
+                <button key={s} onClick={e => { e.stopPropagation(); onStatusChange(lead, s); setOpen(false); }} style={{ width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", background: "none", border: "none", fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: lead.status === s ? 700 : 400, color: "#121a2e" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: ds.dot, display: "inline-block", flexShrink: 0 }} />
+                  {l}
+                  {lead.status === s && <Check size={10} style={{ marginLeft: "auto" }} />}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-      <p className="text-sm text-gray-700">{value}</p>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Clock } from "luc
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES, STYLE_CATEGORY_COLORS } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 const CATEGORIES = [
   { value: "all", label: "Toutes" },
   { value: "new", label: "Nouvelles" },
@@ -44,20 +46,8 @@ export default function LinkedInIdeesPage() {
     const savedLang = localStorage.getItem("linkedin_ideas_language");
     const savedLastGen = localStorage.getItem("linkedin_ideas_last_generated");
 
-    if (savedIdeas) {
-      try {
-        setIdeas(JSON.parse(savedIdeas));
-      } catch {
-        setIdeas([]);
-      }
-    }
-    if (savedStyles) {
-      try {
-        setStyles(JSON.parse(savedStyles));
-      } catch {
-        setStyles(DEFAULT_STYLES);
-      }
-    }
+    if (savedIdeas) { try { setIdeas(JSON.parse(savedIdeas)); } catch { setIdeas([]); } }
+    if (savedStyles) { try { setStyles(JSON.parse(savedStyles)); } catch { setStyles(DEFAULT_STYLES); } }
     if (savedLang) setLanguage(savedLang as "fr" | "en");
     if (savedLastGen) setLastGenerated(savedLastGen);
   }, []);
@@ -76,48 +66,32 @@ export default function LinkedInIdeesPage() {
         .filter((p) => p.status === "published")
         .sort((a, b) => b.likes + b.comments * 2 - (a.likes + a.comments * 2))
         .slice(0, 5);
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   }, []);
 
   const shouldAutoGenerate = useCallback((): boolean => {
     if (!lastGenerated) return true;
     const diff = Date.now() - new Date(lastGenerated).getTime();
-    return diff > 3 * 24 * 60 * 60 * 1000; // 3 days
+    return diff > 3 * 24 * 60 * 60 * 1000;
   }, [lastGenerated]);
 
   const handleGenerate = async () => {
     setGenerating(true);
     try {
       const topPosts = getTopPosts();
-      const stylesSummary = styles.map((s) => ({
-        name: s.name,
-        category: s.category,
-      }));
-
-      const postSummaries = topPosts.map((p) => ({
-        content: p.content,
-        likes: p.likes,
-        comments: p.comments,
-        impressions: p.impressions,
-        styleName: p.styleName,
-      }));
-
       const s = loadLinkedInSettings();
       const res = await fetch("/api/linkedin/generate-ideas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           count: 9,
-          topPosts: postSummaries,
-          styles: stylesSummary,
+          topPosts: topPosts.map((p) => ({ content: p.content, likes: p.likes, comments: p.comments, impressions: p.impressions, styleName: p.styleName })),
+          styles: styles.map((st) => ({ name: st.name, category: st.category })),
           language,
           openrouterApiKey: s.openrouterApiKey || undefined,
           model: s.model,
         }),
       });
-
       if (!res.ok) throw new Error("Erreur génération");
       const data = await res.json();
 
@@ -126,9 +100,7 @@ export default function LinkedInIdeesPage() {
           id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
           title: idea.title,
           description: idea.description,
-          styleName: idea.styleCategory
-            ? STYLE_CATEGORY_LABELS[idea.styleCategory]
-            : undefined,
+          styleName: idea.styleCategory ? STYLE_CATEGORY_LABELS[idea.styleCategory] : undefined,
           status: "new" as const,
           generatedAt: new Date().toISOString(),
         })
@@ -151,44 +123,41 @@ export default function LinkedInIdeesPage() {
 
   const useIdea = (idea: LinkedInIdea) => {
     updateStatus(idea.id, "used");
-    // Store in sessionStorage to pre-fill post creation
     sessionStorage.setItem("linkedin_idea_prefill", JSON.stringify(idea));
     window.location.href = "/admin/linkedin/posts";
   };
 
-  const filtered = ideas.filter(
-    (i) => activeFilter === "all" || i.status === activeFilter
-  );
-
+  const filtered = ideas.filter((i) => activeFilter === "all" || i.status === activeFilter);
   const newCount = ideas.filter((i) => i.status === "new").length;
   const usedCount = ideas.filter((i) => i.status === "used").length;
   const autoDue = shouldAutoGenerate();
 
+  const btnGradient = {
+    background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+    border: "1px solid #2f4d9d",
+    color: "#fff",
+    cursor: "pointer",
+    borderRadius: 9,
+  };
+
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-gray-50">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
-        <div className="flex items-center justify-between">
+      <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "16px 24px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Idées de posts</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.4px", margin: 0 }}>Idées de posts</h2>
+            <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", marginTop: 2, marginBottom: 0 }}>
               {newCount} nouvelles · {usedCount} utilisées
-              {lastGenerated && (
-                <span className="ml-2 text-gray-400">
-                  · Générées {daysAgo(lastGenerated)}
-                </span>
-              )}
+              {lastGenerated && <span style={{ marginLeft: 8, color: "rgba(18,26,46,0.35)" }}>· Générées {daysAgo(lastGenerated)}</span>}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <select
               value={language}
-              onChange={(e) => {
-                setLanguage(e.target.value as "fr" | "en");
-                localStorage.setItem("linkedin_ideas_language", e.target.value);
-              }}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
+              onChange={(e) => { setLanguage(e.target.value as "fr" | "en"); localStorage.setItem("linkedin_ideas_language", e.target.value); }}
+              style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "7px 12px", fontSize: 13, color: "#121a2e", background: "#f6f6f6", outline: "none", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
               <option value="fr">Français</option>
               <option value="en">English</option>
@@ -197,45 +166,52 @@ export default function LinkedInIdeesPage() {
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                autoDue
-                  ? "bg-[#0A66C2] text-white hover:bg-[#0057a3]"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
+              style={{
+                ...btnGradient,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: generating ? 0.7 : 1,
+                fontFamily: '"Plus Jakarta Sans", sans-serif',
+                ...(autoDue ? {} : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "#121a2e" }),
+              }}
             >
-              {generating ? (
-                <RefreshCw size={16} className="animate-spin" />
-              ) : (
-                <Sparkles size={16} />
-              )}
+              {generating ? <RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={16} />}
               {generating ? "Génération..." : autoDue ? "Générer des idées" : "Régénérer"}
             </button>
           </div>
         </div>
 
         {autoDue && ideas.length > 0 && (
-          <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
+          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#663b12", background: "#fee6d0", padding: "8px 12px", borderRadius: 9, border: "1px solid #f59e0b" }}>
             <Clock size={13} />
             Votre dernière génération remonte à plus de 3 jours — de nouvelles idées vous attendent !
           </div>
         )}
 
         {/* Filter tabs */}
-        <div className="flex items-center gap-1 mt-4">
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 16 }}>
           {CATEGORIES.map((cat) => {
-            const count =
-              cat.value === "all"
-                ? ideas.length
-                : ideas.filter((i) => i.status === cat.value).length;
+            const count = cat.value === "all" ? ideas.length : ideas.filter((i) => i.status === cat.value).length;
+            const isActive = activeFilter === cat.value;
             return (
               <button
                 key={cat.value}
                 onClick={() => setActiveFilter(cat.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  activeFilter === cat.value
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  ...(isActive
+                    ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
+                    : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                }}
               >
                 {cat.label} ({count})
               </button>
@@ -245,36 +221,33 @@ export default function LinkedInIdeesPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
         {ideas.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center">
-              <Lightbulb size={28} className="text-gray-400" />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", gap: 16 }}>
+            <div style={{ width: 64, height: 64, background: "rgba(18,26,46,0.06)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Lightbulb size={28} style={{ color: "rgba(18,26,46,0.3)" }} />
             </div>
             <div>
-              <p className="text-gray-600 font-medium">Aucune idée pour l'instant</p>
-              <p className="text-sm text-gray-400 mt-1">
-                Cliquez sur "Générer des idées" pour obtenir 9 idées personnalisées
-                basées sur vos meilleurs posts
+              <p style={{ fontWeight: 600, color: "#121a2e", margin: 0, fontSize: 15 }}>Aucune idée pour l&apos;instant</p>
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", marginTop: 6 }}>
+                Cliquez sur &quot;Générer des idées&quot; pour obtenir 9 idées personnalisées basées sur vos meilleurs posts
               </p>
             </div>
             <button
               onClick={handleGenerate}
               disabled={generating}
-              className="flex items-center gap-2 bg-[#0A66C2] text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-[#0057a3] disabled:opacity-50 transition-colors"
+              style={{ ...btnGradient, display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", fontSize: 14, fontWeight: 600, fontFamily: '"Plus Jakarta Sans", sans-serif', opacity: generating ? 0.7 : 1 }}
             >
               <Sparkles size={16} />
               {generating ? "Génération en cours..." : "Générer 9 idées"}
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <p className="text-gray-400 text-sm">
-              Aucune idée dans cette catégorie
-            </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 256, textAlign: "center" }}>
+            <p style={{ color: "rgba(18,26,46,0.4)", fontSize: 13 }}>Aucune idée dans cette catégorie</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
             {filtered.map((idea) => (
               <IdeaCard
                 key={idea.id}
@@ -291,12 +264,7 @@ export default function LinkedInIdeesPage() {
   );
 }
 
-function IdeaCard({
-  idea,
-  onUse,
-  onDismiss,
-  onRestore,
-}: {
+function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
   idea: LinkedInIdea;
   onUse: () => void;
   onDismiss: () => void;
@@ -304,39 +272,35 @@ function IdeaCard({
 }) {
   const colorClass = idea.styleName
     ? STYLE_CATEGORY_COLORS[
-        Object.entries(STYLE_CATEGORY_LABELS).find(
-          ([, v]) => v === idea.styleName
-        )?.[0] || "custom"
+        Object.entries(STYLE_CATEGORY_LABELS).find(([, v]) => v === idea.styleName)?.[0] || "custom"
       ]
     : "bg-gray-100 text-gray-600";
 
   return (
     <div
-      className={`bg-white rounded-xl border p-5 flex flex-col gap-3 transition-all ${
-        idea.status === "dismissed"
-          ? "border-gray-100 opacity-60"
-          : idea.status === "used"
-          ? "border-gray-200"
-          : "border-gray-200 hover:shadow-md hover:border-[#0A66C2]/30"
-      }`}
+      style={{
+        background: "#fff",
+        borderRadius: 13,
+        border: idea.status === "dismissed" ? "1px solid rgba(0,0,0,0.06)" : "1px solid rgba(0,0,0,0.1)",
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        opacity: idea.status === "dismissed" ? 0.6 : 1,
+        boxShadow: idea.status === "dismissed" ? "none" : "0px 2px 8px rgba(0,0,0,0.04)",
+        fontFamily: '"Plus Jakarta Sans", sans-serif',
+      }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3
-          className={`text-sm font-semibold leading-snug flex-1 ${
-            idea.status === "dismissed" ? "text-gray-400" : "text-gray-900"
-          }`}
-        >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: idea.status === "dismissed" ? "rgba(18,26,46,0.4)" : "#121a2e", margin: 0, flex: 1, lineHeight: 1.4, letterSpacing: "-0.2px" }}>
           {idea.title}
         </h3>
         {idea.status === "new" && (
-          <span className="shrink-0 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-            Nouvelle
-          </span>
+          <span style={{ flexShrink: 0, fontSize: 11, background: "#d5eeff", color: "#073e63", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>Nouvelle</span>
         )}
         {idea.status === "used" && (
-          <span className="shrink-0 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <Check size={10} />
-            Utilisée
+          <span style={{ flexShrink: 0, fontSize: 11, background: "#d1fae5", color: "#168b64", padding: "2px 8px", borderRadius: 20, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+            <Check size={10} />Utilisée
           </span>
         )}
       </div>
@@ -347,27 +311,27 @@ function IdeaCard({
         </span>
       )}
 
-      <p className="text-sm text-gray-500 leading-relaxed flex-1">
+      <p style={{ fontSize: 13, color: "rgba(18,26,46,0.55)", lineHeight: 1.6, flex: 1, margin: 0 }}>
         {idea.description}
       </p>
 
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <span className="text-xs text-gray-400">{daysAgo(idea.generatedAt)}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingTop: 4 }}>
+        <span style={{ fontSize: 12, color: "rgba(18,26,46,0.35)" }}>{daysAgo(idea.generatedAt)}</span>
 
-        <div className="flex items-center gap-1">
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {idea.status !== "used" && (
             <>
               {idea.status === "dismissed" ? (
                 <button
                   onClick={onRestore}
-                  className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                  style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", padding: "4px 8px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
                 >
                   Restaurer
                 </button>
               ) : (
                 <button
                   onClick={onDismiss}
-                  className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  style={{ padding: 6, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", display: "flex" }}
                 >
                   <X size={14} />
                 </button>
@@ -378,7 +342,7 @@ function IdeaCard({
           {idea.status !== "dismissed" && (
             <button
               onClick={onUse}
-              className="flex items-center gap-1.5 text-xs bg-[#0A66C2] text-white px-3 py-1.5 rounded-lg hover:bg-[#0057a3] transition-colors"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
               Créer un post
               <ArrowRight size={12} />

@@ -2,32 +2,21 @@
 
 import { useState, useEffect } from "react";
 import {
-  Plus,
-  Sparkles,
-  RefreshCw,
-  Copy,
-  Check,
-  ChevronDown,
-  X,
-  ExternalLink,
-  TrendingUp,
-  MessageSquare,
-  ThumbsUp,
-  Eye,
+  Plus, Sparkles, RefreshCw, Copy, Check, ChevronDown, X,
+  ExternalLink, TrendingUp, MessageSquare, ThumbsUp, Eye,
 } from "lucide-react";
 import {
-  LinkedInProspect,
-  ACTION_LABELS,
-  PROSPECT_STATUS_LABELS,
-  PROSPECT_STATUS_COLORS,
-  PROSPECT_TO_LEAD_STATUS,
+  LinkedInProspect, ACTION_LABELS, PROSPECT_STATUS_LABELS,
+  PROSPECT_STATUS_COLORS, PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 const ACTION_OPTIONS: { value: LinkedInProspect["actionType"]; label: string; icon: React.ReactNode }[] = [
-  { value: "liked", label: "A liké votre post", icon: <ThumbsUp size={14} /> },
-  { value: "commented", label: "A commenté votre post", icon: <MessageSquare size={14} /> },
-  { value: "visited_profile", label: "A visité votre profil", icon: <Eye size={14} /> },
+  { value: "liked",          label: "A liké votre post",       icon: <ThumbsUp size={14} /> },
+  { value: "commented",      label: "A commenté votre post",   icon: <MessageSquare size={14} /> },
+  { value: "visited_profile",label: "A visité votre profil",   icon: <Eye size={14} /> },
 ];
 
 const STATUS_FLOW: LinkedInProspect["status"][] = [
@@ -41,15 +30,27 @@ const STATUS_VARIANTS: LinkedInProspect["status"][] = [
 function getConversionRate(prospects: LinkedInProspect[]): string {
   const sent = prospects.filter((p) => p.status !== "draft").length;
   if (sent === 0) return "—";
-  const positive = prospects.filter((p) =>
-    ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)
-  ).length;
+  const positive = prospects.filter((p) => ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)).length;
   return `${Math.round((positive / sent) * 100)}%`;
 }
 
+const inputStyle = {
+  width: "100%", fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9,
+  padding: "9px 12px", background: "#f6f6f6", color: "#121a2e", outline: "none",
+  boxSizing: "border-box" as const, fontFamily: '"Plus Jakarta Sans", sans-serif',
+};
+
+const btnGradient = {
+  background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+  border: "1px solid #2f4d9d",
+  color: "#fff",
+  cursor: "pointer",
+  borderRadius: 9,
+  fontFamily: '"Plus Jakarta Sans", sans-serif',
+};
+
 export default function LinkedInProspectionPage() {
   const [prospects, setProspects] = useState<LinkedInProspect[]>([]);
-  const [showForm, setShowForm] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -57,7 +58,6 @@ export default function LinkedInProspectionPage() {
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
 
-  // Form state
   const [form, setForm] = useState({
     name: "",
     profileUrl: "",
@@ -70,13 +70,7 @@ export default function LinkedInProspectionPage() {
   useEffect(() => {
     const saved = localStorage.getItem("linkedin_prospects");
     const savedLang = localStorage.getItem("linkedin_prospection_language");
-    if (saved) {
-      try {
-        setProspects(JSON.parse(saved));
-      } catch {
-        setProspects([]);
-      }
-    }
+    if (saved) { try { setProspects(JSON.parse(saved)); } catch { setProspects([]); } }
     if (savedLang) setLanguage(savedLang as "fr" | "en");
   }, []);
 
@@ -85,145 +79,93 @@ export default function LinkedInProspectionPage() {
     localStorage.setItem("linkedin_prospects", JSON.stringify(updated));
   };
 
-  const getLearningData = () => {
-    return prospects
-      .filter((p) => p.status !== "draft" && p.generatedMessage)
-      .map((p) => ({
-        message: p.customMessage || p.generatedMessage,
-        status: p.status,
-        actionType: p.actionType,
-      }));
-  };
+  const getLearningData = () => prospects
+    .filter((p) => p.status !== "draft" && p.generatedMessage)
+    .map((p) => ({ message: p.customMessage || p.generatedMessage, status: p.status, actionType: p.actionType }));
 
   const handleGenerate = async () => {
     if (!form.name.trim()) return;
     setGenerating(true);
     try {
-      const learningData = getLearningData();
       const s = loadLinkedInSettings();
       const res = await fetch("/api/linkedin/generate-prospection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name,
-          actionType: form.actionType,
-          context: form.context,
-          learningData,
-          language,
-          openrouterApiKey: s.openrouterApiKey || undefined,
-          model: s.model,
+          name: form.name, actionType: form.actionType, context: form.context,
+          learningData: getLearningData(), language,
+          openrouterApiKey: s.openrouterApiKey || undefined, model: s.model,
         }),
       });
       if (!res.ok) throw new Error("Erreur génération");
       const data = await res.json();
       setGeneratedMessage(data.message || "");
       setExplanation(data.explanation || "");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGenerating(false);
-    }
+    } catch (err) { console.error(err); }
+    finally { setGenerating(false); }
   };
 
   const handleSave = async () => {
     if (!generatedMessage.trim() || !form.name.trim()) return;
 
-    // Créer dans Supabase leads
     let leadId: string | undefined;
     try {
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          source: "linkedin",
-          source_ref: form.profileUrl || null,
-          channel_preference: "linkedin_dm",
-          metadata: {
-            action_type: form.actionType,
-            context: form.context || null,
-            profile_url: form.profileUrl || null,
-          },
-          status: "new",
-        }),
+        body: JSON.stringify({ name: form.name, source: "linkedin", source_ref: form.profileUrl || null, channel_preference: "linkedin_dm", metadata: { action_type: form.actionType, context: form.context || null, profile_url: form.profileUrl || null }, status: "new" }),
       });
       const data = await res.json();
       leadId = data.lead?.id;
     } catch {}
 
-    // Enregistrer l'outreach attempt si un leadId a été créé
     if (leadId) {
       try {
         await fetch(`/api/leads/${leadId}/outreach`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "send",
-            channel: "linkedin_dm",
-            content: generatedMessage,
-          }),
+          body: JSON.stringify({ action: "send", channel: "linkedin_dm", content: generatedMessage }),
         });
       } catch {}
     }
 
     const newProspect: LinkedInProspect = {
-      id: `prospect_${Date.now()}`,
-      leadId,
-      name: form.name,
-      profileUrl: form.profileUrl || undefined,
-      actionType: form.actionType,
-      context: form.context || undefined,
-      generatedMessage,
-      status: "draft",
-      createdAt: new Date().toISOString(),
+      id: `prospect_${Date.now()}`, leadId, name: form.name, profileUrl: form.profileUrl || undefined,
+      actionType: form.actionType, context: form.context || undefined,
+      generatedMessage, status: "draft", createdAt: new Date().toISOString(),
     };
     saveProspects([newProspect, ...prospects]);
     setForm({ name: "", profileUrl: "", actionType: "liked", context: "" });
     setGeneratedMessage("");
     setExplanation("");
-    setShowForm(false);
   };
 
   const updateStatus = async (id: string, status: LinkedInProspect["status"]) => {
     const prospect = prospects.find((p) => p.id === id);
     const updated = prospects.map((p) => {
       if (p.id !== id) return p;
-      return {
-        ...p,
-        status,
-        sentAt: status === "sent" && !p.sentAt ? new Date().toISOString() : p.sentAt,
-      };
+      return { ...p, status, sentAt: status === "sent" && !p.sentAt ? new Date().toISOString() : p.sentAt };
     });
     saveProspects(updated);
     setStatusDropdown(null);
 
-    // Sync vers leads Supabase
     if (prospect?.leadId) {
       const leadStatus = PROSPECT_TO_LEAD_STATUS[status] ?? "contacted";
       try {
         await fetch(`/api/leads/${prospect.leadId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: leadStatus,
-            last_contact_at: new Date().toISOString(),
-          }),
+          body: JSON.stringify({ status: leadStatus, last_contact_at: new Date().toISOString() }),
         });
       } catch {}
     }
   };
 
   const updateMessage = (id: string, msg: string) => {
-    saveProspects(
-      prospects.map((p) =>
-        p.id === id ? { ...p, customMessage: msg } : p
-      )
-    );
+    saveProspects(prospects.map((p) => p.id === id ? { ...p, customMessage: msg } : p));
   };
 
-  const deleteProspect = (id: string) => {
-    saveProspects(prospects.filter((p) => p.id !== id));
-  };
+  const deleteProspect = (id: string) => saveProspects(prospects.filter((p) => p.id !== id));
 
   const copyMessage = (id: string, msg: string) => {
     navigator.clipboard.writeText(msg);
@@ -231,32 +173,23 @@ export default function LinkedInProspectionPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const filtered =
-    filterStatus === "all"
-      ? prospects
-      : prospects.filter((p) => p.status === filterStatus);
-
+  const filtered = filterStatus === "all" ? prospects : prospects.filter((p) => p.status === filterStatus);
   const convRate = getConversionRate(prospects);
   const sentCount = prospects.filter((p) => p.status !== "draft").length;
   const dealCount = prospects.filter((p) => p.status === "deal_closed").length;
-  const positiveCount = prospects.filter((p) =>
-    ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)
-  ).length;
+  const positiveCount = prospects.filter((p) => ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)).length;
 
   return (
-    <div className="flex h-full overflow-hidden bg-gray-50">
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
       {/* Left panel - Form */}
-      <div className="w-96 bg-white border-r border-gray-200 flex flex-col overflow-hidden shrink-0">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">Nouveau message</h2>
+      <div style={{ width: 384, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0, letterSpacing: "-0.3px" }}>Nouveau message</h2>
             <select
               value={language}
-              onChange={(e) => {
-                setLanguage(e.target.value as "fr" | "en");
-                localStorage.setItem("linkedin_prospection_language", e.target.value);
-              }}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none"
+              onChange={(e) => { setLanguage(e.target.value as "fr" | "en"); localStorage.setItem("linkedin_prospection_language", e.target.value); }}
+              style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, padding: "4px 8px", fontSize: 12, color: "#121a2e", background: "#f6f6f6", outline: "none", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
               <option value="fr">FR</option>
               <option value="en">EN</option>
@@ -264,39 +197,30 @@ export default function LinkedInProspectionPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">
-              Prénom du prospect *
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Ex: Marie"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2]"
-            />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Prénom du prospect *</label>
+            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Marie" style={inputStyle} />
           </div>
 
           {/* Action type */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">
-              Action effectuée
-            </label>
-            <div className="flex flex-col gap-2">
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Action effectuée</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {ACTION_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setForm({ ...form, actionType: opt.value })}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm text-left transition-colors ${
-                    form.actionType === opt.value
-                      ? "border-[#0A66C2] bg-blue-50 text-[#0A66C2]"
-                      : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-                  }`}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 9,
+                    fontSize: 13, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif',
+                    ...(form.actionType === opt.value
+                      ? { border: "1px solid #0147ff", background: "#e8edff", color: "#0147ff" }
+                      : { border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.7)" }),
+                  }}
                 >
-                  {opt.icon}
-                  {opt.label}
+                  {opt.icon}{opt.label}
                 </button>
               ))}
             </div>
@@ -304,72 +228,44 @@ export default function LinkedInProspectionPage() {
 
           {/* Profile URL */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">
-              URL du profil LinkedIn (optionnel)
-            </label>
-            <input
-              type="text"
-              value={form.profileUrl}
-              onChange={(e) => setForm({ ...form, profileUrl: e.target.value })}
-              placeholder="https://linkedin.com/in/..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2]"
-            />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>URL du profil LinkedIn (optionnel)</label>
+            <input type="text" value={form.profileUrl} onChange={(e) => setForm({ ...form, profileUrl: e.target.value })} placeholder="https://linkedin.com/in/..." style={inputStyle} />
           </div>
 
           {/* Context */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">
-              Contexte supplémentaire (optionnel)
-            </label>
-            <textarea
-              value={form.context}
-              onChange={(e) => setForm({ ...form, context: e.target.value })}
-              placeholder="Ex: Elle est directrice marketing dans une startup SaaS B2B..."
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] resize-none"
-            />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Contexte supplémentaire (optionnel)</label>
+            <textarea value={form.context} onChange={(e) => setForm({ ...form, context: e.target.value })} placeholder="Ex: Elle est directrice marketing dans une startup SaaS B2B..." rows={3} style={{ ...inputStyle, resize: "none" }} />
           </div>
 
           {/* Generate button */}
           <button
             onClick={handleGenerate}
             disabled={generating || !form.name.trim()}
-            className="w-full flex items-center justify-center gap-2 bg-[#0A66C2] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-[#0057a3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ ...btnGradient, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, opacity: generating || !form.name.trim() ? 0.5 : 1 }}
           >
-            {generating ? (
-              <RefreshCw size={16} className="animate-spin" />
-            ) : (
-              <Sparkles size={16} />
-            )}
+            {generating ? <RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={16} />}
             {generating ? "Génération..." : "Générer le message"}
           </button>
 
           {/* Generated message */}
           {generatedMessage && (
-            <div className="space-y-2">
-              {explanation && (
-                <p className="text-xs text-gray-400">{explanation}</p>
-              )}
-              <textarea
-                value={generatedMessage}
-                onChange={(e) => setGeneratedMessage(e.target.value)}
-                rows={6}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] resize-none"
-              />
-              <div className="flex gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {explanation && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>{explanation}</p>}
+              <textarea value={generatedMessage} onChange={(e) => setGeneratedMessage(e.target.value)} rows={6} style={{ ...inputStyle, resize: "none" }} />
+              <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => copyMessage("form", generatedMessage)}
-                  className="flex-1 flex items-center justify-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
                 >
                   {copied === "form" ? <Check size={13} /> : <Copy size={13} />}
                   {copied === "form" ? "Copié !" : "Copier"}
                 </button>
                 <button
                   onClick={handleSave}
-                  className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-gray-900 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "#121a2e", border: "1px solid rgba(0,0,0,0.2)", color: "#fff", padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
                 >
-                  <Plus size={13} />
-                  Sauvegarder
+                  <Plus size={13} />Sauvegarder
                 </button>
               </div>
             </div>
@@ -378,56 +274,47 @@ export default function LinkedInProspectionPage() {
       </div>
 
       {/* Right panel - Prospects list */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Stats bar */}
-        <div className="bg-white border-b border-gray-200 px-6 py-3 shrink-0">
-          <div className="flex items-center gap-6">
-            <div className="text-center">
-              <p className="text-xl font-bold text-gray-900">{prospects.length}</p>
-              <p className="text-xs text-gray-500">Total</p>
-            </div>
-            <div className="w-px h-8 bg-gray-200" />
-            <div className="text-center">
-              <p className="text-xl font-bold text-blue-600">{sentCount}</p>
-              <p className="text-xs text-gray-500">Envoyés</p>
-            </div>
-            <div className="w-px h-8 bg-gray-200" />
-            <div className="text-center">
-              <p className="text-xl font-bold text-green-600">{positiveCount}</p>
-              <p className="text-xs text-gray-500">Positifs</p>
-            </div>
-            <div className="w-px h-8 bg-gray-200" />
-            <div className="text-center">
-              <p className="text-xl font-bold text-emerald-600">{dealCount}</p>
-              <p className="text-xs text-gray-500">Deals</p>
-            </div>
-            <div className="w-px h-8 bg-gray-200" />
-            <div className="text-center">
-              <p className="text-xl font-bold text-[#0A66C2]">{convRate}</p>
-              <p className="text-xs text-gray-500">Conversion</p>
-            </div>
+        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "12px 24px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+            {[
+              { val: prospects.length, label: "Total", color: "#121a2e" },
+              { val: sentCount, label: "Envoyés", color: "#0147ff" },
+              { val: positiveCount, label: "Positifs", color: "#168b64" },
+              { val: dealCount, label: "Deals", color: "#168b64" },
+              { val: convRate, label: "Conversion", color: "#0147ff" },
+            ].map((stat, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                {i > 0 && <div style={{ width: 1, height: 32, background: "rgba(0,0,0,0.08)" }} />}
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 20, fontWeight: 700, color: stat.color, margin: 0, letterSpacing: "-0.5px" }}>{stat.val}</p>
+                  <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: 0 }}>{stat.label}</p>
+                </div>
+              </div>
+            ))}
 
-            {prospects.filter((p) =>
-              ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)
-            ).length >= 3 && (
-              <div className="ml-auto flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+            {prospects.filter((p) => ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)).length >= 3 && (
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#168b64", background: "#d1fae5", padding: "6px 12px", borderRadius: 9, border: "1px solid #86efac" }}>
                 <TrendingUp size={13} />
-                L'IA apprend de vos {sentCount} messages envoyés
+                L&apos;IA apprend de vos {sentCount} messages envoyés
               </div>
             )}
           </div>
         </div>
 
         {/* Filter */}
-        <div className="bg-white border-b border-gray-100 px-6 py-2 shrink-0">
-          <div className="flex items-center gap-1 flex-wrap">
+        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "8px 24px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <button
               onClick={() => setFilterStatus("all")}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                filterStatus === "all"
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              style={{
+                padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                ...(filterStatus === "all"
+                  ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
+                  : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                fontFamily: '"Plus Jakarta Sans", sans-serif',
+              }}
             >
               Tous ({prospects.length})
             </button>
@@ -438,11 +325,13 @@ export default function LinkedInProspectionPage() {
                 <button
                   key={s}
                   onClick={() => setFilterStatus(s)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    filterStatus === s
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
+                  style={{
+                    padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                    ...(filterStatus === s
+                      ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
+                      : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                    fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  }}
                 >
                   {PROSPECT_STATUS_LABELS[s]} ({count})
                 </button>
@@ -452,18 +341,14 @@ export default function LinkedInProspectionPage() {
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center">
-              <MessageSquare size={24} className="text-gray-300 mb-3" />
-              <p className="text-gray-500 font-medium text-sm">
-                {prospects.length === 0
-                  ? "Aucun message de prospection"
-                  : "Aucun message dans cette catégorie"}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 256, textAlign: "center" }}>
+              <MessageSquare size={24} style={{ color: "rgba(18,26,46,0.2)", marginBottom: 12 }} />
+              <p style={{ fontWeight: 600, color: "rgba(18,26,46,0.5)", fontSize: 14, margin: 0 }}>
+                {prospects.length === 0 ? "Aucun message de prospection" : "Aucun message dans cette catégorie"}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Générez un message avec le panneau de gauche
-              </p>
+              <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Générez un message avec le panneau de gauche</p>
             </div>
           ) : (
             filtered.map((prospect) => (
@@ -471,20 +356,14 @@ export default function LinkedInProspectionPage() {
                 key={prospect.id}
                 prospect={prospect}
                 expanded={expandedId === prospect.id}
-                onToggle={() =>
-                  setExpandedId(expandedId === prospect.id ? null : prospect.id)
-                }
+                onToggle={() => setExpandedId(expandedId === prospect.id ? null : prospect.id)}
                 onStatusChange={(status) => updateStatus(prospect.id, status)}
                 onMessageChange={(msg) => updateMessage(prospect.id, msg)}
                 onDelete={() => deleteProspect(prospect.id)}
                 onCopy={(msg) => copyMessage(prospect.id, msg)}
                 copied={copied === prospect.id}
                 showStatusDropdown={statusDropdown === prospect.id}
-                onToggleDropdown={() =>
-                  setStatusDropdown(
-                    statusDropdown === prospect.id ? null : prospect.id
-                  )
-                }
+                onToggleDropdown={() => setStatusDropdown(statusDropdown === prospect.id ? null : prospect.id)}
               />
             ))
           )}
@@ -495,16 +374,8 @@ export default function LinkedInProspectionPage() {
 }
 
 function ProspectCard({
-  prospect,
-  expanded,
-  onToggle,
-  onStatusChange,
-  onMessageChange,
-  onDelete,
-  onCopy,
-  copied,
-  showStatusDropdown,
-  onToggleDropdown,
+  prospect, expanded, onToggle, onStatusChange, onMessageChange,
+  onDelete, onCopy, copied, showStatusDropdown, onToggleDropdown,
 }: {
   prospect: LinkedInProspect;
   expanded: boolean;
@@ -521,115 +392,91 @@ function ProspectCard({
   const statusColor = PROSPECT_STATUS_COLORS[prospect.status] || "bg-gray-100 text-gray-600";
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", overflow: "hidden", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }}
         onClick={onToggle}
       >
-        {/* Avatar */}
-        <div className="w-8 h-8 rounded-full bg-[#0A66C2]/10 flex items-center justify-center text-[#0A66C2] font-semibold text-sm shrink-0">
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", color: "#0147ff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
           {prospect.name[0]?.toUpperCase()}
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-900 text-sm">
-              {prospect.name}
-            </span>
-            <span className="text-xs text-gray-400">
-              {ACTION_LABELS[prospect.actionType]}
-            </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600, color: "#121a2e", fontSize: 14 }}>{prospect.name}</span>
+            <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{ACTION_LABELS[prospect.actionType]}</span>
             {prospect.profileUrl && (
-              <a
-                href={prospect.profileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="text-gray-400 hover:text-[#0A66C2] transition-colors"
-              >
+              <a href={prospect.profileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "rgba(18,26,46,0.3)", display: "flex" }}>
                 <ExternalLink size={12} />
               </a>
             )}
           </div>
-          <p className="text-xs text-gray-400 truncate mt-0.5">
+          <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: "2px 0 0" }}>
             {displayMessage.slice(0, 60)}...
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Status badge + dropdown */}
-          <div className="relative">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{ position: "relative" }}>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleDropdown();
-              }}
+              onClick={(e) => { e.stopPropagation(); onToggleDropdown(); }}
               className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${statusColor}`}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 10px", borderRadius: 20, fontWeight: 500, background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
-              {PROSPECT_STATUS_LABELS[prospect.status]}
+              <span className={statusColor}>{PROSPECT_STATUS_LABELS[prospect.status]}</span>
               <ChevronDown size={11} />
             </button>
             {showStatusDropdown && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 w-44">
+              <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 12, boxShadow: "0px 8px 24px rgba(0,0,0,0.12)", zIndex: 10, padding: 4, width: 176 }}>
                 {STATUS_VARIANTS.map((s) => (
                   <button
                     key={s}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStatusChange(s);
+                    onClick={(e) => { e.stopPropagation(); onStatusChange(s); }}
+                    style={{
+                      width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif',
+                      background: "none", border: "none", borderRadius: 8,
+                      color: s === prospect.status ? "#121a2e" : "rgba(18,26,46,0.6)",
+                      fontWeight: s === prospect.status ? 600 : 400,
+                      display: "flex", alignItems: "center", gap: 8,
                     }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors flex items-center gap-2 ${
-                      s === prospect.status ? "font-medium text-gray-900" : "text-gray-600"
-                    }`}
                   >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        PROSPECT_STATUS_COLORS[s]
-                          ?.split(" ")[0]
-                          .replace("bg-", "bg-")
-                      }`}
-                    />
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "currentColor", display: "inline-block", opacity: 0.5 }} />
                     {PROSPECT_STATUS_LABELS[s]}
-                    {s === prospect.status && (
-                      <Check size={11} className="ml-auto" />
-                    )}
+                    {s === prospect.status && <Check size={11} style={{ marginLeft: "auto" }} />}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <ChevronDown
-            size={16}
-            className={`text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-          />
+          <ChevronDown size={16} style={{ color: "rgba(18,26,46,0.4)", transform: expanded ? "rotate(180deg)" : "none" }} />
         </div>
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-gray-50 pt-3 space-y-3">
+        <div style={{ padding: "12px 16px 16px", borderTop: "1px solid rgba(0,0,0,0.05)", display: "flex", flexDirection: "column", gap: 12 }}>
           {prospect.context && (
-            <p className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-              <span className="font-medium">Contexte :</span> {prospect.context}
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.55)", background: "#f6f6f6", padding: "8px 12px", borderRadius: 9, margin: 0 }}>
+              <span style={{ fontWeight: 600 }}>Contexte :</span> {prospect.context}
             </p>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
               Message{prospect.customMessage ? " (modifié)" : ""}
             </label>
             <textarea
               value={displayMessage}
               onChange={(e) => onMessageChange(e.target.value)}
               rows={5}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] resize-none"
+              style={{ width: "100%", fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "9px 12px", background: "#f6f6f6", color: "#121a2e", outline: "none", resize: "none", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               onClick={() => onCopy(displayMessage)}
-              className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
               {copied ? <Check size={13} /> : <Copy size={13} />}
               {copied ? "Copié !" : "Copier"}
@@ -638,30 +485,23 @@ function ProspectCard({
             {prospect.status === "draft" && (
               <button
                 onClick={() => onStatusChange("sent")}
-                className="flex items-center gap-1.5 text-xs bg-[#0A66C2] text-white px-3 py-1.5 rounded-lg hover:bg-[#0057a3] transition-colors"
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
               >
-                <Check size={13} />
-                Marquer comme envoyé
+                <Check size={13} />Marquer comme envoyé
               </button>
             )}
 
             <button
               onClick={onDelete}
-              className="ml-auto flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+              style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ef4444", padding: "7px 12px", borderRadius: 9, background: "none", border: "none", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
-              <X size={13} />
-              Supprimer
+              <X size={13} />Supprimer
             </button>
           </div>
 
           {prospect.sentAt && (
-            <p className="text-xs text-gray-400">
-              Envoyé le{" "}
-              {new Date(prospect.sentAt).toLocaleDateString("fr-FR", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", margin: 0 }}>
+              Envoyé le {new Date(prospect.sentAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
             </p>
           )}
         </div>

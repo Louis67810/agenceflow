@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Calendar, Loader2 } from "lucide-react";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 const MONTHS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
@@ -11,12 +13,14 @@ const MONTHS = [
 
 const DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
+interface EventColors { bg: string; text: string; }
+
 interface CalendarEvent {
   id: string;
   title: string;
   date: string;
   type: "stage_start" | "stage_end" | "project_start";
-  color: string;
+  colors: EventColors;
   projectId: string;
 }
 
@@ -48,7 +52,6 @@ function projectToEvents(project: Project): CalendarEvent[] {
   const events: CalendarEvent[] = [];
   const startDate = project.start_date ?? project.created_at.split("T")[0];
   const stages = project.stages ?? [];
-
   if (stages.length === 0) return events;
 
   let offset = 0;
@@ -56,24 +59,24 @@ function projectToEvents(project: Project): CalendarEvent[] {
     const stageStart = addDays(startDate, offset);
     const stageEnd = addDays(startDate, offset + stage.duration_days);
 
-    // Start of stage (milestone)
     if (idx === project.current_stage_index && !stage.completed) {
       events.push({
         id: `${project.id}-s-${idx}`,
         title: `${stage.label} — ${project.name}`,
         date: stageStart,
         type: "stage_start",
-        color: "bg-indigo-100 text-indigo-700",
+        colors: { bg: "#e8edff", text: "#0147ff" },
         projectId: project.id,
       });
     }
-    // End of stage (deadline)
     events.push({
       id: `${project.id}-e-${idx}`,
       title: `Fin ${stage.label} — ${project.name}`,
       date: stageEnd,
       type: "stage_end",
-      color: stage.completed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700",
+      colors: stage.completed
+        ? { bg: "#d1fae5", text: "#168b64" }
+        : { bg: "#fee6d0", text: "#663b12" },
       projectId: project.id,
     });
 
@@ -85,10 +88,10 @@ function projectToEvents(project: Project): CalendarEvent[] {
 
 export default function AdminCalendarPage() {
   const today = new Date();
-  const [currentYear, setCurrentYear]   = useState(today.getFullYear());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [events, setEvents]             = useState<CalendarEvent[]>([]);
-  const [loading, setLoading]           = useState(true);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -127,76 +130,106 @@ export default function AdminCalendarPage() {
   const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
 
+  const cardStyle = {
+    background: "#fff",
+    border: "1px solid rgba(0,0,0,0.13)",
+    borderRadius: 13,
+    boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
+    overflow: "hidden",
+  };
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ padding: 32, background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Calendrier</h1>
-          <p className="text-gray-500 mt-1">Étapes et deadlines de vos projets</p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.5px", margin: 0 }}>Calendrier</h1>
+          <p style={{ color: "rgba(18,26,46,0.5)", marginTop: 4, fontSize: 14, margin: "4px 0 0" }}>Étapes et deadlines de vos projets</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-indigo-50 text-indigo-600 rounded-full font-medium">
-            <span className="w-2 h-2 bg-indigo-400 rounded-full" /> Étape en cours
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "4px 10px", background: "#e8edff", color: "#0147ff", borderRadius: 20, fontWeight: 500 }}>
+            <span style={{ width: 8, height: 8, background: "#0147ff", borderRadius: "50%", display: "inline-block" }} /> Étape en cours
           </span>
-          <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-red-50 text-red-600 rounded-full font-medium">
-            <span className="w-2 h-2 bg-red-400 rounded-full" /> Fin d&apos;étape
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "4px 10px", background: "#fee6d0", color: "#663b12", borderRadius: 20, fontWeight: 500 }}>
+            <span style={{ width: 8, height: 8, background: "#d97706", borderRadius: "50%", display: "inline-block" }} /> Fin d&apos;étape
           </span>
-          <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-green-50 text-green-600 rounded-full font-medium">
-            <span className="w-2 h-2 bg-green-400 rounded-full" /> Étape validée
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "4px 10px", background: "#d1fae5", color: "#168b64", borderRadius: 20, fontWeight: 500 }}>
+            <span style={{ width: 8, height: 8, background: "#168b64", borderRadius: "50%", display: "inline-block" }} /> Étape validée
           </span>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" size={28} /></div>
+        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+          <Loader2 size={28} style={{ color: "#0147ff", animation: "spin 1s linear infinite" }} />
+        </div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {/* Calendar card */}
+          <div style={cardStyle}>
             {/* Month navigation */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <ChevronLeft size={18} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+              <button onClick={prevMonth} style={{ padding: 8, background: "none", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronLeft size={18} style={{ color: "#121a2e" }} />
               </button>
-              <h2 className="font-semibold text-gray-900">{MONTHS[currentMonth]} {currentYear}</h2>
-              <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <ChevronRight size={18} />
+              <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 16, margin: 0, letterSpacing: "-0.3px" }}>{MONTHS[currentMonth]} {currentYear}</h2>
+              <button onClick={nextMonth} style={{ padding: 8, background: "none", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ChevronRight size={18} style={{ color: "#121a2e" }} />
               </button>
             </div>
 
             {/* Days header */}
-            <div className="grid grid-cols-7 border-b border-gray-200">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
               {DAYS.map((day) => (
-                <div key={day} className="py-3 text-center text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <div key={day} style={{ padding: "12px 0", textAlign: "center", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   {day}
                 </div>
               ))}
             </div>
 
             {/* Calendar cells */}
-            <div className="grid grid-cols-7">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
               {cells.map((day, index) => {
                 const isToday = day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear();
                 const dayEvents = day ? getEventsForDay(day) : [];
+                const isLastInRow = index % 7 === 6;
                 return (
                   <div
                     key={index}
-                    className={`min-h-24 p-2 border-r border-b border-gray-100 ${day ? "hover:bg-gray-50 transition-colors" : "bg-gray-50"} ${index % 7 === 6 ? "border-r-0" : ""}`}
+                    style={{
+                      minHeight: 96,
+                      padding: 8,
+                      borderRight: isLastInRow ? "none" : "1px solid rgba(0,0,0,0.05)",
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                      background: day ? "#fff" : "#fbfbfb",
+                    }}
                   >
                     {day && (
                       <>
-                        <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm mb-1 ${isToday ? "bg-indigo-600 text-white font-bold" : "text-gray-700 font-medium"}`}>
+                        <div style={{
+                          width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                          borderRadius: "50%", fontSize: 13, marginBottom: 4,
+                          background: isToday ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)" : "transparent",
+                          color: isToday ? "#fff" : "#121a2e",
+                          fontWeight: isToday ? 700 : 500,
+                        }}>
                           {day}
                         </div>
-                        <div className="space-y-0.5">
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           {dayEvents.slice(0, 2).map((event) => (
                             <Link key={event.id} href={`/admin/projects/${event.projectId}`}>
-                              <div className={`text-xs px-1.5 py-0.5 rounded truncate font-medium cursor-pointer hover:opacity-80 ${event.color}`} title={event.title}>
+                              <div style={{
+                                fontSize: 11, padding: "2px 6px", borderRadius: 5,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                fontWeight: 500, background: event.colors.bg, color: event.colors.text,
+                                cursor: "pointer",
+                              }} title={event.title}>
                                 {event.title}
                               </div>
                             </Link>
                           ))}
                           {dayEvents.length > 2 && (
-                            <p className="text-xs text-gray-400 px-1">+{dayEvents.length - 2} autres</p>
+                            <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", padding: "0 4px", margin: 0 }}>+{dayEvents.length - 2} autres</p>
                           )}
                         </div>
                       </>
@@ -208,24 +241,26 @@ export default function AdminCalendarPage() {
           </div>
 
           {/* Upcoming events */}
-          <div className="mt-6 bg-white rounded-xl border border-gray-200 p-6">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Calendar size={16} />
+          <div style={{ ...cardStyle, marginTop: 24, padding: 24 }}>
+            <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8, letterSpacing: "-0.3px" }}>
+              <Calendar size={16} style={{ color: "#0147ff" }} />
               Prochaines échéances
             </h2>
             {upcomingEvents.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Aucune échéance à venir. Créez des projets avec des prestations pour voir les étapes ici.</p>
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: "24px 0", margin: 0 }}>
+                Aucune échéance à venir. Créez des projets avec des prestations pour voir les étapes ici.
+              </p>
             ) : (
-              <div className="space-y-3">
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {upcomingEvents.map((event) => (
-                  <Link key={event.id} href={`/admin/projects/${event.projectId}`} className="flex items-center gap-4 hover:bg-gray-50 rounded-lg p-2 -mx-2 transition-colors">
-                    <div className="text-center w-12 shrink-0">
-                      <p className="text-xs text-gray-400 uppercase">{MONTHS[parseInt(event.date.split("-")[1]) - 1].slice(0, 3)}</p>
-                      <p className="text-xl font-bold text-gray-900 leading-none">{parseInt(event.date.split("-")[2])}</p>
+                  <Link key={event.id} href={`/admin/projects/${event.projectId}`} style={{ display: "flex", alignItems: "center", gap: 16, padding: "8px", borderRadius: 9, textDecoration: "none" }}>
+                    <div style={{ textAlign: "center", width: 48, flexShrink: 0 }}>
+                      <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", textTransform: "uppercase", margin: 0 }}>{MONTHS[parseInt(event.date.split("-")[1]) - 1].slice(0, 3)}</p>
+                      <p style={{ fontSize: 22, fontWeight: 700, color: "#121a2e", lineHeight: 1, margin: "2px 0 0" }}>{parseInt(event.date.split("-")[2])}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{event.title}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${event.color}`}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>{event.title}</p>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, fontWeight: 500, background: event.colors.bg, color: event.colors.text, display: "inline-block", marginTop: 4 }}>
                         {event.type === "stage_start" ? "Début d'étape" : event.type === "stage_end" ? "Fin d'étape" : "Démarrage"}
                       </span>
                     </div>
