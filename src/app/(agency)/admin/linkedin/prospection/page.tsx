@@ -5,10 +5,11 @@ import {
   Plus, Sparkles, RefreshCw, Copy, Check, ChevronDown, X,
   ExternalLink, TrendingUp, MessageSquare, ThumbsUp, Eye,
   PenLine, Bot, Send, User, ChevronRight, MessagesSquare,
+  Layers, Trash2, Globe,
 } from "lucide-react";
 import {
-  LinkedInProspect, ConversationMessage, ACTION_LABELS, PROSPECT_STATUS_LABELS,
-  PROSPECT_TO_LEAD_STATUS,
+  LinkedInProspect, ConversationMessage, ProspectionSkeleton,
+  ACTION_LABELS, PROSPECT_STATUS_LABELS, PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 
@@ -47,9 +48,37 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   deal_lost:    { bg: "#f6f6f6",  color: "rgba(18,26,46,0.4)" },
 };
 
+const SKELETONS_KEY = "linkedin_prospection_skeletons";
+
+function loadSkeletons(): ProspectionSkeleton[] {
+  try {
+    const saved = localStorage.getItem(SKELETONS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch { return []; }
+}
+
+function saveSkeletonsToStorage(skeletons: ProspectionSkeleton[]): void {
+  localStorage.setItem(SKELETONS_KEY, JSON.stringify(skeletons));
+}
+
+function pickBestSkeleton(skeletons: ProspectionSkeleton[], actionType: string): ProspectionSkeleton | null {
+  const active = skeletons.filter(
+    (s) => s.isActive && (s.actionTypes.length === 0 || s.actionTypes.includes(actionType))
+  );
+  if (active.length === 0) return null;
+  return active.sort((a, b) => {
+    const rateA = a.timesUsed > 0 ? a.timesSuccess / a.timesUsed : 0;
+    const rateB = b.timesUsed > 0 ? b.timesSuccess / b.timesUsed : 0;
+    if (rateB !== rateA) return rateB - rateA;
+    return b.timesUsed - a.timesUsed;
+  })[0];
+}
+
 function getStats(prospects: LinkedInProspect[]) {
   const sent = prospects.filter((p) => p.status !== "draft").length;
-  const positive = prospects.filter((p) => ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)).length;
+  const positive = prospects.filter((p) =>
+    ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)
+  ).length;
   const byAction: Record<string, { total: number; positive: number }> = {};
   for (const p of prospects) {
     if (p.status === "draft") continue;
@@ -59,15 +88,13 @@ function getStats(prospects: LinkedInProspect[]) {
       byAction[p.actionType].positive++;
   }
   return {
-    total: prospects.length,
-    sent,
+    total: prospects.length, sent, positive,
     accepted: prospects.filter((p) => p.status === "accepted").length,
     replied: prospects.filter((p) => p.status === "replied").length,
     conversation: prospects.filter((p) => p.status === "conversation").length,
     dealClosed: prospects.filter((p) => p.status === "deal_closed").length,
     dealLost: prospects.filter((p) => p.status === "deal_lost").length,
     rejected: prospects.filter((p) => p.status === "rejected").length,
-    positive,
     conversionRate: sent === 0 ? "—" : `${Math.round((positive / sent) * 100)}%`,
     byAction,
   };
@@ -77,20 +104,24 @@ function getStats(prospects: LinkedInProspect[]) {
 // Left Panel
 // ─────────────────────────────────────────────────────────────────────────────
 function LeftPanel({
-  language,
-  onLanguageChange,
-  onSave,
+  language, onLanguageChange, onSave, skeletons, onSkeletonsUpdate, allProspects,
 }: {
   language: "fr" | "en";
   onLanguageChange: (l: "fr" | "en") => void;
   onSave: (p: LinkedInProspect) => void;
+  skeletons: ProspectionSkeleton[];
+  onSkeletonsUpdate: (s: ProspectionSkeleton[]) => void;
+  allProspects: LinkedInProspect[];
 }) {
   const [mode, setMode] = useState<"ai" | "manual">("ai");
   const [generating, setGenerating] = useState(false);
+  const [creatingSkeletons, setCreatingSkeletons] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showSkeletonPicker, setShowSkeletonPicker] = useState(false);
+  const [selectedSkeleton, setSelectedSkeleton] = useState<ProspectionSkeleton | null>(null);
 
   const [form, setForm] = useState({
-    name: "", profileUrl: "",
+    name: "", profileUrl: "", siteUrl: "",
     actionType: "liked" as LinkedInProspect["actionType"],
     context: "",
   });
@@ -98,15 +129,16 @@ function LeftPanel({
   const [manualMessage, setManualMessage] = useState("");
   const [explanation, setExplanation] = useState("");
 
+  // Auto-select best skeleton when action type changes
+  useEffect(() => {
+    const best = pickBestSkeleton(skeletons, form.actionType);
+    setSelectedSkeleton(best);
+  }, [form.actionType, skeletons]);
+
   const getLearningData = () => {
-    try {
-      const saved = localStorage.getItem("linkedin_prospects");
-      if (!saved) return [];
-      const prospects: LinkedInProspect[] = JSON.parse(saved);
-      return prospects
-        .filter((p) => p.status !== "draft")
-        .map((p) => ({ message: p.customMessage || p.generatedMessage, status: p.status, actionType: p.actionType }));
-    } catch { return []; }
+    return allProspects
+      .filter((p) => p.status !== "draft")
+      .map((p) => ({ message: p.customMessage || p.generatedMessage, status: p.status, actionType: p.actionType }));
   };
 
   const handleGenerate = async () => {
@@ -118,9 +150,13 @@ function LeftPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name, actionType: form.actionType, context: form.context,
+          name: form.name, actionType: form.actionType,
+          context: form.context, siteUrl: form.siteUrl || undefined,
+          skeleton: selectedSkeleton || undefined,
           learningData: getLearningData(), language,
-          openrouterApiKey: s.openrouterApiKey || undefined, model: s.model,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
         }),
       });
       const data = await res.json();
@@ -134,14 +170,11 @@ function LeftPanel({
     if (!message.trim() || !form.name.trim()) return null;
     return {
       id: `prospect_${Date.now()}`,
-      name: form.name,
-      profileUrl: form.profileUrl || undefined,
-      actionType: form.actionType,
-      context: form.context || undefined,
-      generatedMessage: message,
-      isManual,
-      status: "draft",
-      createdAt: new Date().toISOString(),
+      name: form.name, profileUrl: form.profileUrl || undefined,
+      actionType: form.actionType, context: form.context || undefined,
+      generatedMessage: message, isManual,
+      skeletonId: !isManual && selectedSkeleton ? selectedSkeleton.id : undefined,
+      status: "draft", createdAt: new Date().toISOString(),
     };
   };
 
@@ -149,12 +182,19 @@ function LeftPanel({
     const prospect = buildProspect(generatedMessage, false);
     if (!prospect) return;
 
+    // Track skeleton usage
+    if (selectedSkeleton) {
+      const updated = skeletons.map((sk) =>
+        sk.id === selectedSkeleton.id ? { ...sk, timesUsed: sk.timesUsed + 1 } : sk
+      );
+      onSkeletonsUpdate(updated);
+    }
+
     // Sync with CRM
     try {
       const res = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, source: "linkedin", source_ref: form.profileUrl || null, channel_preference: "linkedin_dm", metadata: { action_type: form.actionType, context: form.context || null }, status: "new" }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name, source: "linkedin", source_ref: form.profileUrl || null, channel_preference: "linkedin_dm", metadata: { action_type: form.actionType, context: form.context || null, site_url: form.siteUrl || null }, status: "new" }),
       });
       const data = await res.json();
       if (data.lead?.id) {
@@ -167,26 +207,59 @@ function LeftPanel({
     } catch {}
 
     onSave(prospect);
-    setForm({ name: "", profileUrl: "", actionType: "liked", context: "" });
-    setGeneratedMessage("");
-    setExplanation("");
+    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
+    setGeneratedMessage(""); setExplanation("");
   };
 
   const handleSaveManual = () => {
     const prospect = buildProspect(manualMessage, true);
     if (!prospect) return;
     onSave(prospect);
-    setForm({ name: "", profileUrl: "", actionType: "liked", context: "" });
+    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
     setManualMessage("");
   };
 
+  const handleCreateSkeletons = async () => {
+    const sentProspects = allProspects.filter((p) => p.status !== "draft");
+    if (sentProspects.length < 3) return;
+    setCreatingSkeletons(true);
+    try {
+      const s = loadLinkedInSettings();
+      const res = await fetch("/api/linkedin/create-skeletons", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prospects: sentProspects.map((p) => ({
+            name: p.name, actionType: p.actionType, status: p.status,
+            message: p.customMessage || p.generatedMessage,
+          })),
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          bigModel: s.prospectionBigModel, bigPrompt: s.prospectionBigPrompt,
+        }),
+      });
+      const data = await res.json();
+      if (data.skeletons?.length > 0) {
+        // Merge with existing (keep existing ones, add new ones)
+        const existingIds = new Set(skeletons.map((sk) => sk.id));
+        const newOnes = data.skeletons.filter((sk: ProspectionSkeleton) => !existingIds.has(sk.id));
+        onSkeletonsUpdate([...skeletons, ...newOnes]);
+      }
+    } catch (e) { console.error(e); }
+    finally { setCreatingSkeletons(false); }
+  };
+
+  const toggleSkeleton = (id: string) =>
+    onSkeletonsUpdate(skeletons.map((sk) => sk.id === id ? { ...sk, isActive: !sk.isActive } : sk));
+
+  const deleteSkeleton = (id: string) =>
+    onSkeletonsUpdate(skeletons.filter((sk) => sk.id !== id));
+
   const copyMsg = (msg: string) => {
     navigator.clipboard.writeText(msg);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
   const canSaveManual = form.name.trim().length > 0 && manualMessage.trim().length > 0;
+  const sentCount = allProspects.filter((p) => p.status !== "draft").length;
 
   return (
     <div style={{ width: 384, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
@@ -207,17 +280,13 @@ function LeftPanel({
         {/* Mode tabs */}
         <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3, marginBottom: 0 }}>
           {([["ai", Bot, "Générer avec l'IA"], ["manual", PenLine, "Message manuel"]] as const).map(([m, Icon, label]) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "7px 8px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                ...(mode === m
-                  ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                  : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-              }}
-            >
+            <button key={m} onClick={() => setMode(m)} style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              padding: "7px 8px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+              ...(mode === m
+                ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
+            }}>
               <Icon size={13} />{label}
             </button>
           ))}
@@ -236,17 +305,13 @@ function LeftPanel({
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Action effectuée</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {ACTION_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setForm({ ...form, actionType: opt.value })}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9,
-                  fontSize: 13, textAlign: "left", cursor: "pointer", ...jk,
-                  ...(form.actionType === opt.value
-                    ? { border: "1px solid #0147ff", background: "#e8edff", color: "#0147ff" }
-                    : { border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.7)" }),
-                }}
-              >
+              <button key={opt.value} onClick={() => setForm({ ...form, actionType: opt.value })} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9,
+                fontSize: 13, textAlign: "left", cursor: "pointer", ...jk,
+                ...(form.actionType === opt.value
+                  ? { border: "1px solid #0147ff", background: "#e8edff", color: "#0147ff" }
+                  : { border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.7)" }),
+              }}>
                 {opt.icon}{opt.label}
               </button>
             ))}
@@ -259,6 +324,14 @@ function LeftPanel({
         </div>
 
         <div>
+          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
+            <Globe size={12} />
+            Site web du prospect <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span>
+          </label>
+          <input type="text" value={form.siteUrl} onChange={(e) => setForm({ ...form, siteUrl: e.target.value })} placeholder="https://example.com" style={inp} />
+        </div>
+
+        <div>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Contexte <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
           <textarea value={form.context} onChange={(e) => setForm({ ...form, context: e.target.value })} placeholder="Ex: Directrice marketing, startup SaaS B2B..." rows={2} style={{ ...inp, resize: "none" }} />
         </div>
@@ -266,6 +339,66 @@ function LeftPanel({
         {/* AI mode */}
         {mode === "ai" && (
           <>
+            {/* Skeleton selector */}
+            <div style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, overflow: "visible", position: "relative" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f6f6f6", borderRadius: "9px 9px 0 0" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", display: "flex", alignItems: "center", gap: 5 }}>
+                  <Layers size={12} /> Squelette
+                </span>
+                <button
+                  onClick={() => setShowSkeletonPicker((v) => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 500, background: "none", border: "none", cursor: "pointer", color: "#121a2e", ...jk }}
+                >
+                  {selectedSkeleton ? selectedSkeleton.name : <span style={{ color: "rgba(18,26,46,0.4)" }}>Aucun (auto)</span>}
+                  <ChevronDown size={11} style={{ color: "rgba(18,26,46,0.4)", transform: showSkeletonPicker ? "rotate(180deg)" : "none" }} />
+                </button>
+              </div>
+
+              {selectedSkeleton && !showSkeletonPicker && (
+                <div style={{ padding: "8px 12px", fontSize: 11, color: "rgba(18,26,46,0.45)", borderTop: "1px solid rgba(0,0,0,0.06)", background: "#fff", borderRadius: "0 0 9px 9px" }}>
+                  {selectedSkeleton.description}
+                  {selectedSkeleton.timesUsed > 0 && (
+                    <span style={{ marginLeft: 8, color: "#168b64", fontWeight: 600 }}>
+                      {Math.round((selectedSkeleton.timesSuccess / selectedSkeleton.timesUsed) * 100)}% de succès
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {showSkeletonPicker && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: "0 0 9px 9px", zIndex: 20, boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}>
+                  <button
+                    onClick={() => { setSelectedSkeleton(null); setShowSkeletonPicker(false); }}
+                    style={{ width: "100%", padding: "9px 12px", textAlign: "left", fontSize: 12, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", ...jk, borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+                  >
+                    Aucun squelette (libre)
+                  </button>
+                  {skeletons.filter((s) => s.isActive).length === 0 ? (
+                    <p style={{ padding: "9px 12px", fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>
+                      Aucun squelette actif. Générez-en via l&apos;IA ci-dessous.
+                    </p>
+                  ) : (
+                    skeletons.filter((s) => s.isActive).map((sk) => (
+                      <button
+                        key={sk.id}
+                        onClick={() => { setSelectedSkeleton(sk); setShowSkeletonPicker(false); }}
+                        style={{
+                          width: "100%", padding: "9px 12px", textAlign: "left", background: selectedSkeleton?.id === sk.id ? "#f0f4ff" : "none",
+                          border: "none", cursor: "pointer", ...jk, borderBottom: "1px solid rgba(0,0,0,0.04)",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#121a2e" }}>{sk.name}</div>
+                        <div style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", marginTop: 2 }}>
+                          {sk.actionTypes.length > 0 ? sk.actionTypes.join(", ") : "tous types"}
+                          {sk.timesUsed > 0 && ` · ${Math.round((sk.timesSuccess / sk.timesUsed) * 100)}% succès`}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleGenerate}
               disabled={generating || !form.name.trim()}
@@ -280,17 +413,11 @@ function LeftPanel({
                 {explanation && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>{explanation}</p>}
                 <textarea value={generatedMessage} onChange={(e) => setGeneratedMessage(e.target.value)} rows={6} style={{ ...inp, resize: "none" }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => copyMsg(generatedMessage)}
-                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}
-                  >
+                  <button onClick={() => copyMsg(generatedMessage)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                     {copied ? <Check size={13} /> : <Copy size={13} />}
                     {copied ? "Copié !" : "Copier"}
                   </button>
-                  <button
-                    onClick={handleSaveAI}
-                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "#121a2e", border: "1px solid rgba(0,0,0,0.2)", color: "#fff", padding: "8px", borderRadius: 9, cursor: "pointer", ...jk }}
-                  >
+                  <button onClick={handleSaveAI} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "#121a2e", border: "1px solid rgba(0,0,0,0.2)", color: "#fff", padding: "8px", borderRadius: 9, cursor: "pointer", ...jk }}>
                     <Plus size={13} />Sauvegarder
                   </button>
                 </div>
@@ -307,7 +434,7 @@ function LeftPanel({
               <textarea
                 value={manualMessage}
                 onChange={(e) => setManualMessage(e.target.value)}
-                placeholder={`Ex: ${form.name || "Marie"}, j'ai remarqué que tu as liké mon post sur le growth hacking — ton profil m'a intrigué. Tu travailles sur quoi en ce moment ?`}
+                placeholder={`${form.name || "Marie"}, j'ai vu ton post sur…`}
                 rows={6}
                 style={{ ...inp, resize: "none", lineHeight: 1.6 }}
               />
@@ -315,7 +442,6 @@ function LeftPanel({
                 {manualMessage.length} caractères · {manualMessage.split(/\s+/).filter(Boolean).length} mots
               </p>
             </div>
-
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => { if (manualMessage) copyMsg(manualMessage); }}
@@ -335,6 +461,79 @@ function LeftPanel({
             </div>
           </>
         )}
+
+        {/* ── Skeleton management ── */}
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 16, marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.6)", display: "flex", alignItems: "center", gap: 5 }}>
+              <Layers size={13} /> Squelettes ({skeletons.filter((s) => s.isActive).length} actifs)
+            </span>
+            <button
+              onClick={handleCreateSkeletons}
+              disabled={creatingSkeletons || sentCount < 3}
+              title={sentCount < 3 ? "Il faut au moins 3 prospects envoyés" : "Générer des squelettes via Big AI"}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600,
+                ...btnGrad, padding: "5px 10px",
+                opacity: creatingSkeletons || sentCount < 3 ? 0.5 : 1,
+                cursor: creatingSkeletons || sentCount < 3 ? "not-allowed" : "pointer",
+              }}
+            >
+              {creatingSkeletons
+                ? <RefreshCw size={11} style={{ animation: "spin 1s linear infinite" }} />
+                : <Sparkles size={11} />}
+              {creatingSkeletons ? "Analyse..." : "Générer via IA"}
+            </button>
+          </div>
+
+          {sentCount < 3 && (
+            <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: "0 0 8px", textAlign: "center" }}>
+              Envoyez au moins 3 messages pour générer des squelettes ({sentCount}/3)
+            </p>
+          )}
+
+          {skeletons.length === 0 ? (
+            <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", textAlign: "center", padding: "8px 0", margin: 0 }}>
+              Aucun squelette — la Big AI créera des structures basées sur vos données
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {skeletons.map((sk) => (
+                <div key={sk.id} style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+                  borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)",
+                  background: sk.isActive ? "#f9f9f9" : "#fff", opacity: sk.isActive ? 1 : 0.5,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sk.name}</div>
+                    {sk.timesUsed > 0 && (
+                      <div style={{ fontSize: 10, color: "#168b64" }}>
+                        {Math.round((sk.timesSuccess / sk.timesUsed) * 100)}% · {sk.timesUsed} envoi{sk.timesUsed > 1 ? "s" : ""}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleSkeleton(sk.id)}
+                    style={{
+                      fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, cursor: "pointer", ...jk,
+                      ...(sk.isActive
+                        ? { background: "#d1fae5", color: "#168b64", border: "none" }
+                        : { background: "#f6f6f6", color: "rgba(18,26,46,0.4)", border: "1px solid rgba(0,0,0,0.09)" }),
+                    }}
+                  >
+                    {sk.isActive ? "ON" : "OFF"}
+                  </button>
+                  <button
+                    onClick={() => deleteSkeleton(sk.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: 3, display: "flex" }}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
@@ -351,17 +550,15 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const stats = getStats(prospects);
 
   const SUGGESTIONS = [
     "Quel type d'action génère le plus de réponses ?",
-    "Qu'est-ce qui différencie mes messages qui ont fonctionné ?",
-    "Quel est mon taux de conversion par statut ?",
-    "Comment améliorer mes messages de prospection ?",
+    "Qu'est-ce qui différencie mes messages performants ?",
+    "Comment améliorer mon taux de conversion ?",
+    "Quel est le meilleur moment pour suivre un prospect ?",
   ];
 
   const sendMessage = async (text: string) => {
@@ -373,21 +570,15 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
     try {
       const s = loadLinkedInSettings();
       const res = await fetch("/api/linkedin/analyze-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userMessage: text,
-          history: messages,
-          stats,
+          userMessage: text, history: messages, stats,
           prospects: prospects.map((p) => ({
-            name: p.name,
-            actionType: p.actionType,
-            status: p.status,
+            name: p.name, actionType: p.actionType, status: p.status,
             message: p.customMessage || p.generatedMessage,
             conversationLength: p.conversation?.length,
           })),
-          openrouterApiKey: s.openrouterApiKey || undefined,
-          model: s.model,
+          openrouterApiKey: s.openrouterApiKey || undefined, model: s.model,
         }),
       });
       const data = await res.json();
@@ -395,28 +586,21 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
     } catch (e) {
       setMessages([...newMessages, { role: "assistant", content: "Erreur de connexion." }]);
       console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fbfbfb" }}>
-      {/* Context bar */}
       <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "10px 20px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
           <span style={{ fontWeight: 700, color: "#121a2e", fontSize: 13 }}>Contexte IA</span>
-          <span>{stats.total} prospects</span>
-          <span>·</span>
-          <span>{stats.sent} envoyés</span>
-          <span>·</span>
-          <span style={{ color: "#168b64", fontWeight: 600 }}>{stats.conversionRate} conversion</span>
-          <span>·</span>
+          <span>{stats.total} prospects</span><span>·</span>
+          <span>{stats.sent} envoyés</span><span>·</span>
+          <span style={{ color: "#168b64", fontWeight: 600 }}>{stats.conversionRate} conversion</span><span>·</span>
           <span>{stats.dealClosed} deals</span>
         </div>
       </div>
 
-      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
         {messages.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 40, gap: 20 }}>
@@ -429,13 +613,8 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 440 }}>
               {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => sendMessage(s)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, background: "#fff", border: "1px solid rgba(0,0,0,0.09)", fontSize: 13, color: "#121a2e", cursor: "pointer", textAlign: "left", ...jk }}
-                >
-                  <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.3)", flexShrink: 0 }} />
-                  {s}
+                <button key={s} onClick={() => sendMessage(s)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, background: "#fff", border: "1px solid rgba(0,0,0,0.09)", fontSize: 13, color: "#121a2e", cursor: "pointer", textAlign: "left", ...jk }}>
+                  <ChevronRight size={14} style={{ color: "rgba(18,26,46,0.3)", flexShrink: 0 }} />{s}
                 </button>
               ))}
             </div>
@@ -449,13 +628,12 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
                 </div>
               )}
               <div style={{
-                maxWidth: "75%", padding: "10px 14px", borderRadius: msg.role === "user" ? "13px 13px 4px 13px" : "13px 13px 13px 4px",
-                fontSize: 13, lineHeight: 1.6, ...jk,
+                maxWidth: "75%", padding: "10px 14px", fontSize: 13, lineHeight: 1.6, ...jk, whiteSpace: "pre-wrap",
+                borderRadius: msg.role === "user" ? "13px 13px 4px 13px" : "13px 13px 13px 4px",
                 background: msg.role === "user" ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)" : "#fff",
                 color: msg.role === "user" ? "#fff" : "#121a2e",
                 border: msg.role === "user" ? "none" : "1px solid rgba(0,0,0,0.08)",
                 boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-                whiteSpace: "pre-wrap",
               }}>
                 {msg.content}
               </div>
@@ -472,46 +650,29 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
             <div style={{ width: 28, height: 28, borderRadius: 8, background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Bot size={14} style={{ color: "#0147ff" }} />
             </div>
-            <div style={{ padding: "10px 14px", background: "#fff", borderRadius: "13px 13px 13px 4px", border: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#0147ff", opacity: 0.6, animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-                ))}
-              </div>
+            <div style={{ padding: "10px 14px", background: "#fff", borderRadius: "13px 13px 13px 4px", border: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 4 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#0147ff", opacity: 0.6, animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div style={{ padding: "12px 20px", background: "#fff", borderTop: "1px solid rgba(0,0,0,0.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-            placeholder="Posez une question sur vos données de prospection..."
-            rows={1}
+          <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
+            placeholder="Posez une question sur vos données..." rows={1}
             style={{ ...inp, flex: 1, resize: "none", padding: "10px 14px", lineHeight: 1.5 }}
           />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || loading}
-            style={{ ...btnGrad, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "center", opacity: !input.trim() || loading ? 0.5 : 1, flexShrink: 0 }}
-          >
+          <button onClick={() => sendMessage(input)} disabled={!input.trim() || loading} style={{ ...btnGrad, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "center", opacity: !input.trim() || loading ? 0.5 : 1, flexShrink: 0 }}>
             <Send size={15} />
           </button>
         </div>
         <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 6, marginBottom: 0 }}>Entrée pour envoyer · Maj+Entrée pour sauter une ligne</p>
       </div>
-
-      <style>{`
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-          40% { transform: scale(1); opacity: 1; }
-        }
-      `}</style>
+      <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1} }`}</style>
     </div>
   );
 }
@@ -538,6 +699,9 @@ function ProspectCard({
   const [cardTab, setCardTab] = useState<"message" | "conversation">("message");
   const [convInput, setConvInput] = useState("");
   const [convSender, setConvSender] = useState<"me" | "them">("them");
+  const [generatingReply, setGeneratingReply] = useState(false);
+  const [generatedReply, setGeneratedReply] = useState("");
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
 
   const displayMessage = prospect.customMessage || prospect.generatedMessage;
   const ss = STATUS_STYLES[prospect.status] ?? STATUS_STYLES.draft;
@@ -547,12 +711,45 @@ function ProspectCard({
     if (!convInput.trim()) return;
     const msg: ConversationMessage = {
       id: `msg_${Date.now()}`,
-      sender: convSender,
-      content: convInput.trim(),
-      sentAt: new Date().toISOString(),
+      sender: convSender, content: convInput.trim(), sentAt: new Date().toISOString(),
     };
     onUpdateConversation([...(prospect.conversation ?? []), msg]);
     setConvInput("");
+  };
+
+  const deleteConvMessage = (id: string) =>
+    onUpdateConversation((prospect.conversation ?? []).filter((m) => m.id !== id));
+
+  const handleGenerateReply = async () => {
+    if (!prospect.conversation?.length) return;
+    setGeneratingReply(true);
+    try {
+      const s = loadLinkedInSettings();
+      const history = (prospect.conversation ?? []).map((m) => ({
+        role: m.sender === "me" ? ("assistant" as const) : ("user" as const),
+        content: m.content,
+      }));
+      const res = await fetch("/api/linkedin/generate-prospection", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: prospect.name, actionType: prospect.actionType,
+          context: prospect.context, conversationHistory: history,
+          mode: "reply",
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
+        }),
+      });
+      const data = await res.json();
+      setGeneratedReply(data.message || "");
+    } catch (e) { console.error(e); }
+    finally { setGeneratingReply(false); }
+  };
+
+  const useGeneratedReply = () => {
+    setConvInput(generatedReply);
+    setConvSender("me");
+    setGeneratedReply("");
   };
 
   return (
@@ -562,7 +759,6 @@ function ProspectCard({
         <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", color: "#0147ff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
           {prospect.name[0]?.toUpperCase()}
         </div>
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 600, color: "#121a2e", fontSize: 14 }}>{prospect.name}</span>
@@ -592,24 +788,19 @@ function ProspectCard({
               onClick={(e) => { e.stopPropagation(); onToggleDropdown(); }}
               style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 10px", borderRadius: 20, fontWeight: 600, cursor: "pointer", ...jk, background: ss.bg, color: ss.color, border: "none" }}
             >
-              {PROSPECT_STATUS_LABELS[prospect.status]}
-              <ChevronDown size={11} />
+              {PROSPECT_STATUS_LABELS[prospect.status]}<ChevronDown size={11} />
             </button>
             {showStatusDropdown && (
               <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 12, boxShadow: "0px 8px 24px rgba(0,0,0,0.12)", zIndex: 10, padding: 4, width: 180 }}>
                 {STATUS_VARIANTS.map((s) => {
                   const sss = STATUS_STYLES[s] ?? STATUS_STYLES.draft;
                   return (
-                    <button
-                      key={s}
-                      onClick={(e) => { e.stopPropagation(); onStatusChange(s); }}
-                      style={{
-                        width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12, cursor: "pointer", ...jk,
-                        background: s === prospect.status ? "#f6f6f6" : "none", border: "none", borderRadius: 8,
-                        color: "#121a2e", fontWeight: s === prospect.status ? 600 : 400,
-                        display: "flex", alignItems: "center", gap: 8,
-                      }}
-                    >
+                    <button key={s} onClick={(e) => { e.stopPropagation(); onStatusChange(s); }} style={{
+                      width: "100%", textAlign: "left", padding: "8px 12px", fontSize: 12, cursor: "pointer", ...jk,
+                      background: s === prospect.status ? "#f6f6f6" : "none", border: "none", borderRadius: 8,
+                      color: "#121a2e", fontWeight: s === prospect.status ? 600 : 400,
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: sss.color, flexShrink: 0 }} />
                       {PROSPECT_STATUS_LABELS[s]}
                       {s === prospect.status && <Check size={11} style={{ marginLeft: "auto" }} />}
@@ -628,16 +819,12 @@ function ProspectCard({
           {/* Tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
             {([["message", "Message initial"], ["conversation", `Conversation${convLen > 0 ? ` (${convLen})` : ""}`]] as const).map(([t, label]) => (
-              <button
-                key={t}
-                onClick={() => setCardTab(t)}
-                style={{
-                  flex: 1, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                  background: "none", borderBottom: cardTab === t ? "2px solid #0147ff" : "2px solid transparent",
-                  borderLeft: "none", borderRight: "none", borderTop: "none",
-                  color: cardTab === t ? "#0147ff" : "rgba(18,26,46,0.4)",
-                }}
-              >
+              <button key={t} onClick={() => setCardTab(t)} style={{
+                flex: 1, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                background: "none", borderBottom: cardTab === t ? "2px solid #0147ff" : "2px solid transparent",
+                borderLeft: "none", borderRight: "none", borderTop: "none",
+                color: cardTab === t ? "#0147ff" : "rgba(18,26,46,0.4)",
+              }}>
                 {label}
               </button>
             ))}
@@ -655,33 +842,19 @@ function ProspectCard({
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
                   Message{prospect.customMessage ? " (modifié)" : ""}
                 </label>
-                <textarea
-                  value={displayMessage}
-                  onChange={(e) => onMessageChange(e.target.value)}
-                  rows={5}
-                  style={{ ...inp, resize: "none" }}
-                />
+                <textarea value={displayMessage} onChange={(e) => onMessageChange(e.target.value)} rows={5} style={{ ...inp, resize: "none" }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  onClick={() => onCopy(displayMessage)}
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}
-                >
+                <button onClick={() => onCopy(displayMessage)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                   {copied ? <Check size={13} /> : <Copy size={13} />}
                   {copied ? "Copié !" : "Copier"}
                 </button>
                 {prospect.status === "draft" && (
-                  <button
-                    onClick={() => onStatusChange("sent")}
-                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, ...btnGrad, padding: "7px 12px" }}
-                  >
+                  <button onClick={() => onStatusChange("sent")} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, ...btnGrad, padding: "7px 12px" }}>
                     <Check size={13} />Marquer comme envoyé
                   </button>
                 )}
-                <button
-                  onClick={onDelete}
-                  style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ef4444", padding: "7px 12px", borderRadius: 9, background: "none", border: "none", cursor: "pointer", ...jk }}
-                >
+                <button onClick={onDelete} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ef4444", padding: "7px 12px", borderRadius: 9, background: "none", border: "none", cursor: "pointer", ...jk }}>
                   <X size={13} />Supprimer
                 </button>
               </div>
@@ -697,18 +870,31 @@ function ProspectCard({
           {cardTab === "conversation" && (
             <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
               {/* Thread */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto" }}>
                 {(prospect.conversation ?? []).length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "24px 0" }}>
-                    <MessagesSquare size={24} style={{ color: "rgba(18,26,46,0.2)", margin: "0 auto 8px" }} />
-                    <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>Aucun message dans la conversation</p>
+                  <div style={{ textAlign: "center", padding: "20px 0" }}>
+                    <MessagesSquare size={22} style={{ color: "rgba(18,26,46,0.2)", margin: "0 auto 8px" }} />
+                    <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>Aucun message</p>
                     <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 4 }}>Collez les messages échangés pour garder un historique</p>
                   </div>
                 ) : (
                   (prospect.conversation ?? []).map((msg) => (
-                    <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.sender === "me" ? "flex-end" : "flex-start" }}>
-                      <div style={{ fontSize: 10, color: "rgba(18,26,46,0.35)", marginBottom: 3, paddingLeft: msg.sender === "them" ? 6 : 0, paddingRight: msg.sender === "me" ? 6 : 0 }}>
+                    <div
+                      key={msg.id}
+                      style={{ display: "flex", flexDirection: "column", alignItems: msg.sender === "me" ? "flex-end" : "flex-start", position: "relative" }}
+                      onMouseEnter={() => setHoveredMsgId(msg.id)}
+                      onMouseLeave={() => setHoveredMsgId(null)}
+                    >
+                      <div style={{ fontSize: 10, color: "rgba(18,26,46,0.35)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6, paddingLeft: msg.sender === "them" ? 6 : 0, paddingRight: msg.sender === "me" ? 6 : 0 }}>
                         {msg.sender === "me" ? "Moi" : prospect.name} · {new Date(msg.sentAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                        {hoveredMsgId === msg.id && (
+                          <button
+                            onClick={() => deleteConvMessage(msg.id)}
+                            style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: 0, display: "flex", alignItems: "center" }}
+                          >
+                            <X size={10} />
+                          </button>
+                        )}
                       </div>
                       <div style={{
                         maxWidth: "80%", padding: "8px 12px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", ...jk,
@@ -723,20 +909,53 @@ function ProspectCard({
                 )}
               </div>
 
+              {/* Generated reply preview */}
+              {generatedReply && (
+                <div style={{ background: "#f0f4ff", border: "1px solid #c7d3ff", borderRadius: 9, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#0147ff", display: "flex", alignItems: "center", gap: 5 }}>
+                      <Sparkles size={11} /> Réponse suggérée
+                    </span>
+                    <button onClick={() => setGeneratedReply("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", padding: 0 }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 12, color: "#121a2e", lineHeight: 1.6, margin: "0 0 8px" }}>{generatedReply}</p>
+                  <button
+                    onClick={useGeneratedReply}
+                    style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, ...btnGrad, padding: "5px 10px" }}
+                  >
+                    <Plus size={11} />Utiliser ce message
+                  </button>
+                </div>
+              )}
+
+              {/* Generate reply button */}
+              <button
+                onClick={handleGenerateReply}
+                disabled={generatingReply || convLen === 0}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600,
+                  padding: "8px", width: "100%",
+                  background: btnGrad.background, border: btnGrad.border, color: btnGrad.color,
+                  borderRadius: 9, cursor: generatingReply || convLen === 0 ? "not-allowed" : "pointer",
+                  ...jk, opacity: generatingReply || convLen === 0 ? 0.5 : 1,
+                }}
+              >
+                {generatingReply ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
+                {generatingReply ? "Génération..." : "Générer une réponse IA"}
+              </button>
+
               {/* Add message */}
               <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 6 }}>
                   {(["them", "me"] as const).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setConvSender(s)}
-                      style={{
-                        flex: 1, padding: "6px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                        ...(convSender === s
-                          ? { background: s === "me" ? "#e8edff" : "#f6f6f6", border: s === "me" ? "1px solid #c7d3ff" : "1px solid rgba(0,0,0,0.12)", color: s === "me" ? "#0147ff" : "#121a2e" }
-                          : { background: "none", border: "1px solid rgba(0,0,0,0.07)", color: "rgba(18,26,46,0.4)" }),
-                      }}
-                    >
+                    <button key={s} onClick={() => setConvSender(s)} style={{
+                      flex: 1, padding: "6px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                      ...(convSender === s
+                        ? { background: s === "me" ? "#e8edff" : "#f6f6f6", border: s === "me" ? "1px solid #c7d3ff" : "1px solid rgba(0,0,0,0.12)", color: s === "me" ? "#0147ff" : "#121a2e" }
+                        : { background: "none", border: "1px solid rgba(0,0,0,0.07)", color: "rgba(18,26,46,0.4)" }),
+                    }}>
                       {s === "me" ? "Moi" : prospect.name}
                     </button>
                   ))}
@@ -750,11 +969,7 @@ function ProspectCard({
                     rows={2}
                     style={{ ...inp, flex: 1, resize: "none" }}
                   />
-                  <button
-                    onClick={addConvMessage}
-                    disabled={!convInput.trim()}
-                    style={{ ...btnGrad, padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "center", opacity: convInput.trim() ? 1 : 0.5, flexShrink: 0 }}
-                  >
+                  <button onClick={addConvMessage} disabled={!convInput.trim()} style={{ ...btnGrad, padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "center", opacity: convInput.trim() ? 1 : 0.5, flexShrink: 0 }}>
                     <Plus size={14} />
                   </button>
                 </div>
@@ -772,6 +987,7 @@ function ProspectCard({
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LinkedInProspectionPage() {
   const [prospects, setProspects] = useState<LinkedInProspect[]>([]);
+  const [skeletons, setSkeletons] = useState<ProspectionSkeleton[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -784,6 +1000,7 @@ export default function LinkedInProspectionPage() {
     const savedLang = localStorage.getItem("linkedin_prospection_language");
     if (saved) { try { setProspects(JSON.parse(saved)); } catch { setProspects([]); } }
     if (savedLang) setLanguage(savedLang as "fr" | "en");
+    setSkeletons(loadSkeletons());
   }, []);
 
   const saveProspects = (updated: LinkedInProspect[]) => {
@@ -791,15 +1008,63 @@ export default function LinkedInProspectionPage() {
     localStorage.setItem("linkedin_prospects", JSON.stringify(updated));
   };
 
-  const handleSave = (p: LinkedInProspect) => saveProspects([p, ...prospects]);
+  const handleSkeletonsUpdate = (updated: ProspectionSkeleton[]) => {
+    setSkeletons(updated);
+    saveSkeletonsToStorage(updated);
+  };
+
+  const handleSave = (p: LinkedInProspect) => {
+    const updated = [p, ...prospects];
+    saveProspects(updated);
+
+    // Auto-analysis trigger
+    const s = loadLinkedInSettings();
+    if (s.prospectionAutoAnalysis) {
+      const sentCount = updated.filter((pr) => pr.status !== "draft").length;
+      if (sentCount > 0 && sentCount % s.prospectionAutoAnalysisEvery === 0) {
+        // Trigger skeleton creation in background (fire and forget)
+        fetch("/api/linkedin/create-skeletons", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prospects: updated.filter((pr) => pr.status !== "draft").map((pr) => ({
+              name: pr.name, actionType: pr.actionType, status: pr.status,
+              message: pr.customMessage || pr.generatedMessage,
+            })),
+            openrouterApiKey: s.openrouterApiKey || undefined,
+            bigModel: s.prospectionBigModel, bigPrompt: s.prospectionBigPrompt,
+          }),
+        }).then((r) => r.json()).then((data) => {
+          if (data.skeletons?.length > 0) {
+            const loaded = loadSkeletons();
+            const existingIds = new Set(loaded.map((sk: ProspectionSkeleton) => sk.id));
+            const newOnes = data.skeletons.filter((sk: ProspectionSkeleton) => !existingIds.has(sk.id));
+            if (newOnes.length > 0) handleSkeletonsUpdate([...loaded, ...newOnes]);
+          }
+        }).catch(() => {});
+      }
+    }
+  };
 
   const updateStatus = async (id: string, status: LinkedInProspect["status"]) => {
     const prospect = prospects.find((p) => p.id === id);
-    saveProspects(prospects.map((p) => {
+    const updated = prospects.map((p) => {
       if (p.id !== id) return p;
       return { ...p, status, sentAt: status === "sent" && !p.sentAt ? new Date().toISOString() : p.sentAt };
-    }));
+    });
+    saveProspects(updated);
     setStatusDropdown(null);
+
+    // Track skeleton success
+    if (prospect?.skeletonId && ["accepted", "replied", "conversation", "deal_closed"].includes(status)) {
+      const wasAlreadyPositive = ["accepted", "replied", "conversation", "deal_closed"].includes(prospect.status);
+      if (!wasAlreadyPositive) {
+        const updatedSkeletons = skeletons.map((sk) =>
+          sk.id === prospect.skeletonId ? { ...sk, timesSuccess: sk.timesSuccess + 1 } : sk
+        );
+        handleSkeletonsUpdate(updatedSkeletons);
+      }
+    }
+
     if (prospect?.leadId) {
       const leadStatus = PROSPECT_TO_LEAD_STATUS[status] ?? "contacted";
       try {
@@ -830,7 +1095,10 @@ export default function LinkedInProspectionPage() {
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jk }}>
-      <LeftPanel language={language} onLanguageChange={setLanguage} onSave={handleSave} />
+      <LeftPanel
+        language={language} onLanguageChange={setLanguage} onSave={handleSave}
+        skeletons={skeletons} onSkeletonsUpdate={handleSkeletonsUpdate} allProspects={prospects}
+      />
 
       {/* Right area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -853,71 +1121,55 @@ export default function LinkedInProspectionPage() {
               </div>
             ))}
 
-            {/* View toggle */}
             <div style={{ marginLeft: "auto", display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3 }}>
-              <button
-                onClick={() => setRightView("prospects")}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                  ...(rightView === "prospects"
-                    ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                    : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-                }}
-              >
+              <button onClick={() => setRightView("prospects")} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                ...(rightView === "prospects"
+                  ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                  : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
+              }}>
                 <MessageSquare size={13} />Prospects ({prospects.length})
               </button>
-              <button
-                onClick={() => setRightView("chat")}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                  ...(rightView === "chat"
-                    ? { background: "#fff", border: "none", color: "#0147ff", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                    : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-                }}
-              >
+              <button onClick={() => setRightView("chat")} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                ...(rightView === "chat"
+                  ? { background: "#fff", border: "none", color: "#0147ff", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                  : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
+              }}>
                 <Bot size={13} />Analyser avec l&apos;IA
               </button>
             </div>
 
             {stats.positive >= 3 && rightView === "prospects" && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#168b64", background: "#d1fae5", padding: "6px 12px", borderRadius: 9, border: "1px solid #86efac" }}>
-                <TrendingUp size={13} />
-                L&apos;IA apprend de vos {stats.sent} messages
+                <TrendingUp size={13} />L&apos;IA apprend de vos {stats.sent} messages
               </div>
             )}
           </div>
         </div>
 
-        {/* Prospects view */}
         {rightView === "prospects" && (
           <>
             <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "8px 24px", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setFilterStatus("all")}
-                  style={{
-                    padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
-                    ...(filterStatus === "all"
-                      ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
-                      : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
-                  }}
-                >
+                <button onClick={() => setFilterStatus("all")} style={{
+                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
+                  ...(filterStatus === "all"
+                    ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
+                    : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                }}>
                   Tous ({prospects.length})
                 </button>
                 {STATUS_VARIANTS.map((s) => {
                   const count = prospects.filter((p) => p.status === s).length;
                   if (count === 0) return null;
                   return (
-                    <button
-                      key={s}
-                      onClick={() => setFilterStatus(s)}
-                      style={{
-                        padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
-                        ...(filterStatus === s
-                          ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
-                          : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
-                      }}
-                    >
+                    <button key={s} onClick={() => setFilterStatus(s)} style={{
+                      padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
+                      ...(filterStatus === s
+                        ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
+                        : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
+                    }}>
                       {PROSPECT_STATUS_LABELS[s]} ({count})
                     </button>
                   );
@@ -939,8 +1191,7 @@ export default function LinkedInProspectionPage() {
               ) : (
                 filtered.map((prospect) => (
                   <ProspectCard
-                    key={prospect.id}
-                    prospect={prospect}
+                    key={prospect.id} prospect={prospect}
                     expanded={expandedId === prospect.id}
                     onToggle={() => setExpandedId(expandedId === prospect.id ? null : prospect.id)}
                     onStatusChange={(s) => updateStatus(prospect.id, s)}
@@ -958,7 +1209,6 @@ export default function LinkedInProspectionPage() {
           </>
         )}
 
-        {/* AI chat view */}
         {rightView === "chat" && <AIChatPanel prospects={prospects} />}
       </div>
     </div>

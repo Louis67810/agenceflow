@@ -47,6 +47,20 @@ export interface ConversationMessage {
   sentAt: string;
 }
 
+export interface ProspectionSkeleton {
+  id: string;
+  name: string;
+  description: string;
+  actionTypes: string[]; // ["liked"] | ["commented"] | ["visited_profile"] | multiple
+  structure: string;     // template with placeholders [NOM], [ACTION], [CONTEXTE], [QUESTION]
+  promptFragment: string; // injected into generate-prospection system prompt
+  timesUsed: number;
+  timesSuccess: number;
+  createdAt: string;
+  createdBy: "ai" | "manual";
+  isActive: boolean;
+}
+
 export interface LinkedInProspect {
   id: string;
   leadId?: string; // ID dans la table centrale leads (Supabase)
@@ -57,6 +71,7 @@ export interface LinkedInProspect {
   generatedMessage: string;
   customMessage?: string;
   isManual?: boolean; // true if the message was written manually
+  skeletonId?: string; // skeleton used when generating this message
   status:
     | "draft"
     | "sent"

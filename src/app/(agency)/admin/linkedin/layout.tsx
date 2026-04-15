@@ -1,25 +1,55 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, X, Eye, EyeOff, Check, ChevronDown } from "lucide-react";
+import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight } from "lucide-react";
 
 export interface LinkedInSettings {
   openrouterApiKey: string;
   model: string;
   carouselTemplate: string;
   language: string;
+  // Prospection IA
+  prospectionBigModel: string;
+  prospectionSmallModel: string;
+  prospectionBigPrompt: string;
+  prospectionSmallPrompt: string;
+  prospectionAutoAnalysis: boolean;
+  prospectionAutoAnalysisEvery: number;
 }
 
-const OPENROUTER_MODELS = [
-  { id: "openai/gpt-4o-mini", label: "GPT-4o Mini — rapide & économique" },
-  { id: "openai/gpt-4o", label: "GPT-4o — meilleure qualité" },
-  { id: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet — excellent rédacteur" },
-  { id: "anthropic/claude-3-haiku", label: "Claude 3 Haiku — ultra rapide" },
-  { id: "google/gemini-flash-1.5", label: "Gemini Flash 1.5 — gratuit (tier)" },
-  { id: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B — open source" },
-  { id: "mistralai/mistral-large", label: "Mistral Large" },
-  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat — économique" },
+export const OPENROUTER_MODELS = [
+  // ── Anthropic ──
+  { id: "anthropic/claude-sonnet-4-6",          label: "Claude Sonnet 4.6 ⭐ — meilleur rédacteur" },
+  { id: "anthropic/claude-opus-4-6",            label: "Claude Opus 4.6 — le plus intelligent" },
+  { id: "anthropic/claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5 — ultra rapide & léger" },
+  // ── OpenAI ──
+  { id: "openai/gpt-4o",                        label: "GPT-4o — excellent toutes tâches" },
+  { id: "openai/o4-mini",                       label: "o4-mini — raisonnement rapide" },
+  { id: "openai/o3",                            label: "o3 — raisonnement avancé" },
+  // ── Google ──
+  { id: "google/gemini-2.5-pro-preview",        label: "Gemini 2.5 Pro — très long contexte" },
+  { id: "google/gemini-2.5-flash-preview",      label: "Gemini 2.5 Flash — rapide & capable" },
+  { id: "google/gemini-2.0-flash-001",          label: "Gemini 2.0 Flash — économique" },
+  // ── Meta ──
+  { id: "meta-llama/llama-4-maverick",          label: "Llama 4 Maverick — open source" },
+  // ── Mistral ──
+  { id: "mistralai/mistral-large-2411",         label: "Mistral Large 2411 — très bon en FR" },
+  // ── DeepSeek ──
+  { id: "deepseek/deepseek-chat-v3-0324",       label: "DeepSeek V3 — très économique" },
 ];
+
+// Subset for Big AI (heavy analysis)
+export const MODELS_BIG = OPENROUTER_MODELS.filter(m =>
+  ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-6", "openai/gpt-4o",
+   "openai/o3", "google/gemini-2.5-pro-preview", "meta-llama/llama-4-maverick"].includes(m.id)
+);
+
+// Subset for Small AI (fast generation)
+export const MODELS_SMALL = OPENROUTER_MODELS.filter(m =>
+  ["anthropic/claude-haiku-4-5-20251001", "openai/o4-mini", "google/gemini-2.5-flash-preview",
+   "google/gemini-2.0-flash-001", "deepseek/deepseek-chat-v3-0324",
+   "mistralai/mistral-large-2411", "anthropic/claude-sonnet-4-6"].includes(m.id)
+);
 
 export const DEFAULT_CAROUSEL_TEMPLATE = `Pour chaque slide, génère exactement ce format :
 
@@ -34,11 +64,38 @@ Slide 1 = accroche / problématique principale
 Slides intermédiaires = une idée clé par slide
 Dernier slide = résumé + appel à l'action fort`;
 
+export const DEFAULT_BIG_PROMPT = `Analyse les données de prospection LinkedIn et crée 3 à 5 squelettes de messages optimisés.
+
+Un squelette définit LA STRUCTURE d'un message (ordre des éléments, ton, longueur), pas les mots exacts. Il doit capturer ce qui rend les messages performants dans les données.
+
+Pour chaque squelette, génère un objet JSON avec :
+- "name": nom court et mémorable (ex: "Compliment → Problème → Question directe")
+- "description": pourquoi ce squelette fonctionne (1-2 phrases)
+- "actionTypes": tableau parmi ["liked", "commented", "visited_profile"]
+- "structure": le squelette avec étapes numérotées et placeholders [NOM], [DETAIL_CONTEXTE], [QUESTION]
+- "promptFragment": instruction courte (2-4 phrases) à injecter dans le prompt de génération pour guider l'IA dans la personnalisation
+
+Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown ni texte autour.`;
+
+export const DEFAULT_SMALL_PROMPT = `Tu es un expert en prospection LinkedIn. Génère un message personnalisé, authentique et court (3-5 phrases max).
+Règles absolues :
+- Commence par le prénom du prospect
+- Ne pitche JAMAIS dans le premier message
+- Termine par une seule question ouverte simple
+- Sonne comme un humain, pas un template
+- Si un squelette est fourni, respecte sa structure tout en personnalisant chaque élément`;
+
 export const DEFAULT_SETTINGS: LinkedInSettings = {
   openrouterApiKey: "",
-  model: "openai/gpt-4o-mini",
+  model: "anthropic/claude-sonnet-4-6",
   carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE,
   language: "fr",
+  prospectionBigModel: "anthropic/claude-sonnet-4-6",
+  prospectionSmallModel: "google/gemini-2.0-flash-001",
+  prospectionBigPrompt: DEFAULT_BIG_PROMPT,
+  prospectionSmallPrompt: DEFAULT_SMALL_PROMPT,
+  prospectionAutoAnalysis: false,
+  prospectionAutoAnalysisEvery: 10,
 };
 
 export const SETTINGS_KEY = "linkedin_settings";
@@ -56,6 +113,8 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   const [settings, setSettings] = useState<LinkedInSettings>(DEFAULT_SETTINGS);
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showBigPrompt, setShowBigPrompt] = useState(false);
+  const [showSmallPrompt, setShowSmallPrompt] = useState(false);
 
   useEffect(() => {
     setSettings(loadLinkedInSettings());
@@ -68,21 +127,18 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   };
 
   const handleClose = () => {
-    // Reset to saved state
     setSettings(loadLinkedInSettings());
     setShowSettings(false);
     setSaved(false);
   };
 
-  const resetCarouselTemplate = () => {
+  const resetCarouselTemplate = () =>
     setSettings((s) => ({ ...s, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }));
-  };
 
   const hasApiKey = settings.openrouterApiKey.trim().length > 0;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      {/* Slim header — logo + settings button only (nav is in sidebar) */}
       <div className="bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center px-6 py-3">
           <div className="flex items-center gap-2.5">
@@ -105,10 +161,8 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
         </div>
       </div>
 
-      {/* Page content */}
       <div className="flex-1 overflow-hidden">{children}</div>
 
-      {/* Settings modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
@@ -116,18 +170,16 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
               <div>
                 <h2 className="font-semibold text-gray-900 text-lg">Paramètres LinkedIn IA</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Configurez votre connexion OpenRouter et vos préférences</p>
+                <p className="text-xs text-gray-400 mt-0.5">Connexion OpenRouter, modèles et configuration prospection</p>
               </div>
-              <button
-                onClick={handleClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
+              <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* OpenRouter section */}
+
+              {/* ── OpenRouter ── */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
                   <div className="w-5 h-5 bg-gray-900 rounded flex items-center justify-center">
@@ -135,83 +187,57 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                   </div>
                   Connexion OpenRouter
                 </h3>
-
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      Clé API OpenRouter
-                    </label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Clé API OpenRouter</label>
                     <div className="relative">
                       <input
                         type={showKey ? "text" : "password"}
                         value={settings.openrouterApiKey}
-                        onChange={(e) =>
-                          setSettings({ ...settings, openrouterApiKey: e.target.value })
-                        }
+                        onChange={(e) => setSettings({ ...settings, openrouterApiKey: e.target.value })}
                         placeholder="sk-or-v1-..."
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] font-mono"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowKey((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
+                      <button type="button" onClick={() => setShowKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      Clé stockée localement dans votre navigateur. Obtenez-la sur{" "}
-                      <span className="text-[#0A66C2]">openrouter.ai/keys</span>
+                      Clé stockée localement. Obtenez-la sur{" "}
+                      <span className="text-[#0A66C2] font-medium">openrouter.ai/keys</span>
                     </p>
                     {!hasApiKey && (
                       <p className="text-xs text-amber-600 mt-1 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                        Sans clé personnelle, l'IA utilisera la clé serveur si configurée.
+                        Sans clé personnelle, l&apos;IA utilisera la clé serveur si configurée.
                       </p>
                     )}
                   </div>
 
+                  {/* Modèle général */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      Modèle IA
-                    </label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèle général (posts, idées, copywriting)</label>
                     <div className="relative">
                       <select
                         value={settings.model}
-                        onChange={(e) =>
-                          setSettings({ ...settings, model: e.target.value })
-                        }
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] pr-8"
+                        onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
                       >
                         {OPENROUTER_MODELS.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.label}
-                          </option>
+                          <option key={m.id} value={m.id}>{m.label}</option>
                         ))}
                       </select>
-                      <ChevronDown
-                        size={14}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                      />
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Modèle utilisé pour générer tous les contenus LinkedIn
-                    </p>
                   </div>
 
+                  {/* Langue */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      Langue par défaut
-                    </label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Langue par défaut</label>
                     <div className="flex gap-2">
-                      {[
-                        { value: "fr", label: "Français" },
-                        { value: "en", label: "English" },
-                      ].map((lang) => (
+                      {[{ value: "fr", label: "Français" }, { value: "en", label: "English" }].map((lang) => (
                         <button
                           key={lang.value}
-                          onClick={() =>
-                            setSettings({ ...settings, language: lang.value })
-                          }
+                          onClick={() => setSettings({ ...settings, language: lang.value })}
                           className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                             settings.language === lang.value
                               ? "bg-[#0A66C2] border-[#0A66C2] text-white"
@@ -226,69 +252,174 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                 </div>
               </div>
 
-              {/* Carousel template section */}
+              {/* ── Prospection IA ── */}
+              <div className="border-t border-gray-100 pt-6">
+                <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                  <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
+                    <span className="text-white text-[9px] font-bold">DM</span>
+                  </div>
+                  Prospection IA
+                </h3>
+                <p className="text-xs text-gray-400 mb-4">Deux IA distinctes : la Big AI analyse et crée des squelettes, la Small AI génère les messages personnalisés.</p>
+
+                <div className="space-y-4">
+                  {/* Big AI model */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                      🧠 Big AI — Analyse & création de squelettes
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={settings.prospectionBigModel}
+                        onChange={(e) => setSettings({ ...settings, prospectionBigModel: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
+                      >
+                        {MODELS_BIG.map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Utilisée pour créer et améliorer les squelettes de messages à partir de vos données.</p>
+                  </div>
+
+                  {/* Big AI prompt */}
+                  <div>
+                    <button
+                      onClick={() => setShowBigPrompt((v) => !v)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {showBigPrompt ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      Prompt Big AI (avancé)
+                    </button>
+                    {showBigPrompt && (
+                      <div className="mt-2">
+                        <textarea
+                          value={settings.prospectionBigPrompt}
+                          onChange={(e) => setSettings({ ...settings, prospectionBigPrompt: e.target.value })}
+                          rows={6}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none text-gray-700 leading-relaxed"
+                        />
+                        <button
+                          onClick={() => setSettings((s) => ({ ...s, prospectionBigPrompt: DEFAULT_BIG_PROMPT }))}
+                          className="text-xs text-gray-400 hover:text-gray-600 mt-1"
+                        >
+                          Réinitialiser
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Small AI model */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                      ⚡ Small AI — Génération des messages
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={settings.prospectionSmallModel}
+                        onChange={(e) => setSettings({ ...settings, prospectionSmallModel: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
+                      >
+                        {MODELS_SMALL.map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Utilisée pour chaque génération de message — doit être rapide et économique.</p>
+                  </div>
+
+                  {/* Small AI prompt */}
+                  <div>
+                    <button
+                      onClick={() => setShowSmallPrompt((v) => !v)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {showSmallPrompt ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      Prompt Small AI (avancé)
+                    </button>
+                    {showSmallPrompt && (
+                      <div className="mt-2">
+                        <textarea
+                          value={settings.prospectionSmallPrompt}
+                          onChange={(e) => setSettings({ ...settings, prospectionSmallPrompt: e.target.value })}
+                          rows={5}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none text-gray-700 leading-relaxed"
+                        />
+                        <button
+                          onClick={() => setSettings((s) => ({ ...s, prospectionSmallPrompt: DEFAULT_SMALL_PROMPT }))}
+                          className="text-xs text-gray-400 hover:text-gray-600 mt-1"
+                        >
+                          Réinitialiser
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-analysis */}
+                  <div className="flex items-center justify-between py-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-xs font-medium text-gray-700">Auto-analyse des squelettes</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Régénère automatiquement les squelettes tous les N prospects envoyés</p>
+                    </div>
+                    <button
+                      onClick={() => setSettings((s) => ({ ...s, prospectionAutoAnalysis: !s.prospectionAutoAnalysis }))}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${settings.prospectionAutoAnalysis ? "bg-[#0A66C2]" : "bg-gray-200"}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.prospectionAutoAnalysis ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                  {settings.prospectionAutoAnalysis && (
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-600">Analyser tous les</label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={100}
+                        step={5}
+                        value={settings.prospectionAutoAnalysisEvery}
+                        onChange={(e) => setSettings((s) => ({ ...s, prospectionAutoAnalysisEvery: Math.max(5, parseInt(e.target.value) || 10) }))}
+                        className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
+                      />
+                      <label className="text-xs text-gray-600">prospects envoyés</label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Template carrousel ── */}
               <div className="border-t border-gray-100 pt-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-800">
-                    Template de carrousel
-                  </h3>
-                  <button
-                    onClick={resetCarouselTemplate}
-                    className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-                  >
+                  <h3 className="text-sm font-semibold text-gray-800">Template de carrousel</h3>
+                  <button onClick={resetCarouselTemplate} className="text-xs text-gray-400 hover:text-gray-600">
                     Réinitialiser
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
-                  Ces instructions définissent la structure de chaque slide généré. L'IA les suivra pour formater le contenu de vos carrousels Figma.
+                  Ces instructions définissent la structure de chaque slide généré.
                 </p>
                 <textarea
                   value={settings.carouselTemplate}
-                  onChange={(e) =>
-                    setSettings({ ...settings, carouselTemplate: e.target.value })
-                  }
-                  rows={12}
+                  onChange={(e) => setSettings({ ...settings, carouselTemplate: e.target.value })}
+                  rows={10}
                   className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] resize-none text-gray-700 leading-relaxed"
                 />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="text-xs text-gray-400">Variables disponibles :</span>
-                  {["TITRE", "SOUS-TITRE", "TEXTE", "VISUEL", "CTA", "EXEMPLE", "STAT"].map(
-                    (v) => (
-                      <span
-                        key={v}
-                        className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono"
-                      >
-                        {v}:
-                      </span>
-                    )
-                  )}
-                </div>
               </div>
             </div>
 
             {/* Footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 shrink-0">
-              <button
-                onClick={handleClose}
-                className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-              >
+              <button onClick={handleClose} className="text-sm text-gray-500 hover:text-gray-700">
                 Annuler
               </button>
               <button
                 onClick={handleSave}
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  saved
-                    ? "bg-green-500 text-white"
-                    : "bg-[#0A66C2] text-white hover:bg-[#0057a3]"
+                  saved ? "bg-green-500 text-white" : "bg-[#0A66C2] text-white hover:bg-[#0057a3]"
                 }`}
               >
-                {saved ? (
-                  <>
-                    <Check size={15} /> Enregistré !
-                  </>
-                ) : (
-                  "Enregistrer"
-                )}
+                {saved ? <><Check size={15} /> Enregistré !</> : "Enregistrer"}
               </button>
             </div>
           </div>
