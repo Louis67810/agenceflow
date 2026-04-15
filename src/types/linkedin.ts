@@ -40,6 +40,13 @@ export interface LinkedInIdea {
   usedAt?: string;
 }
 
+export interface ConversationMessage {
+  id: string;
+  sender: "me" | "them";
+  content: string;
+  sentAt: string;
+}
+
 export interface LinkedInProspect {
   id: string;
   leadId?: string; // ID dans la table centrale leads (Supabase)
@@ -49,6 +56,7 @@ export interface LinkedInProspect {
   context?: string;
   generatedMessage: string;
   customMessage?: string;
+  isManual?: boolean; // true if the message was written manually
   status:
     | "draft"
     | "sent"
@@ -61,6 +69,7 @@ export interface LinkedInProspect {
   sentAt?: string;
   createdAt: string;
   notes?: string;
+  conversation?: ConversationMessage[];
 }
 
 // Mapping statut LinkedIn → statut CRM leads
