@@ -117,6 +117,49 @@ export function loadLinkedInSettings(): LinkedInSettings {
   return DEFAULT_SETTINGS;
 }
 
+function InlineToggle({
+  checked,
+  onClick,
+}: {
+  checked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={checked}
+      style={{
+        position: "relative",
+        width: 40,
+        height: 20,
+        borderRadius: 999,
+        background: checked ? "#0A66C2" : "#e5e7eb",
+        border: "none",
+        cursor: "pointer",
+        transition: "background-color 0.2s ease",
+        padding: 0,
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 2,
+          left: checked ? 22 : 2,
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          background: "#fff",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          transition: "left 0.2s ease",
+        }}
+      />
+    </button>
+  );
+}
+
 export default function LinkedInLayout({ children }: { children: React.ReactNode }) {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<LinkedInSettings>(DEFAULT_SETTINGS);
@@ -372,12 +415,10 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                       <p className="text-xs font-medium text-gray-700">Auto-analyse des squelettes</p>
                       <p className="text-xs text-gray-400 mt-0.5">Régénère automatiquement les squelettes tous les N prospects envoyés</p>
                     </div>
-                    <button
+                    <InlineToggle
+                      checked={settings.prospectionAutoAnalysis}
                       onClick={() => setSettings((s) => ({ ...s, prospectionAutoAnalysis: !s.prospectionAutoAnalysis }))}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${settings.prospectionAutoAnalysis ? "bg-[#0A66C2]" : "bg-gray-200"}`}
-                    >
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.prospectionAutoAnalysis ? "translate-x-5" : "translate-x-0.5"}`} />
-                    </button>
+                    />
                   </div>
                   {settings.prospectionAutoAnalysis && (
                     <div className="flex items-center gap-3">
@@ -446,12 +487,10 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                       <p className="text-xs font-medium text-gray-700">Synchronisation automatique</p>
                       <p className="text-xs text-gray-400 mt-0.5">Synchronise à chaque changement de statut</p>
                     </div>
-                    <button
+                    <InlineToggle
+                      checked={settings.airtableAutoSync}
                       onClick={() => setSettings((s) => ({ ...s, airtableAutoSync: !s.airtableAutoSync }))}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${settings.airtableAutoSync ? "bg-[#0A66C2]" : "bg-gray-200"}`}
-                    >
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.airtableAutoSync ? "translate-x-5" : "translate-x-0.5"}`} />
-                    </button>
+                    />
                   </div>
                 </div>
               </div>

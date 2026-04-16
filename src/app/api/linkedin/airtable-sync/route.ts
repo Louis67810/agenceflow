@@ -41,6 +41,18 @@ interface AirtableField {
   Manuel: boolean;
 }
 
+function formatAirtableError(errText: string, tableName: string, baseId: string) {
+  if (errText.includes('"error":"NOT_FOUND"') || errText.includes('"error": "NOT_FOUND"')) {
+    return `Airtable introuvable. Vérifiez le Base ID (${baseId}), le nom exact de la table ("${tableName}") et que le token a bien accès à cette base.`;
+  }
+
+  if (errText.includes("INVALID_PERMISSIONS")) {
+    return "Permissions Airtable insuffisantes. Vérifiez que le token a les droits data.records:read et data.records:write sur cette base.";
+  }
+
+  return `Airtable API: ${errText}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AirtableSyncRequest;
@@ -61,7 +73,7 @@ export async function POST(req: NextRequest) {
         const remoteRes = await fetch(`${baseUrl}?fields[]=prospect_id`, { headers });
         if (!remoteRes.ok) {
           const errText = await remoteRes.text();
-          return NextResponse.json({ error: `Airtable API: ${errText}` }, { status: 500 });
+          return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
         }
 
         const remoteData = await remoteRes.json();
@@ -77,7 +89,7 @@ export async function POST(req: NextRequest) {
           const deleteRes = await fetch(deleteUrl, { method: "DELETE", headers });
           if (!deleteRes.ok) {
             const errText = await deleteRes.text();
-            return NextResponse.json({ error: `Airtable API: ${errText}` }, { status: 500 });
+            return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
           }
           deleted += batchIds.length;
         }
@@ -140,7 +152,7 @@ export async function POST(req: NextRequest) {
             error: `Erreur Airtable: ${errText}. Vérifiez que la table contient un champ "prospect_id".`,
           }, { status: 400 });
         }
-        return NextResponse.json({ error: `Airtable API: ${errText}` }, { status: 500 });
+        return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
       }
 
       const data = await res.json();
@@ -153,7 +165,7 @@ export async function POST(req: NextRequest) {
       const remoteRes = await fetch(`${baseUrl}?fields[]=prospect_id`, { headers });
       if (!remoteRes.ok) {
         const errText = await remoteRes.text();
-        return NextResponse.json({ error: `Airtable API: ${errText}` }, { status: 500 });
+        return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
       }
 
       const remoteData = await remoteRes.json();
@@ -171,7 +183,7 @@ export async function POST(req: NextRequest) {
         const deleteRes = await fetch(deleteUrl, { method: "DELETE", headers });
         if (!deleteRes.ok) {
           const errText = await deleteRes.text();
-          return NextResponse.json({ error: `Airtable API: ${errText}` }, { status: 500 });
+          return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
         }
         deleted += batchIds.length;
       }
