@@ -5,7 +5,7 @@ import {
   Plus, Sparkles, RefreshCw, Copy, Check, ChevronDown, X,
   ExternalLink, TrendingUp, MessageSquare, ThumbsUp, Eye,
   PenLine, Bot, Send, User, ChevronRight, MessagesSquare,
-  Layers, Trash2, Globe,
+  Layers, Trash2, Globe, Minus, Database,
 } from "lucide-react";
 import {
   LinkedInProspect, ConversationMessage, ProspectionSkeleton,
@@ -14,6 +14,7 @@ import {
 import { loadLinkedInSettings } from "../layout";
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+const DRAFT_KEY = "linkedin_prospection_draft";
 
 const inp = {
   width: "100%", fontSize: 13, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9,
@@ -21,16 +22,42 @@ const inp = {
   boxSizing: "border-box" as const, fontFamily: '"Plus Jakarta Sans", sans-serif',
 };
 
+// Small gradient button (for inline / secondary actions)
 const btnGrad = {
   background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
   border: "1px solid #2f4d9d", color: "#fff", cursor: "pointer", borderRadius: 9,
   fontFamily: '"Plus Jakarta Sans", sans-serif',
 };
 
+function getLoginButtonStyle(disabled = false, loading = false) {
+  return {
+    width: "100%",
+    padding: "15px 20px",
+    background: loading
+      ? "linear-gradient(121deg, rgb(40,80,200) 9.99%, rgb(0,45,180) 82.49%)"
+      : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+    color: "#fff",
+    border: "1px solid #2f4d9d",
+    borderRadius: 12,
+    fontSize: 14,
+    fontWeight: 600,
+    letterSpacing: "-0.45px",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    boxShadow: "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.2)",
+    fontFamily: '"Plus Jakarta Sans", sans-serif',
+  } as const;
+}
+
 const ACTION_OPTIONS: { value: LinkedInProspect["actionType"]; label: string; icon: React.ReactNode }[] = [
   { value: "liked",           label: "A liké votre post",      icon: <ThumbsUp size={14} /> },
   { value: "commented",       label: "A commenté votre post",  icon: <MessageSquare size={14} /> },
   { value: "visited_profile", label: "A visité votre profil",  icon: <Eye size={14} /> },
+  { value: "none",            label: "Aucune / Autre",         icon: <Minus size={14} /> },
 ];
 
 const STATUS_VARIANTS: LinkedInProspect["status"][] = [
@@ -119,6 +146,11 @@ function LeftPanel({
   const [copied, setCopied] = useState(false);
   const [showSkeletonPicker, setShowSkeletonPicker] = useState(false);
   const [selectedSkeleton, setSelectedSkeleton] = useState<ProspectionSkeleton | null>(null);
+  const [refiningGenerated, setRefiningGenerated] = useState(false);
+  const [refiningManual, setRefiningManual] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const draftLoadedRef = useRef(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
   const [form, setForm] = useState({
     name: "", profileUrl: "", siteUrl: "",
@@ -134,6 +166,58 @@ function LeftPanel({
     const best = pickBestSkeleton(skeletons, form.actionType);
     setSelectedSkeleton(best);
   }, [form.actionType, skeletons]);
+
+  useEffect(() => {
+    if (draftLoadedRef.current) return;
+    try {
+      const savedDraft = localStorage.getItem(DRAFT_KEY);
+      if (!savedDraft) return;
+      const draft = JSON.parse(savedDraft) as {
+        mode?: "ai" | "manual";
+        form?: typeof form;
+        generatedMessage?: string;
+        manualMessage?: string;
+        explanation?: string;
+        selectedSkeletonId?: string | null;
+      };
+      if (draft.mode) setMode(draft.mode);
+      if (draft.form) setForm((prev) => ({ ...prev, ...draft.form }));
+      if (typeof draft.generatedMessage === "string") setGeneratedMessage(draft.generatedMessage);
+      if (typeof draft.manualMessage === "string") setManualMessage(draft.manualMessage);
+      if (typeof draft.explanation === "string") setExplanation(draft.explanation);
+      if (draft.selectedSkeletonId) {
+        const matchingSkeleton = skeletons.find((sk) => sk.id === draft.selectedSkeletonId);
+        if (matchingSkeleton) setSelectedSkeleton(matchingSkeleton);
+      }
+    } catch {}
+    draftLoadedRef.current = true;
+    setDraftHydrated(true);
+  }, [skeletons]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        mode,
+        form,
+        generatedMessage,
+        manualMessage,
+        explanation,
+        selectedSkeletonId: selectedSkeleton?.id ?? null,
+      }));
+      setDraftSavedAt(new Date().toISOString());
+    } catch {}
+  }, [draftHydrated, mode, form, generatedMessage, manualMessage, explanation, selectedSkeleton]);
+
+  const resetDraft = () => {
+    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
+    setGeneratedMessage("");
+    setManualMessage("");
+    setExplanation("");
+    setSelectedSkeleton(pickBestSkeleton(skeletons, "liked"));
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    setDraftSavedAt(null);
+  };
 
   const getLearningData = () => {
     return allProspects
@@ -166,11 +250,52 @@ function LeftPanel({
     finally { setGenerating(false); }
   };
 
+  const handleRefineGenerated = async () => {
+    if (!generatedMessage.trim()) return;
+    setRefiningGenerated(true);
+    try {
+      const s = loadLinkedInSettings();
+      const res = await fetch("/api/linkedin/refine-message", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: generatedMessage, name: form.name || undefined, context: form.context || undefined,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.message) setGeneratedMessage(data.message);
+    } catch (e) { console.error(e); }
+    finally { setRefiningGenerated(false); }
+  };
+
+  const handleRefineManual = async () => {
+    if (!manualMessage.trim()) return;
+    setRefiningManual(true);
+    try {
+      const s = loadLinkedInSettings();
+      const res = await fetch("/api/linkedin/refine-message", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: manualMessage, name: form.name || undefined, context: form.context || undefined,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.message) setManualMessage(data.message);
+    } catch (e) { console.error(e); }
+    finally { setRefiningManual(false); }
+  };
+
   const buildProspect = (message: string, isManual: boolean): LinkedInProspect | null => {
     if (!message.trim() || !form.name.trim()) return null;
     return {
       id: `prospect_${Date.now()}`,
       name: form.name, profileUrl: form.profileUrl || undefined,
+      siteUrl: form.siteUrl || undefined,
       actionType: form.actionType, context: form.context || undefined,
       generatedMessage: message, isManual,
       skeletonId: !isManual && selectedSkeleton ? selectedSkeleton.id : undefined,
@@ -207,16 +332,14 @@ function LeftPanel({
     } catch {}
 
     onSave(prospect);
-    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
-    setGeneratedMessage(""); setExplanation("");
+    resetDraft();
   };
 
   const handleSaveManual = () => {
     const prospect = buildProspect(manualMessage, true);
     if (!prospect) return;
     onSave(prospect);
-    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
-    setManualMessage("");
+    resetDraft();
   };
 
   const handleCreateSkeletons = async () => {
@@ -238,7 +361,6 @@ function LeftPanel({
       });
       const data = await res.json();
       if (data.skeletons?.length > 0) {
-        // Merge with existing (keep existing ones, add new ones)
         const existingIds = new Set(skeletons.map((sk) => sk.id));
         const newOnes = data.skeletons.filter((sk: ProspectionSkeleton) => !existingIds.has(sk.id));
         onSkeletonsUpdate([...skeletons, ...newOnes]);
@@ -267,14 +389,21 @@ function LeftPanel({
       <div style={{ padding: "14px 20px 0", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0, letterSpacing: "-0.3px" }}>Nouveau prospect</h2>
-          <select
-            value={language}
-            onChange={(e) => { onLanguageChange(e.target.value as "fr" | "en"); localStorage.setItem("linkedin_prospection_language", e.target.value); }}
-            style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, padding: "4px 8px", fontSize: 12, color: "#121a2e", background: "#f6f6f6", outline: "none", ...jk }}
-          >
-            <option value="fr">FR</option>
-            <option value="en">EN</option>
-          </select>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {draftSavedAt && (
+              <span style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", whiteSpace: "nowrap" }}>
+                Auto-save
+              </span>
+            )}
+            <select
+              value={language}
+              onChange={(e) => { onLanguageChange(e.target.value as "fr" | "en"); localStorage.setItem("linkedin_prospection_language", e.target.value); }}
+              style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, padding: "4px 8px", fontSize: 12, color: "#121a2e", background: "#f6f6f6", outline: "none", ...jk }}
+            >
+              <option value="fr">FR</option>
+              <option value="en">EN</option>
+            </select>
+          </div>
         </div>
 
         {/* Mode tabs */}
@@ -324,10 +453,17 @@ function LeftPanel({
         </div>
 
         <div>
-          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
-            <Globe size={12} />
-            Site web du prospect <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span>
-          </label>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>
+              <Globe size={12} />
+              Site web du prospect <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span>
+            </label>
+            {form.siteUrl && (
+              <a href={form.siteUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#0147ff", textDecoration: "none", fontWeight: 600, ...jk }}>
+                <ExternalLink size={11} />Ouvrir
+              </a>
+            )}
+          </div>
           <input type="text" value={form.siteUrl} onChange={(e) => setForm({ ...form, siteUrl: e.target.value })} placeholder="https://example.com" style={inp} />
         </div>
 
@@ -402,7 +538,7 @@ function LeftPanel({
             <button
               onClick={handleGenerate}
               disabled={generating || !form.name.trim()}
-              style={{ ...btnGrad, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px 16px", fontSize: 13, fontWeight: 600, opacity: generating || !form.name.trim() ? 0.5 : 1 }}
+              style={getLoginButtonStyle(generating || !form.name.trim(), generating)}
             >
               {generating ? <RefreshCw size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={15} />}
               {generating ? "Génération..." : "Générer le message"}
@@ -412,12 +548,20 @@ function LeftPanel({
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {explanation && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>{explanation}</p>}
                 <textarea value={generatedMessage} onChange={(e) => setGeneratedMessage(e.target.value)} rows={6} style={{ ...inp, resize: "none" }} />
+                <button
+                  onClick={handleRefineGenerated}
+                  disabled={refiningGenerated || !generatedMessage.trim()}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningGenerated ? "not-allowed" : "pointer", opacity: refiningGenerated ? 0.6 : 1, ...jk }}
+                >
+                  {refiningGenerated ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
+                  {refiningGenerated ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
+                </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => copyMsg(generatedMessage)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                     {copied ? <Check size={13} /> : <Copy size={13} />}
                     {copied ? "Copié !" : "Copier"}
                   </button>
-                  <button onClick={handleSaveAI} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "#121a2e", border: "1px solid rgba(0,0,0,0.2)", color: "#fff", padding: "8px", borderRadius: 9, cursor: "pointer", ...jk }}>
+                  <button onClick={handleSaveAI} style={{ ...getLoginButtonStyle(false, false), flex: 1, padding: "15px 16px" }}>
                     <Plus size={13} />Sauvegarder
                   </button>
                 </div>
@@ -442,6 +586,14 @@ function LeftPanel({
                 {manualMessage.length} caractères · {manualMessage.split(/\s+/).filter(Boolean).length} mots
               </p>
             </div>
+            <button
+              onClick={handleRefineManual}
+              disabled={refiningManual || !manualMessage.trim()}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningManual ? "not-allowed" : "pointer", opacity: refiningManual ? 0.6 : 1, ...jk }}
+            >
+              {refiningManual ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
+              {refiningManual ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
+            </button>
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => { if (manualMessage) copyMsg(manualMessage); }}
@@ -454,7 +606,7 @@ function LeftPanel({
               <button
                 onClick={handleSaveManual}
                 disabled={!canSaveManual}
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, ...btnGrad, padding: "9px", opacity: canSaveManual ? 1 : 0.5, cursor: canSaveManual ? "pointer" : "not-allowed" }}
+                style={{ ...getLoginButtonStyle(!canSaveManual, false), flex: 1, padding: "15px 16px" }}
               >
                 <Plus size={13} />Sauvegarder
               </button>
@@ -472,12 +624,7 @@ function LeftPanel({
               onClick={handleCreateSkeletons}
               disabled={creatingSkeletons || sentCount < 3}
               title={sentCount < 3 ? "Il faut au moins 3 prospects envoyés" : "Générer des squelettes via Big AI"}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600,
-                ...btnGrad, padding: "5px 10px",
-                opacity: creatingSkeletons || sentCount < 3 ? 0.5 : 1,
-                cursor: creatingSkeletons || sentCount < 3 ? "not-allowed" : "pointer",
-              }}
+              style={{ ...getLoginButtonStyle(creatingSkeletons || sentCount < 3, creatingSkeletons), width: "auto", padding: "10px 14px", fontSize: 12 }}
             >
               {creatingSkeletons
                 ? <RefreshCw size={11} style={{ animation: "spin 1s linear infinite" }} />
@@ -702,6 +849,8 @@ function ProspectCard({
   const [generatingReply, setGeneratingReply] = useState(false);
   const [generatedReply, setGeneratedReply] = useState("");
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [refiningMsg, setRefiningMsg] = useState(false);
+  const [refiningConv, setRefiningConv] = useState(false);
 
   const displayMessage = prospect.customMessage || prospect.generatedMessage;
   const ss = STATUS_STYLES[prospect.status] ?? STATUS_STYLES.draft;
@@ -735,7 +884,7 @@ function ProspectCard({
           name: prospect.name, actionType: prospect.actionType,
           context: prospect.context, conversationHistory: history,
           mode: "reply",
-          openrouterApiKey: s.openrouterApiKey || undefined,
+          openrouterApiKey: loadLinkedInSettings().openrouterApiKey || undefined,
           model: s.prospectionSmallModel || s.model,
           smallPrompt: s.prospectionSmallPrompt || undefined,
         }),
@@ -746,6 +895,46 @@ function ProspectCard({
     finally { setGeneratingReply(false); }
   };
 
+  const handleRefineMsg = async () => {
+    if (!displayMessage.trim()) return;
+    setRefiningMsg(true);
+    try {
+      const s = loadLinkedInSettings();
+      const res = await fetch("/api/linkedin/refine-message", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: displayMessage, name: prospect.name, context: prospect.context,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.message) onMessageChange(data.message);
+    } catch (e) { console.error(e); }
+    finally { setRefiningMsg(false); }
+  };
+
+  const handleRefineConv = async () => {
+    if (!convInput.trim()) return;
+    setRefiningConv(true);
+    try {
+      const s = loadLinkedInSettings();
+      const res = await fetch("/api/linkedin/refine-message", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: convInput, name: prospect.name, context: prospect.context,
+          openrouterApiKey: s.openrouterApiKey || undefined,
+          model: s.prospectionSmallModel || s.model,
+          smallPrompt: s.prospectionSmallPrompt || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.message) setConvInput(data.message);
+    } catch (e) { console.error(e); }
+    finally { setRefiningConv(false); }
+  };
+
   const useGeneratedReply = () => {
     setConvInput(generatedReply);
     setConvSender("me");
@@ -753,14 +942,14 @@ function ProspectCard({
   };
 
   return (
-    <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", overflow: "hidden", ...jk }}>
+    <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", ...jk }}>
       {/* Row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }} onClick={onToggle}>
         <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", color: "#0147ff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
           {prospect.name[0]?.toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600, color: "#121a2e", fontSize: 14 }}>{prospect.name}</span>
             <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{ACTION_LABELS[prospect.actionType]}</span>
             {prospect.isManual && (
@@ -769,6 +958,11 @@ function ProspectCard({
             {prospect.profileUrl && (
               <a href={prospect.profileUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "rgba(18,26,46,0.3)", display: "flex" }}>
                 <ExternalLink size={12} />
+              </a>
+            )}
+            {prospect.siteUrl && (
+              <a href={prospect.siteUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "rgba(18,26,46,0.3)", display: "flex" }} title={prospect.siteUrl}>
+                <Globe size={12} />
               </a>
             )}
             {convLen > 0 && (
@@ -786,7 +980,7 @@ function ProspectCard({
           <div style={{ position: "relative" }}>
             <button
               onClick={(e) => { e.stopPropagation(); onToggleDropdown(); }}
-              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 10px", borderRadius: 20, fontWeight: 600, cursor: "pointer", ...jk, background: ss.bg, color: ss.color, border: "none" }}
+              style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "5px 14px", borderRadius: 100, fontWeight: 600, cursor: "pointer", ...jk, background: ss.bg, color: ss.color, border: "none" }}
             >
               {PROSPECT_STATUS_LABELS[prospect.status]}<ChevronDown size={11} />
             </button>
@@ -844,6 +1038,14 @@ function ProspectCard({
                 </label>
                 <textarea value={displayMessage} onChange={(e) => onMessageChange(e.target.value)} rows={5} style={{ ...inp, resize: "none" }} />
               </div>
+              <button
+                onClick={handleRefineMsg}
+                disabled={refiningMsg || !displayMessage.trim()}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningMsg ? "not-allowed" : "pointer", opacity: refiningMsg ? 0.6 : 1, ...jk }}
+              >
+                {refiningMsg ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
+                {refiningMsg ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
+              </button>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => onCopy(displayMessage)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                   {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -960,15 +1162,23 @@ function ProspectCard({
                     </button>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                  <textarea
-                    value={convInput}
-                    onChange={(e) => setConvInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addConvMessage(); } }}
-                    placeholder="Collez ou tapez le message..."
-                    rows={2}
-                    style={{ ...inp, flex: 1, resize: "none" }}
-                  />
+                <textarea
+                  value={convInput}
+                  onChange={(e) => setConvInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addConvMessage(); } }}
+                  placeholder="Collez ou tapez le message..."
+                  rows={2}
+                  style={{ ...inp, resize: "none" }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={handleRefineConv}
+                    disabled={refiningConv || !convInput.trim()}
+                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 600, padding: "6px 10px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningConv ? "not-allowed" : "pointer", opacity: refiningConv || !convInput.trim() ? 0.5 : 1, ...jk }}
+                  >
+                    {refiningConv ? <RefreshCw size={11} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={11} />}
+                    Peaufiner ✨
+                  </button>
                   <button onClick={addConvMessage} disabled={!convInput.trim()} style={{ ...btnGrad, padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "center", opacity: convInput.trim() ? 1 : 0.5, flexShrink: 0 }}>
                     <Plus size={14} />
                   </button>
@@ -994,6 +1204,11 @@ export default function LinkedInProspectionPage() {
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [rightView, setRightView] = useState<"prospects" | "chat">("prospects");
+  const [syncingAirtable, setSyncingAirtable] = useState(false);
+  const [airtableSyncMsg, setAirtableSyncMsg] = useState<string | null>(null);
+  const hasLoadedProspectsRef = useRef(false);
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncSignatureRef = useRef("");
 
   useEffect(() => {
     const saved = localStorage.getItem("linkedin_prospects");
@@ -1001,6 +1216,13 @@ export default function LinkedInProspectionPage() {
     if (saved) { try { setProspects(JSON.parse(saved)); } catch { setProspects([]); } }
     if (savedLang) setLanguage(savedLang as "fr" | "en");
     setSkeletons(loadSkeletons());
+    hasLoadedProspectsRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
   }, []);
 
   const saveProspects = (updated: LinkedInProspect[]) => {
@@ -1013,6 +1235,76 @@ export default function LinkedInProspectionPage() {
     saveSkeletonsToStorage(updated);
   };
 
+  const handleAirtableSync = async (
+    prospectList: LinkedInProspect[],
+    options?: { silentIfNotConfigured?: boolean }
+  ) => {
+    const s = loadLinkedInSettings();
+    if (!s.airtableKey || !s.airtableBaseId || !s.airtableTableName) {
+      if (options?.silentIfNotConfigured) return;
+      setAirtableSyncMsg("⚠️ Configurez Airtable dans les paramètres");
+      setTimeout(() => setAirtableSyncMsg(null), 4000);
+      return;
+    }
+    setSyncingAirtable(true);
+    try {
+      const res = await fetch("/api/linkedin/airtable-sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prospects: prospectList.map((p) => ({
+            id: p.id, name: p.name, actionType: p.actionType, status: p.status,
+            generatedMessage: p.generatedMessage, customMessage: p.customMessage,
+            isManual: p.isManual, context: p.context, profileUrl: p.profileUrl,
+            siteUrl: p.siteUrl, createdAt: p.createdAt, sentAt: p.sentAt,
+            conversationLength: p.conversation?.length, skeletonId: p.skeletonId, leadId: p.leadId,
+          })),
+          airtableKey: s.airtableKey, baseId: s.airtableBaseId, tableName: s.airtableTableName,
+          pruneMissing: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setAirtableSyncMsg(`❌ ${data.error.slice(0, 60)}`);
+      } else {
+        setAirtableSyncMsg(`✓ ${data.message || `${data.synced} synchronisés`}`);
+      }
+    } catch (e) {
+      setAirtableSyncMsg("❌ Erreur réseau");
+      console.error(e);
+    } finally {
+      setSyncingAirtable(false);
+      setTimeout(() => setAirtableSyncMsg(null), 5000);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasLoadedProspectsRef.current) return;
+
+    const s = loadLinkedInSettings();
+    if (!s.airtableAutoSync) return;
+
+    const signature = JSON.stringify(prospects.map((p) => ({
+      id: p.id,
+      status: p.status,
+      generatedMessage: p.generatedMessage,
+      customMessage: p.customMessage,
+      context: p.context,
+      profileUrl: p.profileUrl,
+      siteUrl: p.siteUrl,
+      sentAt: p.sentAt,
+      conversation: p.conversation,
+      leadId: p.leadId,
+    })));
+
+    if (signature === syncSignatureRef.current) return;
+
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    syncTimeoutRef.current = setTimeout(() => {
+      syncSignatureRef.current = signature;
+      handleAirtableSync(prospects, { silentIfNotConfigured: true });
+    }, 1200);
+  }, [prospects]);
+
   const handleSave = (p: LinkedInProspect) => {
     const updated = [p, ...prospects];
     saveProspects(updated);
@@ -1022,7 +1314,6 @@ export default function LinkedInProspectionPage() {
     if (s.prospectionAutoAnalysis) {
       const sentCount = updated.filter((pr) => pr.status !== "draft").length;
       if (sentCount > 0 && sentCount % s.prospectionAutoAnalysisEvery === 0) {
-        // Trigger skeleton creation in background (fire and forget)
         fetch("/api/linkedin/create-skeletons", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1101,10 +1392,10 @@ export default function LinkedInProspectionPage() {
       />
 
       {/* Right area */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
         {/* Stats + view toggle */}
         <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "12px 24px", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             {[
               { val: prospects.length, label: "Total", color: "#121a2e" },
               { val: stats.sent, label: "Envoyés", color: "#0147ff" },
@@ -1121,23 +1412,43 @@ export default function LinkedInProspectionPage() {
               </div>
             ))}
 
-            <div style={{ marginLeft: "auto", display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3 }}>
-              <button onClick={() => setRightView("prospects")} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                ...(rightView === "prospects"
-                  ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                  : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-              }}>
-                <MessageSquare size={13} />Prospects ({prospects.length})
-              </button>
-              <button onClick={() => setRightView("chat")} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-                ...(rightView === "chat"
-                  ? { background: "#fff", border: "none", color: "#0147ff", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                  : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-              }}>
-                <Bot size={13} />Analyser avec l&apos;IA
-              </button>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Airtable sync button */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {airtableSyncMsg && (
+                  <span style={{ fontSize: 11, color: airtableSyncMsg.startsWith("✓") ? "#168b64" : airtableSyncMsg.startsWith("⚠") ? "#b45309" : "#c53030", fontWeight: 600 }}>
+                    {airtableSyncMsg}
+                  </span>
+                )}
+                <button
+                  onClick={() => handleAirtableSync(prospects)}
+                  disabled={syncingAirtable || prospects.length === 0}
+                  title="Synchroniser avec Airtable"
+                  style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 9, border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.6)", cursor: syncingAirtable || prospects.length === 0 ? "not-allowed" : "pointer", opacity: syncingAirtable || prospects.length === 0 ? 0.5 : 1, ...jk }}
+                >
+                  {syncingAirtable ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Database size={13} />}
+                  Airtable
+                </button>
+              </div>
+
+              <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3 }}>
+                <button onClick={() => setRightView("prospects")} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                  ...(rightView === "prospects"
+                    ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                    : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
+                }}>
+                  <MessageSquare size={13} />Prospects ({prospects.length})
+                </button>
+                <button onClick={() => setRightView("chat")} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
+                  ...(rightView === "chat"
+                    ? { background: "#fff", border: "none", color: "#0147ff", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                    : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
+                }}>
+                  <Bot size={13} />Analyser avec l&apos;IA
+                </button>
+              </div>
             </div>
 
             {stats.positive >= 3 && rightView === "prospects" && (
@@ -1153,7 +1464,7 @@ export default function LinkedInProspectionPage() {
             <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "8px 24px", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <button onClick={() => setFilterStatus("all")} style={{
-                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
+                  padding: "5px 14px", borderRadius: 100, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
                   ...(filterStatus === "all"
                     ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
                     : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
@@ -1165,7 +1476,7 @@ export default function LinkedInProspectionPage() {
                   if (count === 0) return null;
                   return (
                     <button key={s} onClick={() => setFilterStatus(s)} style={{
-                      padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
+                      padding: "5px 14px", borderRadius: 100, fontSize: 12, fontWeight: 500, cursor: "pointer", ...jk,
                       ...(filterStatus === s
                         ? { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff" }
                         : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
@@ -1177,7 +1488,7 @@ export default function LinkedInProspectionPage() {
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
               {filtered.length === 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 256, textAlign: "center" }}>
                   <MessageSquare size={24} style={{ color: "rgba(18,26,46,0.2)", marginBottom: 12 }} />
@@ -1211,6 +1522,7 @@ export default function LinkedInProspectionPage() {
 
         {rightView === "chat" && <AIChatPanel prospects={prospects} />}
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

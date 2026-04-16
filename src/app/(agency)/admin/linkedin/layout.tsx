@@ -15,6 +15,11 @@ export interface LinkedInSettings {
   prospectionSmallPrompt: string;
   prospectionAutoAnalysis: boolean;
   prospectionAutoAnalysisEvery: number;
+  // Airtable
+  airtableKey: string;
+  airtableBaseId: string;
+  airtableTableName: string;
+  airtableAutoSync: boolean;
 }
 
 export const OPENROUTER_MODELS = [
@@ -96,6 +101,10 @@ export const DEFAULT_SETTINGS: LinkedInSettings = {
   prospectionSmallPrompt: DEFAULT_SMALL_PROMPT,
   prospectionAutoAnalysis: false,
   prospectionAutoAnalysisEvery: 10,
+  airtableKey: "",
+  airtableBaseId: "",
+  airtableTableName: "Prospects LinkedIn",
+  airtableAutoSync: false,
 };
 
 export const SETTINGS_KEY = "linkedin_settings";
@@ -385,6 +394,65 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                       <label className="text-xs text-gray-600">prospects envoyés</label>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* ── Airtable ── */}
+              <div className="border-t border-gray-100 pt-6">
+                <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
+                  <div className="w-5 h-5 bg-yellow-400 rounded flex items-center justify-center">
+                    <span className="text-white text-[9px] font-bold">AT</span>
+                  </div>
+                  Synchronisation Airtable
+                </h3>
+                <p className="text-xs text-gray-400 mb-4">
+                  Synchronise vos prospects LinkedIn vers Airtable. <span className="text-green-600 font-medium">Plan gratuit suffisant.</span>
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Personal Access Token (PAT)</label>
+                    <input
+                      type="password"
+                      value={settings.airtableKey}
+                      onChange={(e) => setSettings({ ...settings, airtableKey: e.target.value })}
+                      placeholder="patXXXXXXXX..."
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Créez-le sur <span className="text-[#0A66C2]">airtable.com/create/tokens</span> avec les scopes <code>data.records:read</code> et <code>data.records:write</code></p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Base ID</label>
+                    <input
+                      type="text"
+                      value={settings.airtableBaseId}
+                      onChange={(e) => setSettings({ ...settings, airtableBaseId: e.target.value })}
+                      placeholder="appXXXXXXXX"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Visible dans l&apos;URL de votre base : airtable.com/<strong>appXXXX</strong>/...</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Nom de la table</label>
+                    <input
+                      type="text"
+                      value={settings.airtableTableName}
+                      onChange={(e) => setSettings({ ...settings, airtableTableName: e.target.value })}
+                      placeholder="Prospects LinkedIn"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <p className="text-xs font-medium text-gray-700">Synchronisation automatique</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Synchronise à chaque changement de statut</p>
+                    </div>
+                    <button
+                      onClick={() => setSettings((s) => ({ ...s, airtableAutoSync: !s.airtableAutoSync }))}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${settings.airtableAutoSync ? "bg-[#0A66C2]" : "bg-gray-200"}`}
+                    >
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${settings.airtableAutoSync ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
                 </div>
               </div>
 

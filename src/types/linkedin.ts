@@ -66,7 +66,8 @@ export interface LinkedInProspect {
   leadId?: string; // ID dans la table centrale leads (Supabase)
   name: string;
   profileUrl?: string;
-  actionType: "liked" | "commented" | "visited_profile";
+  siteUrl?: string;
+  actionType: "liked" | "commented" | "visited_profile" | "none";
   context?: string;
   generatedMessage: string;
   customMessage?: string;
@@ -182,6 +183,7 @@ export const ACTION_LABELS: Record<string, string> = {
   liked: "a liké votre post",
   commented: "a commenté votre post",
   visited_profile: "a visité votre profil",
+  none: "",
 };
 
 export const PROSPECT_STATUS_LABELS: Record<string, string> = {
