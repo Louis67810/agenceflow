@@ -1259,12 +1259,12 @@ export default function LinkedInProspectionPage() {
             conversationLength: p.conversation?.length, skeletonId: p.skeletonId, leadId: p.leadId,
           })),
           airtableKey: s.airtableKey, baseId: s.airtableBaseId, tableName: s.airtableTableName,
-          pruneMissing: true,
+          pruneMissing: false,
         }),
       });
       const data = await res.json();
       if (data.error) {
-        setAirtableSyncMsg(`❌ ${data.error.slice(0, 60)}`);
+        setAirtableSyncMsg(`❌ ${data.error}`);
       } else {
         setAirtableSyncMsg(`✓ ${data.message || `${data.synced} synchronisés`}`);
       }
