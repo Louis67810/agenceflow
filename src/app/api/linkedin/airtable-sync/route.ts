@@ -35,8 +35,8 @@ interface AirtableField {
   Contexte: string;
   "Profil LinkedIn": string;
   "Site web": string;
-  "Créé le": string;
-  "Envoyé le": string;
+  "Créé le": string | null;
+  "Envoyé le": string | null;
   "Nb messages conversation": number;
   Manuel: boolean;
 }
@@ -48,6 +48,10 @@ function formatAirtableError(errText: string, tableName: string, baseId: string)
 
   if (errText.includes("INVALID_PERMISSIONS")) {
     return "Permissions Airtable insuffisantes. Vérifiez que le token a les droits data.records:read et data.records:write sur cette base.";
+  }
+
+  if (errText.includes("INVALID_VALUE_FOR_COLUMN")) {
+    return `Valeur Airtable invalide pour une colonne. Vérifiez surtout les types des champs Date, URL, Number et Checkbox dans la table "${tableName}". Détail: ${errText}`;
   }
 
   return `Airtable API: ${errText}`;
@@ -128,8 +132,8 @@ export async function POST(req: NextRequest) {
           Contexte: p.context || "",
           "Profil LinkedIn": p.profileUrl || "",
           "Site web": p.siteUrl || "",
-          "Créé le": p.createdAt ? new Date(p.createdAt).toISOString().split("T")[0] : "",
-          "Envoyé le": p.sentAt ? new Date(p.sentAt).toISOString().split("T")[0] : "",
+          "Créé le": p.createdAt ? new Date(p.createdAt).toISOString().split("T")[0] : null,
+          "Envoyé le": p.sentAt ? new Date(p.sentAt).toISOString().split("T")[0] : null,
           "Nb messages conversation": p.conversationLength || 0,
           Manuel: !!p.isManual,
         } as AirtableField,
@@ -149,7 +153,7 @@ export async function POST(req: NextRequest) {
         // If upsert not supported, fall back to individual create
         if (res.status === 422 || res.status === 400) {
           return NextResponse.json({
-            error: `Erreur Airtable: ${errText}. Vérifiez que la table contient un champ "prospect_id".`,
+            error: formatAirtableError(errText, tableName, baseId),
           }, { status: 400 });
         }
         return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
