@@ -19,11 +19,17 @@ interface ProspectRecord {
 }
 
 interface AirtableSyncRequest {
+  mode?: "push" | "pull";
   prospects: ProspectRecord[];
   airtableKey: string;
   baseId: string;
   tableName: string;
   pruneMissing?: boolean;
+}
+
+interface AirtableRecord {
+  id: string;
+  fields?: Partial<AirtableField>;
 }
 
 interface AirtableField {
@@ -60,7 +66,7 @@ function formatAirtableError(errText: string, tableName: string, baseId: string)
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AirtableSyncRequest;
-    const { prospects, airtableKey, baseId, tableName, pruneMissing } = body;
+    const { prospects, airtableKey, baseId, tableName, pruneMissing, mode = "push" } = body;
 
     if (!airtableKey || !baseId || !tableName) {
       return NextResponse.json({ error: "Configuration Airtable incomplète (clé, base ID, nom de table)." }, { status: 400 });
@@ -71,6 +77,78 @@ export async function POST(req: NextRequest) {
       Authorization: `Bearer ${airtableKey}`,
       "Content-Type": "application/json",
     };
+
+    if (mode === "pull") {
+      const importedProspects: ProspectRecord[] = [];
+      let offset: string | undefined;
+
+      do {
+        const url = new URL(baseUrl);
+        [
+          "prospect_id",
+          "Nom",
+          "Action",
+          "Statut",
+          "Message",
+          "Contexte",
+          "Profil LinkedIn",
+          "Site web",
+          "Créé le",
+          "Envoyé le",
+          "Nb messages conversation",
+          "Manuel",
+        ].forEach((field) => url.searchParams.append("fields[]", field));
+        if (offset) url.searchParams.set("offset", offset);
+
+        const remoteRes = await fetch(url.toString(), { headers });
+        if (!remoteRes.ok) {
+          const errText = await remoteRes.text();
+          return NextResponse.json({ error: formatAirtableError(errText, tableName, baseId) }, { status: 500 });
+        }
+
+        const remoteData = await remoteRes.json();
+        offset = remoteData.offset;
+
+        for (const record of (remoteData.records ?? []) as AirtableRecord[]) {
+          const fields = record.fields ?? {};
+          const rawAction = String(fields.Action ?? "").toLowerCase();
+          const actionType =
+            rawAction.includes("comment") ? "commented" :
+            rawAction.includes("visite") || rawAction.includes("visit") ? "visited_profile" :
+            rawAction.includes("like") ? "liked" :
+            "none";
+          const status = String(fields.Statut ?? "draft") as ProspectRecord["status"];
+          const createdAt = fields["Créé le"]
+            ? new Date(`${fields["Créé le"]}T12:00:00.000Z`).toISOString()
+            : new Date().toISOString();
+          const sentAt = fields["Envoyé le"]
+            ? new Date(`${fields["Envoyé le"]}T12:00:00.000Z`).toISOString()
+            : undefined;
+
+          importedProspects.push({
+            id: String(fields.prospect_id ?? record.id),
+            name: String(fields.Nom ?? "Prospect"),
+            actionType,
+            status,
+            generatedMessage: String(fields.Message ?? ""),
+            customMessage: undefined,
+            isManual: Boolean(fields.Manuel),
+            context: String(fields.Contexte ?? ""),
+            profileUrl: String(fields["Profil LinkedIn"] ?? "") || undefined,
+            siteUrl: String(fields["Site web"] ?? "") || undefined,
+            createdAt,
+            sentAt,
+            conversationLength: Number(fields["Nb messages conversation"] ?? 0) || 0,
+          });
+        }
+      } while (offset);
+
+      return NextResponse.json({
+        imported: importedProspects.length,
+        prospects: importedProspects,
+        message: `${importedProspects.length} prospects importés depuis Airtable`,
+      });
+    }
 
     if (!prospects?.length) {
       if (pruneMissing) {

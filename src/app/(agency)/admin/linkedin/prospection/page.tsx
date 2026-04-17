@@ -5,7 +5,7 @@ import {
   Plus, Sparkles, RefreshCw, Copy, Check, ChevronDown, X,
   ExternalLink, TrendingUp, MessageSquare, ThumbsUp, Eye,
   PenLine, Bot, Send, User, ChevronRight, MessagesSquare,
-  Layers, Trash2, Globe, Minus, Database,
+  Layers, Trash2, Globe, Minus,
 } from "lucide-react";
 import {
   LinkedInProspect, ConversationMessage, ProspectionSkeleton,
@@ -1247,6 +1247,7 @@ export default function LinkedInProspectionPage() {
   const hasLoadedProspectsRef = useRef(false);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncSignatureRef = useRef("");
+  const initialAirtableLoadRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("linkedin_prospects");
@@ -1261,6 +1262,63 @@ export default function LinkedInProspectionPage() {
     return () => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (initialAirtableLoadRef.current) return;
+    initialAirtableLoadRef.current = true;
+
+    const s = loadLinkedInSettings();
+    if (!s.airtableKey || !s.airtableBaseId || !s.airtableTableName) return;
+
+    void (async () => {
+      setSyncingAirtable(true);
+      try {
+        const res = await fetch("/api/linkedin/airtable-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "pull",
+            prospects: [],
+            airtableKey: s.airtableKey,
+            baseId: s.airtableBaseId,
+            tableName: s.airtableTableName,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setAirtableSyncMsg(`❌ ${data.error || "Import Airtable impossible"}`);
+          return;
+        }
+
+        const importedProspects = Array.isArray(data.prospects) ? data.prospects as LinkedInProspect[] : [];
+        if (importedProspects.length > 0) {
+          setProspects(importedProspects);
+          localStorage.setItem("linkedin_prospects", JSON.stringify(importedProspects));
+          syncSignatureRef.current = JSON.stringify(importedProspects.map((p) => ({
+            id: p.id,
+            status: p.status,
+            generatedMessage: p.generatedMessage,
+            customMessage: p.customMessage,
+            context: p.context,
+            profileUrl: p.profileUrl,
+            siteUrl: p.siteUrl,
+            sentAt: p.sentAt,
+            conversation: p.conversation,
+            leadId: p.leadId,
+          })));
+          setAirtableSyncMsg(`✓ ${data.message || `${importedProspects.length} prospects importés`}`);
+        } else {
+          setAirtableSyncMsg("✓ Airtable connecté");
+        }
+      } catch (error) {
+        console.error(error);
+        setAirtableSyncMsg("❌ Erreur réseau");
+      } finally {
+        setSyncingAirtable(false);
+        setTimeout(() => setAirtableSyncMsg(null), 5000);
+      }
+    })();
   }, []);
 
   const saveProspects = (updated: LinkedInProspect[]) => {
@@ -1297,7 +1355,7 @@ export default function LinkedInProspectionPage() {
             conversationLength: p.conversation?.length, skeletonId: p.skeletonId, leadId: p.leadId,
           })),
           airtableKey: s.airtableKey, baseId: s.airtableBaseId, tableName: s.airtableTableName,
-          pruneMissing: false,
+          pruneMissing: true,
         }),
       });
       const data = await res.json();
@@ -1319,7 +1377,7 @@ export default function LinkedInProspectionPage() {
     if (!hasLoadedProspectsRef.current) return;
 
     const s = loadLinkedInSettings();
-    if (!s.airtableAutoSync) return;
+    if (!s.airtableKey || !s.airtableBaseId || !s.airtableTableName) return;
 
     const signature = JSON.stringify(prospects.map((p) => ({
       id: p.id,
@@ -1451,23 +1509,11 @@ export default function LinkedInProspectionPage() {
             ))}
 
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Airtable sync button */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {airtableSyncMsg && (
-                  <span style={{ fontSize: 11, color: airtableSyncMsg.startsWith("✓") ? "#168b64" : airtableSyncMsg.startsWith("⚠") ? "#b45309" : "#c53030", fontWeight: 600 }}>
-                    {airtableSyncMsg}
-                  </span>
-                )}
-                <button
-                  onClick={() => handleAirtableSync(prospects)}
-                  disabled={syncingAirtable || prospects.length === 0}
-                  title="Synchroniser avec Airtable"
-                  style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 9, border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.6)", cursor: syncingAirtable || prospects.length === 0 ? "not-allowed" : "pointer", opacity: syncingAirtable || prospects.length === 0 ? 0.5 : 1, ...jk }}
-                >
-                  {syncingAirtable ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Database size={13} />}
-                  Airtable
-                </button>
-              </div>
+              {airtableSyncMsg && (
+                <span style={{ fontSize: 11, color: airtableSyncMsg.startsWith("✓") ? "#168b64" : airtableSyncMsg.startsWith("⚠") ? "#b45309" : "#c53030", fontWeight: 600 }}>
+                  {syncingAirtable ? "Synchronisation Airtable..." : airtableSyncMsg}
+                </span>
+              )}
 
               <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3 }}>
                 <button onClick={() => setRightView("prospects")} style={{
