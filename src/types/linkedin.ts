@@ -64,6 +64,20 @@ export interface LinkedInIdea {
   usedAt?: string;
 }
 
+export interface LinkedInWorkspacePreferences {
+  ideasLanguage: "fr" | "en";
+  ideasLastGenerated: string | null;
+  prospectionLanguage: "fr" | "en";
+}
+
+export interface LinkedInWorkspaceData {
+  styles: LinkedInStyle[];
+  ideas: LinkedInIdea[];
+  prospects: LinkedInProspect[];
+  skeletons: ProspectionSkeleton[];
+  preferences: LinkedInWorkspacePreferences;
+}
+
 export interface ConversationMessage {
   id: string;
   sender: "me" | "them";

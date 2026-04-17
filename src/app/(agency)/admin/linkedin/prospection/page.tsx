@@ -13,6 +13,13 @@ import {
 } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
+import {
+  fetchRemoteLinkedInWorkspace,
+  hasMeaningfulLinkedInWorkspaceData,
+  loadLinkedInWorkspaceCache,
+  patchRemoteLinkedInWorkspace,
+  persistLinkedInWorkspacePatch,
+} from "@/lib/linkedin/workspace";
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const DRAFT_KEY = "linkedin_prospection_draft";
@@ -83,10 +90,6 @@ function loadSkeletons(): ProspectionSkeleton[] {
     const saved = localStorage.getItem(SKELETONS_KEY);
     return saved ? JSON.parse(saved) : [];
   } catch { return []; }
-}
-
-function saveSkeletonsToStorage(skeletons: ProspectionSkeleton[]): void {
-  localStorage.setItem(SKELETONS_KEY, JSON.stringify(skeletons));
 }
 
 function pickBestSkeleton(skeletons: ProspectionSkeleton[], actionType: string): ProspectionSkeleton | null {
@@ -1218,12 +1221,24 @@ export default function LinkedInProspectionPage() {
   const initialAirtableLoadRef = useRef(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("linkedin_prospects");
-    const savedLang = localStorage.getItem("linkedin_prospection_language");
-    if (saved) { try { setProspects(JSON.parse(saved)); } catch { setProspects([]); } }
-    if (savedLang) setLanguage(savedLang as "fr" | "en");
-    setSkeletons(loadSkeletons());
+    const cachedWorkspace = loadLinkedInWorkspaceCache();
+    setProspects(cachedWorkspace.prospects);
+    setLanguage(cachedWorkspace.preferences.prospectionLanguage);
+    setSkeletons(cachedWorkspace.skeletons);
     hasLoadedProspectsRef.current = true;
+
+    void (async () => {
+      try {
+        const remote = await fetchRemoteLinkedInWorkspace();
+        if (remote.hasStoredData) {
+          setProspects(remote.workspace.prospects);
+          setSkeletons(remote.workspace.skeletons);
+          setLanguage(remote.workspace.preferences.prospectionLanguage);
+        } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
+          await patchRemoteLinkedInWorkspace(cachedWorkspace);
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -1262,7 +1277,7 @@ export default function LinkedInProspectionPage() {
         const importedProspects = Array.isArray(data.prospects) ? data.prospects as LinkedInProspect[] : [];
         if (importedProspects.length > 0) {
           setProspects(importedProspects);
-          localStorage.setItem("linkedin_prospects", JSON.stringify(importedProspects));
+          persistLinkedInWorkspacePatch({ prospects: importedProspects });
           syncSignatureRef.current = JSON.stringify(importedProspects.map((p) => ({
             id: p.id,
             status: p.status,
@@ -1291,13 +1306,21 @@ export default function LinkedInProspectionPage() {
 
   const saveProspects = (updated: LinkedInProspect[]) => {
     setProspects(updated);
-    localStorage.setItem("linkedin_prospects", JSON.stringify(updated));
+    persistLinkedInWorkspacePatch({ prospects: updated });
   };
 
   const handleSkeletonsUpdate = (updated: ProspectionSkeleton[]) => {
     setSkeletons(updated);
-    saveSkeletonsToStorage(updated);
+    persistLinkedInWorkspacePatch({ skeletons: updated });
   };
+
+  useEffect(() => {
+    persistLinkedInWorkspacePatch({
+      preferences: {
+        prospectionLanguage: language,
+      },
+    });
+  }, [language]);
 
   const handleAirtableSync = async (
     prospectList: LinkedInProspect[],

@@ -6,6 +6,13 @@ import {
   ChevronUp, Loader2, FileText, AlignLeft,
 } from "lucide-react";
 import { LinkedInStyle, DEFAULT_STYLES, STYLE_CATEGORY_COLORS } from "@/types/linkedin";
+import {
+  fetchRemoteLinkedInWorkspace,
+  hasMeaningfulLinkedInWorkspaceData,
+  loadLinkedInWorkspaceCache,
+  patchRemoteLinkedInWorkspace,
+  persistLinkedInWorkspacePatch,
+} from "@/lib/linkedin/workspace";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -65,17 +72,26 @@ export default function LinkedInStylePage() {
   const [showAddExample, setShowAddExample] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const saved = localStorage.getItem("linkedin_styles");
-    if (saved) {
-      try { setStyles(JSON.parse(saved)); } catch { setStyles(DEFAULT_STYLES); }
-    } else {
-      setStyles(DEFAULT_STYLES);
-    }
+    const cachedWorkspace = loadLinkedInWorkspaceCache();
+    setStyles(cachedWorkspace.styles);
+
+    void (async () => {
+      try {
+        const remote = await fetchRemoteLinkedInWorkspace();
+        if (remote.hasStoredData) {
+          setStyles(remote.workspace.styles);
+        } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
+          await patchRemoteLinkedInWorkspace({ styles: cachedWorkspace.styles });
+        }
+      } catch {
+        setStyles(cachedWorkspace.styles.length > 0 ? cachedWorkspace.styles : DEFAULT_STYLES);
+      }
+    })();
   }, []);
 
   const save = (updated: LinkedInStyle[]) => {
     setStyles(updated);
-    localStorage.setItem("linkedin_styles", JSON.stringify(updated));
+    persistLinkedInWorkspacePatch({ styles: updated });
   };
 
   const loadExamples = useCallback(async (styleId: string) => {

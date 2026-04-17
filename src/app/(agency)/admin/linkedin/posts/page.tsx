@@ -19,19 +19,16 @@ import {
   saveLinkedInPosts,
 } from "@/lib/linkedin/posts";
 import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
+import {
+  fetchRemoteLinkedInWorkspace,
+  hasMeaningfulLinkedInWorkspaceData,
+  loadLinkedInWorkspaceCache,
+  patchRemoteLinkedInWorkspace,
+  persistLinkedInWorkspacePatch,
+} from "@/lib/linkedin/workspace";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type FilterTab = "all" | "draft" | "scheduled" | "published";
-
-const STYLES_KEY = "linkedin_styles";
-const IDEAS_KEY = "linkedin_ideas";
-function loadStyles(): LinkedInStyle[] {
-  try { const s = localStorage.getItem(STYLES_KEY); return s ? JSON.parse(s) : DEFAULT_STYLES; } catch { return DEFAULT_STYLES; }
-}
-function loadIdeas(): LinkedInIdea[] {
-  try { const s = localStorage.getItem(IDEAS_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
-}
-function saveIdeas(ideas: LinkedInIdea[]) { localStorage.setItem(IDEAS_KEY, JSON.stringify(ideas)); }
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
@@ -93,9 +90,10 @@ export default function PostsPage() {
 
   useEffect(() => {
     const localPosts = loadLinkedInPosts();
+    const cachedWorkspace = loadLinkedInWorkspaceCache();
     setPosts(localPosts);
-    setStyles(loadStyles());
-    setIdeas(loadIdeas());
+    setStyles(cachedWorkspace.styles);
+    setIdeas(cachedWorkspace.ideas);
     setSettings(loadLinkedInSettings());
 
     void (async () => {
@@ -108,6 +106,20 @@ export default function PostsPage() {
           await saveRemoteLinkedInPosts(localPosts, true);
         }
       } catch {}
+    })();
+
+    void (async () => {
+      try {
+        const remoteWorkspace = await fetchRemoteLinkedInWorkspace();
+        if (remoteWorkspace.hasStoredData) {
+          setStyles(remoteWorkspace.workspace.styles);
+          setIdeas(remoteWorkspace.workspace.ideas);
+        } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
+          await patchRemoteLinkedInWorkspace(cachedWorkspace);
+        }
+      } catch {
+        setStyles(cachedWorkspace.styles.length > 0 ? cachedWorkspace.styles : DEFAULT_STYLES);
+      }
     })();
 
     const prefill = sessionStorage.getItem("linkedin_idea_prefill");
@@ -205,7 +217,8 @@ export default function PostsPage() {
         else setGeneratedContent(data.content);
         if (selectedIdeaId) {
           const updated = ideas.map(i => i.id === selectedIdeaId ? { ...i, status: "used" as const, usedAt: new Date().toISOString() } : i);
-          setIdeas(updated); saveIdeas(updated);
+          setIdeas(updated);
+          persistLinkedInWorkspacePatch({ ideas: updated });
         }
       } else setGenerationError(data.error);
     } catch (e) { setGenerationError(String(e)); }

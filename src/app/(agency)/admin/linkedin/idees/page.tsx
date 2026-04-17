@@ -5,6 +5,13 @@ import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Clock, Plus, Bot,
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
+import {
+  fetchRemoteLinkedInWorkspace,
+  hasMeaningfulLinkedInWorkspaceData,
+  loadLinkedInWorkspaceCache,
+  patchRemoteLinkedInWorkspace,
+  persistLinkedInWorkspacePatch,
+} from "@/lib/linkedin/workspace";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -352,20 +359,32 @@ export default function LinkedInIdeesPage() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
 
   useEffect(() => {
-    const savedIdeas = localStorage.getItem("linkedin_ideas");
-    const savedStyles = localStorage.getItem("linkedin_styles");
-    const savedLang = localStorage.getItem("linkedin_ideas_language");
-    const savedLastGen = localStorage.getItem("linkedin_ideas_last_generated");
+    const cachedWorkspace = loadLinkedInWorkspaceCache();
+    setIdeas(cachedWorkspace.ideas);
+    setStyles(cachedWorkspace.styles);
+    setLanguage(cachedWorkspace.preferences.ideasLanguage);
+    setLastGenerated(cachedWorkspace.preferences.ideasLastGenerated);
 
-    if (savedIdeas) { try { setIdeas(JSON.parse(savedIdeas)); } catch { setIdeas([]); } }
-    if (savedStyles) { try { setStyles(JSON.parse(savedStyles)); } catch { setStyles(DEFAULT_STYLES); } }
-    if (savedLang) setLanguage(savedLang as "fr" | "en");
-    if (savedLastGen) setLastGenerated(savedLastGen);
+    void (async () => {
+      try {
+        const remote = await fetchRemoteLinkedInWorkspace();
+        if (remote.hasStoredData) {
+          setIdeas(remote.workspace.ideas);
+          setStyles(remote.workspace.styles);
+          setLanguage(remote.workspace.preferences.ideasLanguage);
+          setLastGenerated(remote.workspace.preferences.ideasLastGenerated);
+        } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
+          await patchRemoteLinkedInWorkspace(cachedWorkspace);
+        }
+      } catch {
+        setStyles(cachedWorkspace.styles.length > 0 ? cachedWorkspace.styles : DEFAULT_STYLES);
+      }
+    })();
   }, []);
 
   const saveIdeas = (updated: LinkedInIdea[]) => {
     setIdeas(updated);
-    localStorage.setItem("linkedin_ideas", JSON.stringify(updated));
+    persistLinkedInWorkspacePatch({ ideas: updated });
   };
 
   const getTopPosts = useCallback((): LinkedInPost[] => {
@@ -435,13 +454,24 @@ export default function LinkedInIdeesPage() {
       const now = new Date().toISOString();
       saveIdeas([...newIdeas, ...ideas]);
       setLastGenerated(now);
-      localStorage.setItem("linkedin_ideas_last_generated", now);
+      persistLinkedInWorkspacePatch({
+        preferences: { ideasLastGenerated: now },
+      });
     } catch (err) {
       console.error(err);
     } finally {
       setGenerating(false);
     }
   };
+
+  useEffect(() => {
+    persistLinkedInWorkspacePatch({
+      preferences: {
+        ideasLanguage: language,
+        ideasLastGenerated: lastGenerated,
+      },
+    });
+  }, [language, lastGenerated]);
 
   const handleAddManual = (idea: LinkedInIdea) => {
     saveIdeas([idea, ...ideas]);
