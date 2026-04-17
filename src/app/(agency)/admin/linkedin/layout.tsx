@@ -167,13 +167,35 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   const [saved, setSaved] = useState(false);
   const [showBigPrompt, setShowBigPrompt] = useState(false);
   const [showSmallPrompt, setShowSmallPrompt] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
-    setSettings(loadLinkedInSettings());
+    const localSettings = loadLinkedInSettings();
+    setSettings(localSettings);
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/linkedin/settings-store", { cache: "no-store" });
+        const data = await res.json();
+        if (res.ok && data.settings) {
+          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+          setSettings(merged);
+        }
+      } catch {}
+      setBootstrapped(true);
+    })();
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    try {
+      await fetch("/api/linkedin/settings-store", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings }),
+      });
+    } catch {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -214,7 +236,11 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
       </div>
 
       <div className="flex-1 overflow-hidden" style={{ zoom: 1.04 }}>
-        {children}
+        {bootstrapped ? children : (
+          <div className="flex h-full items-center justify-center bg-[#fbfbfb] text-sm text-gray-400">
+            Chargement des paramètres LinkedIn...
+          </div>
+        )}
       </div>
 
       {showSettings && (

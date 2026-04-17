@@ -560,14 +560,6 @@ function LeftPanel({
                   prompt={smartAiSettings.prospectionSmallPrompt || undefined}
                   style={{ ...inp }}
                 />
-                <button
-                  onClick={handleRefineGenerated}
-                  disabled={refiningGenerated || !generatedMessage.trim()}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningGenerated ? "not-allowed" : "pointer", opacity: refiningGenerated ? 0.6 : 1, ...jk }}
-                >
-                  {refiningGenerated ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-                  {refiningGenerated ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
-                </button>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => copyMsg(generatedMessage)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                     {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -603,14 +595,6 @@ function LeftPanel({
                 {manualMessage.length} caractères · {manualMessage.split(/\s+/).filter(Boolean).length} mots
               </p>
             </div>
-            <button
-              onClick={handleRefineManual}
-              disabled={refiningManual || !manualMessage.trim()}
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningManual ? "not-allowed" : "pointer", opacity: refiningManual ? 0.6 : 1, ...jk }}
-            >
-              {refiningManual ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-              {refiningManual ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
-            </button>
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => { if (manualMessage) copyMsg(manualMessage); }}
@@ -1066,14 +1050,6 @@ function ProspectCard({
                   style={{ ...inp }}
                 />
               </div>
-              <button
-                onClick={handleRefineMsg}
-                disabled={refiningMsg || !displayMessage.trim()}
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningMsg ? "not-allowed" : "pointer", opacity: refiningMsg ? 0.6 : 1, ...jk }}
-              >
-                {refiningMsg ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-                {refiningMsg ? "Reformulation..." : "Peaufiner avec l'IA ✨"}
-              </button>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => onCopy(displayMessage)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                   {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -1209,14 +1185,6 @@ function ProspectCard({
                   style={{ ...inp }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={handleRefineConv}
-                    disabled={refiningConv || !convInput.trim()}
-                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 11, fontWeight: 600, padding: "6px 10px", borderRadius: 9, border: "1px solid #c7d3ff", background: "#f0f4ff", color: "#0147ff", cursor: refiningConv ? "not-allowed" : "pointer", opacity: refiningConv || !convInput.trim() ? 0.5 : 1, ...jk }}
-                  >
-                    {refiningConv ? <RefreshCw size={11} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={11} />}
-                    Peaufiner ✨
-                  </button>
                   <button onClick={addConvMessage} disabled={!convInput.trim()} style={{ ...btnGrad, padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "center", opacity: convInput.trim() ? 1 : 0.5, flexShrink: 0 }}>
                     <Plus size={14} />
                   </button>

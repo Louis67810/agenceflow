@@ -165,6 +165,23 @@ export default function SmartSelectionTextarea({
           <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(18,26,46,0.45)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
             Texte sélectionné
           </div>
+          <div
+            style={{
+              maxHeight: 84,
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+              borderRadius: 10,
+              border: "1px solid rgba(1,71,255,0.12)",
+              background: "#f4f7ff",
+              padding: "9px 10px",
+              fontSize: 12,
+              lineHeight: 1.55,
+              color: "#0147ff",
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
+            }}
+          >
+            {selection?.text}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <button type="button" onClick={() => runTransform("Réécris ce passage de façon plus fluide et naturelle.", false)} disabled={loadingMode !== null} style={toolbarButton}>
               {loadingMode === "selection" ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
@@ -223,6 +240,7 @@ export default function SmartSelectionTextarea({
 
       <textarea
         ref={textareaRef}
+        className="smart-selection-textarea"
         rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -254,7 +272,13 @@ export default function SmartSelectionTextarea({
         </div>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .smart-selection-textarea::selection {
+          background: rgba(1, 71, 255, 0.28);
+          color: #0b1736;
+        }
+      `}</style>
     </div>
   );
 }
