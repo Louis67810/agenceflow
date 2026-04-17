@@ -12,6 +12,7 @@ import {
   ACTION_LABELS, PROSPECT_STATUS_LABELS, PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
+import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const DRAFT_KEY = "linkedin_prospection_draft";
@@ -160,6 +161,7 @@ function LeftPanel({
   const [generatedMessage, setGeneratedMessage] = useState("");
   const [manualMessage, setManualMessage] = useState("");
   const [explanation, setExplanation] = useState("");
+  const smartAiSettings = loadLinkedInSettings();
 
   // Auto-select best skeleton when action type changes
   useEffect(() => {
@@ -547,7 +549,17 @@ function LeftPanel({
             {generatedMessage && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {explanation && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>{explanation}</p>}
-                <textarea value={generatedMessage} onChange={(e) => setGeneratedMessage(e.target.value)} rows={6} style={{ ...inp, resize: "none" }} />
+                <SmartSelectionTextarea
+                  value={generatedMessage}
+                  onChange={setGeneratedMessage}
+                  rows={6}
+                  contextLabel="message de prospection LinkedIn"
+                  globalLabel="Améliorer tout le message"
+                  apiKey={smartAiSettings.openrouterApiKey || undefined}
+                  model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
+                  prompt={smartAiSettings.prospectionSmallPrompt || undefined}
+                  style={{ ...inp }}
+                />
                 <button
                   onClick={handleRefineGenerated}
                   disabled={refiningGenerated || !generatedMessage.trim()}
@@ -575,12 +587,17 @@ function LeftPanel({
           <>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Votre message *</label>
-              <textarea
+              <SmartSelectionTextarea
                 value={manualMessage}
-                onChange={(e) => setManualMessage(e.target.value)}
+                onChange={setManualMessage}
                 placeholder={`${form.name || "Marie"}, j'ai vu ton post sur…`}
                 rows={6}
-                style={{ ...inp, resize: "none", lineHeight: 1.6 }}
+                contextLabel="message manuel de prospection LinkedIn"
+                globalLabel="Améliorer tout le message"
+                apiKey={smartAiSettings.openrouterApiKey || undefined}
+                model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
+                prompt={smartAiSettings.prospectionSmallPrompt || undefined}
+                style={{ ...inp, lineHeight: 1.6 }}
               />
               <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", marginTop: 6, marginBottom: 0 }}>
                 {manualMessage.length} caractères · {manualMessage.split(/\s+/).filter(Boolean).length} mots
@@ -851,6 +868,7 @@ function ProspectCard({
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [refiningMsg, setRefiningMsg] = useState(false);
   const [refiningConv, setRefiningConv] = useState(false);
+  const smartAiSettings = loadLinkedInSettings();
 
   const displayMessage = prospect.customMessage || prospect.generatedMessage;
   const ss = STATUS_STYLES[prospect.status] ?? STATUS_STYLES.draft;
@@ -1036,7 +1054,17 @@ function ProspectCard({
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
                   Message{prospect.customMessage ? " (modifié)" : ""}
                 </label>
-                <textarea value={displayMessage} onChange={(e) => onMessageChange(e.target.value)} rows={5} style={{ ...inp, resize: "none" }} />
+                <SmartSelectionTextarea
+                  value={displayMessage}
+                  onChange={onMessageChange}
+                  rows={5}
+                  contextLabel="message de prospection LinkedIn"
+                  globalLabel="Améliorer tout le message"
+                  apiKey={smartAiSettings.openrouterApiKey || undefined}
+                  model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
+                  prompt={smartAiSettings.prospectionSmallPrompt || undefined}
+                  style={{ ...inp }}
+                />
               </div>
               <button
                 onClick={handleRefineMsg}
@@ -1162,13 +1190,23 @@ function ProspectCard({
                     </button>
                   ))}
                 </div>
-                <textarea
+                <SmartSelectionTextarea
                   value={convInput}
-                  onChange={(e) => setConvInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addConvMessage(); } }}
+                  onChange={setConvInput}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      addConvMessage();
+                    }
+                  }}
                   placeholder="Collez ou tapez le message..."
                   rows={2}
-                  style={{ ...inp, resize: "none" }}
+                  contextLabel="réponse de conversation LinkedIn"
+                  globalLabel="Améliorer tout le texte"
+                  apiKey={smartAiSettings.openrouterApiKey || undefined}
+                  model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
+                  prompt={smartAiSettings.prospectionSmallPrompt || undefined}
+                  style={{ ...inp }}
                 />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button

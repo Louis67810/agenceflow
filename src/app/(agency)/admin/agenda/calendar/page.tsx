@@ -89,6 +89,10 @@ interface DragState {
   duration: number;
   offsetY: number;
   sourceDate: string;
+  sourceStartMins: number;
+  startX: number;
+  startY: number;
+  hasMoved: boolean;
 }
 
 interface GhostState {
@@ -108,6 +112,8 @@ export default function CalendarPage() {
   const [preview, setPreview] = useState<Record<string, number>>({}); // taskId → start_minutes (during drag)
   const [previewDate, setPreviewDate] = useState<string>("");
   const gridRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const suppressClickRef = useRef<string | null>(null);
 
   // Forms
   const [showSlotForm, setShowSlotForm] = useState(false);
@@ -140,49 +146,61 @@ export default function CalendarPage() {
   const handleTaskPointerDown = useCallback((e: React.PointerEvent, task: AgendaTask) => {
     if (!task.start_time) return;
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
 
     const rect = e.currentTarget.getBoundingClientRect();
+    const startMins = timeToMinutes(task.start_time);
     setDragging({
       taskId: task.id,
       taskTitle: task.title,
       duration: task.duration_minutes ?? 30,
       offsetY: e.clientY - rect.top,
       sourceDate: task.date ?? "",
+      sourceStartMins: startMins,
+      startX: e.clientX,
+      startY: e.clientY,
+      hasMoved: false,
     });
     setGhost({ x: e.clientX, y: e.clientY });
-    setPreview({ [task.id]: timeToMinutes(task.start_time) });
+    setPreview({ [task.id]: startMins });
     setPreviewDate(task.date ?? "");
   }, []);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging || !gridRef.current) return;
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    if (!dragging || !gridRef.current || !scrollRef.current) return;
+
+    const deltaX = e.clientX - dragging.startX;
+    const deltaY = e.clientY - dragging.startY;
+    const movedEnough = Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4;
 
     setGhost({ x: e.clientX, y: e.clientY });
+    if (!movedEnough && !dragging.hasMoved) return;
 
-    // Determine which day column the cursor is over
     const gridRect = gridRef.current.getBoundingClientRect();
-    const relX = e.clientX - gridRect.left - 56; // subtract time label width
+    const relX = e.clientX - gridRect.left - 56;
     const colWidth = (gridRect.width - 56) / 7;
     const colIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
     const targetDate = toDateStr(weekDates[colIndex]);
 
-    // Determine the time from cursor Y
-    const relY = e.clientY - gridRect.top;
+    const scrollRect = scrollRef.current.getBoundingClientRect();
+    const relY = e.clientY - scrollRect.top + scrollRef.current.scrollTop - dragging.offsetY;
     const rawMins = pxToMinutes(relY);
-    const snappedMins = Math.max(WORK_START * 60, Math.min((WORK_END - 1) * 60, rawMins));
+    const latestStart = WORK_END * 60 - dragging.duration;
+    const snappedMins = Math.max(WORK_START * 60, Math.min(latestStart, rawMins));
+
+    if (!dragging.hasMoved) {
+      setDragging((prev) => prev ? { ...prev, hasMoved: true } : prev);
+    }
 
     setPreviewDate(targetDate);
     const layout = computePushedLayout(tasks, dragging.taskId, targetDate, snappedMins);
     setPreview(layout);
   }, [dragging, tasks, weekDates]);
 
-  const handlePointerUp = useCallback(async (e: React.PointerEvent) => {
+  const handlePointerUp = useCallback(async () => {
     if (!dragging) return;
-    e.currentTarget.releasePointerCapture(e.pointerId);
+    const didMove = dragging.hasMoved;
 
-    // Commit the preview layout
-    const updates = Object.entries(preview);
+    const updates = didMove ? Object.entries(preview) : [];
     if (updates.length > 0) {
       await Promise.all(updates.map(([taskId, startMins]) => {
         const task = tasks.find(t => t.id === taskId);
@@ -208,6 +226,12 @@ export default function CalendarPage() {
         }
         return t;
       }));
+      suppressClickRef.current = dragging.taskId;
+      window.setTimeout(() => {
+        if (suppressClickRef.current === dragging.taskId) {
+          suppressClickRef.current = null;
+        }
+      }, 120);
     }
 
     setDragging(null);
@@ -215,6 +239,21 @@ export default function CalendarPage() {
     setPreview({});
     setPreviewDate("");
   }, [dragging, preview, previewDate, tasks]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const onMove = (e: PointerEvent) => { void handlePointerMove(e); };
+    const onUp = () => { void handlePointerUp(); };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging, handlePointerMove, handlePointerUp]);
 
   // ──────────────── ACTIONS ────────────────
 
@@ -346,8 +385,6 @@ export default function CalendarPage() {
       <div
         ref={gridRef}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden relative"
-        onPointerMove={dragging ? handlePointerMove : undefined}
-        onPointerUp={dragging ? handlePointerUp : undefined}
         style={{ cursor: dragging ? "grabbing" : "default" }}
       >
         {/* Day headers */}
@@ -365,7 +402,7 @@ export default function CalendarPage() {
         </div>
 
         {/* Time grid + tasks */}
-        <div className="overflow-y-auto" style={{ maxHeight: "65vh" }}>
+        <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "65vh" }}>
           <div className="relative" style={{ height: totalHeight }}>
             {/* Hour lines */}
             {HOURS.map(hour => (
@@ -461,7 +498,17 @@ export default function CalendarPage() {
                     transition: dragging && !isDragging ? "top 0.18s ease, left 0.18s ease" : "none",
                   }}
                   onPointerDown={e => handleTaskPointerDown(e, task)}
-                  onClick={e => { if (!dragging) { e.stopPropagation(); handleToggleTask(task); } }}
+                  onClick={e => {
+                    if (suppressClickRef.current === task.id) {
+                      suppressClickRef.current = null;
+                      e.stopPropagation();
+                      return;
+                    }
+                    if (!dragging) {
+                      e.stopPropagation();
+                      handleToggleTask(task);
+                    }
+                  }}
                 >
                   <div className="p-1 h-full flex flex-col">
                     <span className={`font-medium leading-tight truncate ${task.status === "done" ? "line-through text-green-600" : "text-indigo-800"}`}>

@@ -11,6 +11,7 @@ import {
 import type { LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
 import { DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings, type LinkedInSettings } from "../layout";
+import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type FilterTab = "all" | "draft" | "scheduled" | "published";
@@ -379,8 +380,16 @@ export default function PostsPage() {
               ) : (
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6, marginTop: 0 }}>Post généré</p>
-                  <textarea rows={10} value={generatedContent} onChange={e => setGeneratedContent(e.target.value)}
-                    style={{ ...inp, background: "#f6f6f6", resize: "none", lineHeight: 1.6 }} />
+                  <SmartSelectionTextarea
+                    rows={10}
+                    value={generatedContent}
+                    onChange={setGeneratedContent}
+                    contextLabel="post LinkedIn"
+                    globalLabel="Améliorer tout le post"
+                    apiKey={settings?.openrouterApiKey || undefined}
+                    model={settings?.model}
+                    style={{ ...inp, background: "#f6f6f6", lineHeight: 1.6 }}
+                  />
                 </div>
               )}
 
