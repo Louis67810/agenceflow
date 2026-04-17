@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Calendar, Clock, Plus } from "lucide-react";
 import { LinkedInPost } from "@/types/linkedin";
 import Link from "next/link";
+import { loadLinkedInPosts, saveLinkedInPosts } from "@/lib/linkedin/posts";
+import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -46,10 +48,19 @@ export default function LinkedInPlanificationPage() {
   const [hoveredPost, setHoveredPost] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("linkedin_posts");
-    if (saved) {
-      try { setPosts(JSON.parse(saved)); } catch { setPosts([]); }
-    }
+    const localPosts = loadLinkedInPosts();
+    setPosts(localPosts);
+    void (async () => {
+      try {
+        const remotePosts = await fetchRemoteLinkedInPosts();
+        if (remotePosts.length > 0) {
+          setPosts(remotePosts);
+          saveLinkedInPosts(remotePosts);
+        } else if (localPosts.length > 0) {
+          await saveRemoteLinkedInPosts(localPosts, true);
+        }
+      } catch {}
+    })();
   }, []);
 
   const prevMonth = () => {

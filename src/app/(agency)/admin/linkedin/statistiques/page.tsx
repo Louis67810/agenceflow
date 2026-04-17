@@ -11,6 +11,7 @@ import {
   saveLinkedInPosts,
   computeLinkedInPostScore,
 } from "@/lib/linkedin/posts";
+import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -54,6 +55,19 @@ export default function LinkedInStatsPage() {
     const loaded = loadLinkedInPosts();
     setPosts(loaded);
     if (loaded[0]) selectPost(loaded[0]);
+
+    void (async () => {
+      try {
+        const remotePosts = await fetchRemoteLinkedInPosts();
+        if (remotePosts.length > 0) {
+          setPosts(remotePosts);
+          saveLinkedInPosts(remotePosts);
+          if (remotePosts[0]) selectPost(remotePosts[0]);
+        } else if (loaded.length > 0) {
+          await saveRemoteLinkedInPosts(loaded, true);
+        }
+      } catch {}
+    })();
   }, []);
 
   const publishedPosts = useMemo(
@@ -77,6 +91,7 @@ export default function LinkedInStatsPage() {
   function persist(updatedPosts: LinkedInPost[]) {
     setPosts(updatedPosts);
     saveLinkedInPosts(updatedPosts);
+    void saveRemoteLinkedInPosts(updatedPosts, true);
   }
 
   function selectPost(post: LinkedInPost) {

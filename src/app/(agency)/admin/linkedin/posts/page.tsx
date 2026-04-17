@@ -18,6 +18,7 @@ import {
   mergePostAnalytics,
   saveLinkedInPosts,
 } from "@/lib/linkedin/posts";
+import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type FilterTab = "all" | "draft" | "scheduled" | "published";
@@ -91,10 +92,23 @@ export default function PostsPage() {
   const [settings, setSettings] = useState<LinkedInSettings | null>(null);
 
   useEffect(() => {
-    setPosts(loadLinkedInPosts());
+    const localPosts = loadLinkedInPosts();
+    setPosts(localPosts);
     setStyles(loadStyles());
     setIdeas(loadIdeas());
     setSettings(loadLinkedInSettings());
+
+    void (async () => {
+      try {
+        const remotePosts = await fetchRemoteLinkedInPosts();
+        if (remotePosts.length > 0) {
+          setPosts(remotePosts);
+          saveLinkedInPosts(remotePosts);
+        } else if (localPosts.length > 0) {
+          await saveRemoteLinkedInPosts(localPosts, true);
+        }
+      } catch {}
+    })();
 
     const prefill = sessionStorage.getItem("linkedin_idea_prefill");
     if (prefill) {
@@ -217,12 +231,12 @@ export default function PostsPage() {
       createdAt: new Date().toISOString(),
     };
     const updated = [newPost, ...posts];
-    setPosts(updated); saveLinkedInPosts(updated);
+    setPosts(updated); saveLinkedInPosts(updated); void saveRemoteLinkedInPosts(updated, true);
     setGeneratedContent(""); setGeneratedSlides([]); setManualIdea("");
     setSourceInput(""); setScrapedContent(""); setScrapedTitle(""); setTags(""); setScheduleDate(""); setSaving(false);
   }
 
-  function deletePost(id: string) { const updated = posts.filter(p => p.id !== id); setPosts(updated); saveLinkedInPosts(updated); }
+  function deletePost(id: string) { const updated = posts.filter(p => p.id !== id); setPosts(updated); saveLinkedInPosts(updated); void saveRemoteLinkedInPosts(updated, true); }
 
   function saveStats(postId: string) {
     const updated = posts.map((post) =>
@@ -243,7 +257,7 @@ export default function PostsPage() {
           })
         : post
     );
-    setPosts(updated); saveLinkedInPosts(updated); setStatsPost(null);
+    setPosts(updated); saveLinkedInPosts(updated); void saveRemoteLinkedInPosts(updated, true); setStatsPost(null);
   }
 
   function copyPost(post: LinkedInPost) {
