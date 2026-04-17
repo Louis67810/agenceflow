@@ -356,7 +356,13 @@ export default function AdminProjectDetailPage({
   const startDate = project.start_date ?? project.created_at.split("T")[0];
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="min-h-screen bg-[#fbfbfb]">
+      {project.banner_url && (
+        <div className="h-56 overflow-hidden border-b border-gray-200 bg-white">
+          <img src={project.banner_url} alt="" className="h-full w-full object-cover" />
+        </div>
+      )}
+      <div className="mx-auto max-w-6xl p-8">
       {/* Back */}
       <Link href="/admin/projects" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-6 transition-colors">
         <ArrowLeft size={16} />Retour aux projets
@@ -841,6 +847,7 @@ export default function AdminProjectDetailPage({
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

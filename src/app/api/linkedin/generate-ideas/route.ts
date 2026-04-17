@@ -6,6 +6,14 @@ interface PostSummary {
   comments: number;
   impressions: number;
   styleName?: string;
+  reach?: number;
+  profileViews?: number;
+  followersGained?: number;
+  reposts?: number;
+  saves?: number;
+  sends?: number;
+  linkClicks?: number;
+  engagementRate?: number;
 }
 
 interface StyleSummary {
@@ -41,7 +49,7 @@ export async function POST(req: NextRequest) {
         .slice(0, 5)
         .map(
           (p, i) =>
-            `Post ${i + 1} (${p.likes} likes, ${p.comments} commentaires${p.styleName ? `, style: ${p.styleName}` : ""}): "${p.content.slice(0, 150)}..."`
+            `Post ${i + 1} (${p.likes} réactions, ${p.comments} commentaires, ${p.impressions} impressions${p.reach ? `, ${p.reach} touchés` : ""}${p.profileViews ? `, ${p.profileViews} vues profil` : ""}${p.followersGained ? `, ${p.followersGained} abonnés` : ""}${p.linkClicks ? `, ${p.linkClicks} clics lien` : ""}${p.saves ? `, ${p.saves} enregistrements` : ""}${p.styleName ? `, style: ${p.styleName}` : ""}${p.engagementRate ? `, taux d'engagement: ${p.engagementRate}%` : ""}): "${p.content.slice(0, 150)}..."`
         )
         .join("\n");
       performanceContext = `\n\nTop posts performants (pour comprendre ce qui marche):\n${topThree}`;

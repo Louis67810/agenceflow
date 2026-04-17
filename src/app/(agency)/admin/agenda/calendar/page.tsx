@@ -8,7 +8,7 @@ import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 
 const PX_PER_HOUR = 72;
 const WORK_START = 7; // 7h
-const WORK_END = 20;  // 20h
+const WORK_END = 24;  // minuit
 const TOTAL_HOURS = WORK_END - WORK_START;
 const DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const HOURS = Array.from({ length: TOTAL_HOURS }, (_, i) => WORK_START + i);
@@ -100,6 +100,16 @@ interface GhostState {
   y: number;
 }
 
+interface TaskMenuState {
+  taskId: string;
+  x: number;
+  y: number;
+  title: string;
+  date: string;
+  startTime: string;
+  duration: number;
+}
+
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<AgendaTask[]>([]);
@@ -114,6 +124,8 @@ export default function CalendarPage() {
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const suppressClickRef = useRef<string | null>(null);
+  const [taskMenu, setTaskMenu] = useState<TaskMenuState | null>(null);
+  const [quickAdjustMinutes, setQuickAdjustMinutes] = useState(30);
 
   // Forms
   const [showSlotForm, setShowSlotForm] = useState(false);
@@ -145,7 +157,9 @@ export default function CalendarPage() {
 
   const handleTaskPointerDown = useCallback((e: React.PointerEvent, task: AgendaTask) => {
     if (!task.start_time) return;
+    if (e.button !== 2) return;
     e.preventDefault();
+    setTaskMenu(null);
 
     const rect = e.currentTarget.getBoundingClientRect();
     const startMins = timeToMinutes(task.start_time);
@@ -255,6 +269,13 @@ export default function CalendarPage() {
     };
   }, [dragging, handlePointerMove, handlePointerUp]);
 
+  useEffect(() => {
+    if (!taskMenu) return;
+    const closeMenu = () => setTaskMenu(null);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [taskMenu]);
+
   // ──────────────── ACTIONS ────────────────
 
   async function handleCreateSlot() {
@@ -293,6 +314,88 @@ export default function CalendarPage() {
   async function handleDeleteSlot(id: string) {
     await agendaFetch(`/api/agenda/blocked-slots/${id}`, { method: "DELETE" });
     setSlots(p => p.filter(s => s.id !== id));
+  }
+
+  async function patchTask(taskId: string, updates: Partial<AgendaTask>) {
+    const res = await agendaFetch(`/api/agenda/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (data.error) {
+      setError(data.error);
+      return null;
+    }
+    setTasks((prev) => prev.map((task) => task.id === taskId ? { ...task, ...updates, ...data.task } : task));
+    return data.task as AgendaTask;
+  }
+
+  async function deleteTask(taskId: string) {
+    await agendaFetch(`/api/agenda/tasks/${taskId}`, { method: "DELETE" });
+    setTasks((prev) => prev.filter((task) => task.id !== taskId));
+    setTaskMenu(null);
+  }
+
+  async function saveTaskMenuChanges() {
+    if (!taskMenu) return;
+    const startMinutes = timeToMinutes(taskMenu.startTime);
+    const endMinutes = startMinutes + taskMenu.duration;
+    await patchTask(taskMenu.taskId, {
+      title: taskMenu.title,
+      date: taskMenu.date,
+      start_time: taskMenu.startTime,
+      end_time: minutesToTime(endMinutes),
+      duration_minutes: taskMenu.duration,
+    });
+    setTaskMenu(null);
+  }
+
+  async function shiftTaskFromMenu(minutes: number) {
+    if (!taskMenu) return;
+    const nextStart = Math.max(WORK_START * 60, Math.min(WORK_END * 60 - taskMenu.duration, timeToMinutes(taskMenu.startTime) + minutes));
+    const nextStartTime = minutesToTime(nextStart);
+    const nextDuration = taskMenu.duration;
+    setTaskMenu((prev) => prev ? { ...prev, startTime: nextStartTime } : prev);
+    await patchTask(taskMenu.taskId, {
+      start_time: nextStartTime,
+      end_time: minutesToTime(nextStart + nextDuration),
+      duration_minutes: nextDuration,
+      date: taskMenu.date,
+    });
+  }
+
+  async function extendTaskFromMenu(minutes: number) {
+    if (!taskMenu) return;
+    const nextDuration = Math.max(15, Math.min(WORK_END * 60 - timeToMinutes(taskMenu.startTime), taskMenu.duration + minutes));
+    setTaskMenu((prev) => prev ? { ...prev, duration: nextDuration } : prev);
+    await patchTask(taskMenu.taskId, {
+      duration_minutes: nextDuration,
+      end_time: minutesToTime(timeToMinutes(taskMenu.startTime) + nextDuration),
+      date: taskMenu.date,
+    });
+  }
+
+  async function toggleTaskDoneFromMenu() {
+    if (!taskMenu) return;
+    const task = tasks.find((entry) => entry.id === taskMenu.taskId);
+    if (!task) return;
+    const nextStatus = task.status === "done" ? "todo" : "done";
+    await patchTask(task.id, { status: nextStatus });
+    setTaskMenu(null);
+  }
+
+  function openTaskMenu(task: AgendaTask, clientX: number, clientY: number) {
+    if (!task.start_time || !task.date) return;
+    setTaskMenu({
+      taskId: task.id,
+      x: clientX,
+      y: clientY,
+      title: task.title,
+      date: task.date,
+      startTime: task.start_time,
+      duration: task.duration_minutes ?? 30,
+    });
   }
 
   // ──────────────── RENDER HELPERS ────────────────
@@ -498,16 +601,15 @@ export default function CalendarPage() {
                     transition: dragging && !isDragging ? "top 0.18s ease, left 0.18s ease" : "none",
                   }}
                   onPointerDown={e => handleTaskPointerDown(e, task)}
+                  onContextMenu={e => e.preventDefault()}
                   onClick={e => {
                     if (suppressClickRef.current === task.id) {
                       suppressClickRef.current = null;
                       e.stopPropagation();
                       return;
                     }
-                    if (!dragging) {
-                      e.stopPropagation();
-                      handleToggleTask(task);
-                    }
+                    e.stopPropagation();
+                    openTaskMenu(task, e.clientX, e.clientY);
                   }}
                 >
                   <div className="p-1 h-full flex flex-col">
@@ -545,7 +647,100 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {taskMenu && (
+        <div
+          className="fixed z-50 w-[320px] rounded-2xl border border-gray-200 bg-white shadow-2xl"
+          style={{ left: taskMenu.x, top: taskMenu.y + 12 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="border-b border-gray-100 px-4 py-3">
+            <p className="text-sm font-semibold text-gray-900">Actions rapides</p>
+            <p className="text-xs text-gray-400">Clic droit pour déplacer · clic gauche pour modifier</p>
+          </div>
+          <div className="space-y-3 px-4 py-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Titre</label>
+              <input
+                value={taskMenu.title}
+                onChange={(e) => setTaskMenu((prev) => prev ? { ...prev, title: e.target.value } : prev)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Date</label>
+                <input
+                  type="date"
+                  value={taskMenu.date}
+                  onChange={(e) => setTaskMenu((prev) => prev ? { ...prev, date: e.target.value } : prev)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Début</label>
+                <input
+                  type="time"
+                  value={taskMenu.startTime}
+                  onChange={(e) => setTaskMenu((prev) => prev ? { ...prev, startTime: e.target.value } : prev)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Durée (min)</label>
+                <input
+                  type="number"
+                  min={15}
+                  step={15}
+                  value={taskMenu.duration}
+                  onChange={(e) => setTaskMenu((prev) => prev ? { ...prev, duration: Math.max(15, Number(e.target.value) || 15) } : prev)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Pas</label>
+                <select
+                  value={quickAdjustMinutes}
+                  onChange={(e) => setQuickAdjustMinutes(Number(e.target.value))}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  {[15, 30, 45, 60, 90].map((minutes) => (
+                    <option key={minutes} value={minutes}>{minutes} min</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => toggleTaskDoneFromMenu()} className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                Valider / rouvrir
+              </button>
+              <button onClick={() => shiftTaskFromMenu(quickAdjustMinutes)} className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+                Décaler +{quickAdjustMinutes} min
+              </button>
+              <button onClick={() => shiftTaskFromMenu(-quickAdjustMinutes)} className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700">
+                Décaler -{quickAdjustMinutes} min
+              </button>
+              <button onClick={() => extendTaskFromMenu(quickAdjustMinutes)} className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+                Rallonger +{quickAdjustMinutes} min
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-3">
+            <button onClick={() => saveTaskMenuChanges()} className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">
+              Modifier la tâche
+            </button>
+            <button onClick={() => deleteTask(taskMenu.taskId)} className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+              Supprimer
+            </button>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-gray-400 mt-2 text-center">
+        Clic droit sur une tâche pour la déplacer · clic gauche pour ouvrir les actions rapides
+      </p>
+      <p className="hidden text-xs text-gray-400 mt-2 text-center">
         💡 Glissez une tâche pour la déplacer · Cliquez pour créer/terminer
       </p>
     </div>

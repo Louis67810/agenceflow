@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Clock, Plus, Bot, PenLine } from "lucide-react";
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
+import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -368,15 +369,14 @@ export default function LinkedInIdeesPage() {
   };
 
   const getTopPosts = useCallback((): LinkedInPost[] => {
-    const saved = localStorage.getItem("linkedin_posts");
-    if (!saved) return [];
     try {
-      const posts: LinkedInPost[] = JSON.parse(saved);
-      return posts
+      return loadLinkedInPosts()
         .filter((p) => p.status === "published")
-        .sort((a, b) => b.likes + b.comments * 2 - (a.likes + a.comments * 2))
+        .sort((a, b) => computeLinkedInPostScore(b) - computeLinkedInPostScore(a))
         .slice(0, 5);
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }, []);
 
   const shouldAutoGenerate = useCallback((): boolean => {
@@ -397,7 +397,21 @@ export default function LinkedInIdeesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           count: 9,
-          topPosts: topPosts.map((p) => ({ content: p.content, likes: p.likes, comments: p.comments, impressions: p.impressions, styleName: p.styleName })),
+          topPosts: topPosts.map((p) => ({
+            content: p.content,
+            likes: p.likes,
+            comments: p.comments,
+            impressions: p.impressions,
+            styleName: p.styleName,
+            reach: p.analytics?.reach ?? 0,
+            profileViews: p.analytics?.profileViews ?? 0,
+            followersGained: p.analytics?.followersGained ?? 0,
+            reposts: p.analytics?.reposts ?? 0,
+            saves: p.analytics?.saves ?? 0,
+            sends: p.analytics?.sends ?? 0,
+            linkClicks: p.analytics?.linkClicks ?? 0,
+            engagementRate: p.analytics?.engagementRate ?? 0,
+          })),
           styles: selectedStyles.map((st) => ({ name: st.name, category: st.category })),
           language,
           openrouterApiKey: s.openrouterApiKey || undefined,

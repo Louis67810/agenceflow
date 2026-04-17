@@ -12,18 +12,18 @@ import type { LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin
 import { DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings, type LinkedInSettings } from "../layout";
 import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
+import {
+  computeLinkedInPostScore,
+  loadLinkedInPosts,
+  mergePostAnalytics,
+  saveLinkedInPosts,
+} from "@/lib/linkedin/posts";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type FilterTab = "all" | "draft" | "scheduled" | "published";
 
-const STORAGE_KEY = "linkedin_posts";
 const STYLES_KEY = "linkedin_styles";
 const IDEAS_KEY = "linkedin_ideas";
-
-function loadPosts(): LinkedInPost[] {
-  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
-}
-function savePosts(posts: LinkedInPost[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(posts)); }
 function loadStyles(): LinkedInStyle[] {
   try { const s = localStorage.getItem(STYLES_KEY); return s ? JSON.parse(s) : DEFAULT_STYLES; } catch { return DEFAULT_STYLES; }
 }
@@ -73,12 +73,25 @@ export default function PostsPage() {
   const [saving, setSaving] = useState(false);
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
-  const [statsInput, setStatsInput] = useState({ likes: 0, comments: 0, impressions: 0 });
+  const [statsInput, setStatsInput] = useState({
+    postUrl: "",
+    reactions: 0,
+    comments: 0,
+    impressions: 0,
+    reach: 0,
+    profileViews: 0,
+    followersGained: 0,
+    reposts: 0,
+    saves: 0,
+    sends: 0,
+    linkClicks: 0,
+    engagementRate: 0,
+  });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [settings, setSettings] = useState<LinkedInSettings | null>(null);
 
   useEffect(() => {
-    setPosts(loadPosts());
+    setPosts(loadLinkedInPosts());
     setStyles(loadStyles());
     setIdeas(loadIdeas());
     setSettings(loadLinkedInSettings());
@@ -99,10 +112,24 @@ export default function PostsPage() {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const topPosts = [...posts]
-    .filter(p => p.status === "published" && (p.likes + p.comments) > 0)
-    .sort((a, b) => b.likes + b.comments * 3 - (a.likes + a.comments * 3))
+    .filter(p => p.status === "published")
+    .sort((a, b) => computeLinkedInPostScore(b) - computeLinkedInPostScore(a))
     .slice(0, 5)
-    .map(p => ({ content: p.content, likes: p.likes, comments: p.comments, impressions: p.impressions, styleName: p.styleName }));
+    .map(p => ({
+      content: p.content,
+      likes: p.likes,
+      comments: p.comments,
+      impressions: p.impressions,
+      styleName: p.styleName,
+      reach: p.analytics?.reach ?? 0,
+      profileViews: p.analytics?.profileViews ?? 0,
+      followersGained: p.analytics?.followersGained ?? 0,
+      reposts: p.analytics?.reposts ?? 0,
+      saves: p.analytics?.saves ?? 0,
+      sends: p.analytics?.sends ?? 0,
+      linkClicks: p.analytics?.linkClicks ?? 0,
+      engagementRate: p.analytics?.engagementRate ?? 0,
+    }));
 
   async function handleScrapeUrl() {
     if (!sourceInput.trim()) return;
@@ -190,16 +217,33 @@ export default function PostsPage() {
       createdAt: new Date().toISOString(),
     };
     const updated = [newPost, ...posts];
-    setPosts(updated); savePosts(updated);
+    setPosts(updated); saveLinkedInPosts(updated);
     setGeneratedContent(""); setGeneratedSlides([]); setManualIdea("");
     setSourceInput(""); setScrapedContent(""); setScrapedTitle(""); setTags(""); setScheduleDate(""); setSaving(false);
   }
 
-  function deletePost(id: string) { const updated = posts.filter(p => p.id !== id); setPosts(updated); savePosts(updated); }
+  function deletePost(id: string) { const updated = posts.filter(p => p.id !== id); setPosts(updated); saveLinkedInPosts(updated); }
 
   function saveStats(postId: string) {
-    const updated = posts.map(p => p.id === postId ? { ...p, ...statsInput, status: "published" as const, publishedAt: p.publishedAt ?? new Date().toISOString() } : p);
-    setPosts(updated); savePosts(updated); setStatsPost(null);
+    const updated = posts.map((post) =>
+      post.id === postId
+        ? mergePostAnalytics(post, {
+            postUrl: statsInput.postUrl || post.postUrl,
+            reactions: statsInput.reactions,
+            comments: statsInput.comments,
+            impressions: statsInput.impressions,
+            reach: statsInput.reach,
+            profileViews: statsInput.profileViews,
+            followersGained: statsInput.followersGained,
+            reposts: statsInput.reposts,
+            saves: statsInput.saves,
+            sends: statsInput.sends,
+            linkClicks: statsInput.linkClicks,
+            engagementRate: statsInput.engagementRate,
+          })
+        : post
+    );
+    setPosts(updated); saveLinkedInPosts(updated); setStatsPost(null);
   }
 
   function copyPost(post: LinkedInPost) {
@@ -491,7 +535,27 @@ export default function PostsPage() {
                         <button onClick={() => copyPost(post)} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
                           {copiedId === post.id ? <Check size={13} style={{ color: "#168b64" }} /> : <Copy size={13} />}
                         </button>
-                        <button onClick={() => { setStatsPost(post); setStatsInput({ likes: post.likes, comments: post.comments, impressions: post.impressions }); }} title="Statistiques" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
+                        <button
+                          onClick={() => {
+                            setStatsPost(post);
+                            setStatsInput({
+                              postUrl: post.analytics?.postUrl ?? post.postUrl ?? "",
+                              reactions: post.analytics?.reactions ?? post.likes,
+                              comments: post.analytics?.comments ?? post.comments,
+                              impressions: post.analytics?.impressions ?? post.impressions,
+                              reach: post.analytics?.reach ?? 0,
+                              profileViews: post.analytics?.profileViews ?? 0,
+                              followersGained: post.analytics?.followersGained ?? 0,
+                              reposts: post.analytics?.reposts ?? 0,
+                              saves: post.analytics?.saves ?? 0,
+                              sends: post.analytics?.sends ?? 0,
+                              linkClicks: post.analytics?.linkClicks ?? 0,
+                              engagementRate: post.analytics?.engagementRate ?? 0,
+                            });
+                          }}
+                          title="Statistiques"
+                          style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}
+                        >
                           <BarChart2 size={13} />
                         </button>
                         <button onClick={() => deletePost(post.id)} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
@@ -551,22 +615,46 @@ export default function PostsPage() {
       {/* Stats modal */}
       {statsPost && (
         <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)" }}>
-          <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", width: 320, padding: 24, display: "flex", flexDirection: "column", gap: 16, ...jk }}>
+          <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", width: 560, padding: 24, display: "flex", flexDirection: "column", gap: 16, ...jk }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0 }}>Ajouter des statistiques</h3>
               <button onClick={() => setStatsPost(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", display: "flex" }}><X size={18} /></button>
             </div>
             <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic", margin: 0 }}>&quot;{statsPost.content.slice(0, 100)}...&quot;</p>
-            {([
-              { key: "likes" as const, label: "Likes", icon: <ThumbsUp size={13} /> },
-              { key: "comments" as const, label: "Commentaires", icon: <MessageCircle size={13} /> },
-              { key: "impressions" as const, label: "Impressions", icon: <Eye size={13} /> },
-            ]).map(s => (
-              <div key={s.key}>
-                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>{s.icon} {s.label}</label>
-                <input type="number" min={0} value={statsInput[s.key]} onChange={e => setStatsInput(prev => ({ ...prev, [s.key]: Number(e.target.value) }))} style={inp} />
-              </div>
-            ))}
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Lien du post</label>
+              <input value={statsInput.postUrl} onChange={e => setStatsInput(prev => ({ ...prev, postUrl: e.target.value }))} style={inp} placeholder="https://www.linkedin.com/posts/..." />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {([
+                ["reactions", "Réactions"],
+                ["comments", "Commentaires"],
+                ["impressions", "Impressions"],
+                ["reach", "Membres touchés"],
+                ["profileViews", "Vues profil"],
+                ["followersGained", "Abonnés gagnés"],
+                ["reposts", "Republications"],
+                ["saves", "Enregistrements"],
+                ["sends", "Envois LinkedIn"],
+                ["linkClicks", "Clics lien"],
+                ["engagementRate", "Engagement %"],
+              ] as const).map(([key, label]) => (
+                <div key={key}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>{label}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={key === "engagementRate" ? "0.1" : "1"}
+                    value={statsInput[key]}
+                    onChange={e => setStatsInput(prev => ({ ...prev, [key]: Number(e.target.value) }))}
+                    style={inp}
+                  />
+                </div>
+              ))}
+            </div>
+            <a href="/admin/linkedin/statistiques" style={{ fontSize: 12, color: "#0147ff", textDecoration: "none" }}>
+              Ouvrir l’onglet Statistiques pour l’import `.xlsx/.csv` complet
+            </a>
             <button onClick={() => saveStats(statsPost.id)} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13 }}>
               Sauvegarder
             </button>

@@ -55,6 +55,7 @@ const agendaSubNav: NavItem[] = [
 const linkedInSubNav: NavItem[] = [
   { href: "/admin/linkedin/posts", label: "Posts", icon: <PenLine size={13} /> },
   { href: "/admin/linkedin/planification", label: "Planification", icon: <CalendarDays size={13} /> },
+  { href: "/admin/linkedin/statistiques", label: "Statistiques", icon: <BarChart2 size={13} /> },
   { href: "/admin/linkedin/style", label: "Style", icon: <Palette size={13} /> },
   { href: "/admin/linkedin/idees", label: "Idées", icon: <Lightbulb size={13} /> },
   { href: "/admin/linkedin/prospection", label: "Prospection", icon: <UserCheck size={13} /> },
@@ -284,13 +285,12 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                           key={sub.href}
                           href={sub.href}
                           className={cn(
-                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                            "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
                             subActive
                               ? "text-white bg-white/7"
                               : "text-gray-400 hover:text-white hover:bg-white/5"
                           )}
                         >
-                          {sub.icon}
                           {sub.label}
                         </Link>
                       );
@@ -346,13 +346,12 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
                           key={sub.href}
                           href={sub.href}
                           className={cn(
-                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                            "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
                             subActive
                               ? "text-white bg-white/7"
                               : "text-gray-400 hover:text-white hover:bg-white/5"
                           )}
                         >
-                          {sub.icon}
                           {sub.label}
                         </Link>
                       );

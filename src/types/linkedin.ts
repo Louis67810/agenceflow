@@ -1,3 +1,25 @@
+export interface LinkedInPostAnalytics {
+  postUrl?: string;
+  publishedDate?: string;
+  publishedTime?: string;
+  linkUrl?: string;
+  impressions: number;
+  reach: number;
+  profileViews: number;
+  followersGained: number;
+  socialEngagement: number;
+  reactions: number;
+  comments: number;
+  reposts: number;
+  saves: number;
+  sends: number;
+  linkClicks: number;
+  customButtonClicks: number;
+  engagementRate: number;
+  importedAt?: string;
+  sourceFileName?: string;
+}
+
 export interface LinkedInPost {
   id: string;
   content: string;
@@ -13,6 +35,8 @@ export interface LinkedInPost {
   likes: number;
   comments: number;
   impressions: number;
+  postUrl?: string;
+  analytics?: LinkedInPostAnalytics;
   status: "draft" | "scheduled" | "published";
   tags: string[];
   createdAt: string;

@@ -213,7 +213,9 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">{children}</div>
+      <div className="flex-1 overflow-hidden" style={{ zoom: 1.04 }}>
+        {children}
+      </div>
 
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

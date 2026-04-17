@@ -2,7 +2,7 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Flame, CheckCircle2, Circle, Repeat } from "lucide-react";
+import { Plus, Trash2, Flame, CheckCircle2, Circle } from "lucide-react";
 import type { AgendaHabit } from "@/types/agenda";
 import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 
@@ -192,7 +192,6 @@ export default function HabitsPage() {
 
       {habits.length === 0 && (
         <div className="text-center py-16 text-gray-400">
-          <Repeat size={40} className="mx-auto mb-3 opacity-30" />
           <p>Aucune habitude configurée</p>
           <button onClick={() => setShowForm(true)} className="mt-3 text-sm text-indigo-500 hover:underline">
             + Créer votre première habitude
@@ -213,9 +212,7 @@ function HabitRow({ habit, today, weekDays, onToggle, onDelete }: {
   return (
     <div className="grid border-b border-gray-100 last:border-0 hover:bg-gray-50/50" style={{ gridTemplateColumns: "1fr repeat(7, 36px)" }}>
       <div className="p-3 flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: habit.color + "20" }}>
-          {habit.icon}
-        </div>
+        <div className="w-2.5 self-stretch rounded-full" style={{ background: habit.color }} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800 truncate">{habit.title}</p>
           <div className="flex items-center gap-2">
