@@ -2,7 +2,7 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ChevronDown, ChevronRight, Circle, CheckCircle2, Target } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Circle, CheckCircle2, Target, CalendarDays } from "lucide-react";
 import type { AgendaObjective } from "@/types/agenda";
 
 interface ObjectiveWithChildren extends AgendaObjective {
@@ -46,16 +46,6 @@ export default function ObjectivesPage() {
 
   async function handleDelete(id: string) {
     await agendaFetch(`/api/agenda/objectives/${id}`, { method: "DELETE" });
-    load();
-  }
-
-  async function handleUpdateProgress(id: string, progress: number) {
-    await agendaFetch(`/api/agenda/objectives/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ progress }),
-    });
-    setFlat(prev => prev.map(o => o.id === id ? { ...o, progress } : o));
     load();
   }
 
@@ -140,7 +130,6 @@ export default function ObjectivesPage() {
               expanded={expanded}
               onToggle={id => setExpanded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
               onDelete={handleDelete}
-              onUpdateProgress={handleUpdateProgress}
               onComplete={handleComplete}
               depth={0}
             />
@@ -152,13 +141,12 @@ export default function ObjectivesPage() {
 }
 
 function ObjectiveCard({
-  objective, expanded, onToggle, onDelete, onUpdateProgress, onComplete, depth,
+  objective, expanded, onToggle, onDelete, onComplete, depth,
 }: {
   objective: ObjectiveWithChildren;
   expanded: Set<string>;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
-  onUpdateProgress: (id: string, progress: number) => void;
   onComplete: (id: string) => void;
   depth: number;
 }) {
@@ -187,8 +175,9 @@ function ObjectiveCard({
                 {objective.title}
               </h3>
               {objective.target_date && (
-                <span className="text-xs text-gray-400">
-                  🗓 {new Date(objective.target_date).toLocaleDateString("fr-FR")}
+                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                  <CalendarDays size={12} />
+                  {new Date(objective.target_date).toLocaleDateString("fr-FR")}
                 </span>
               )}
             </div>
@@ -206,17 +195,9 @@ function ObjectiveCard({
                   style={{ width: `${objective.progress}%`, background: objective.color }}
                 />
               </div>
-              {!isCompleted && (
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={objective.progress}
-                  onChange={e => onUpdateProgress(objective.id, parseInt(e.target.value))}
-                  className="w-full mt-1 h-1 accent-indigo-500"
-                />
-              )}
+              <p className="mt-2 text-xs text-gray-400">
+                Progression automatique selon les sous-objectifs et les tâches reliées.
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -226,7 +207,7 @@ function ObjectiveCard({
                 className="p-1.5 text-green-400 hover:bg-green-50 rounded-lg transition-colors text-xs"
                 title="Marquer comme complété"
               >
-                ✓
+                <CheckCircle2 size={14} />
               </button>
             )}
             <button onClick={() => onDelete(objective.id)} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg transition-colors">
@@ -244,7 +225,6 @@ function ObjectiveCard({
               expanded={expanded}
               onToggle={onToggle}
               onDelete={onDelete}
-              onUpdateProgress={onUpdateProgress}
               onComplete={onComplete}
               depth={depth + 1}
             />

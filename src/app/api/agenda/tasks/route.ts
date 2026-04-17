@@ -44,18 +44,32 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
+    let resolvedColor = body.color ?? null;
+
+    if (body.objective_id) {
+      const { data: objective } = await supabase
+        .from("agenda_objectives")
+        .select("color")
+        .eq("id", body.objective_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      resolvedColor = objective?.color ?? resolvedColor;
+    }
+
     const { data, error } = await supabase
       .from("agenda_tasks")
-      .insert({ ...body, user_id: user.id })
+      .insert({ ...body, color: resolvedColor, user_id: user.id })
       .select()
       .single();
 
     if (error) throw error;
+    return NextResponse.json({ task: data });
 
     // Log points
     if (data) {
       await supabase.from("agenda_points_log").insert({
-        user_id: user.id,
+        user_id: user!.id,
         points: data.points,
         reason: `Tâche créée: ${data.title}`,
         entity_type: "task",

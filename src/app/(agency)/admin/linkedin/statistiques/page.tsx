@@ -149,7 +149,14 @@ export default function LinkedInStatsPage() {
       if (!res.ok) throw new Error(data.error || "Import impossible");
 
       const analytics = data.analytics as LinkedInPostAnalytics;
-      const match = findPostByAnalytics(posts, analytics);
+      const selectedPost = posts.find((post) => post.id === selectedPostId) ?? null;
+      const preferredPublishedPost =
+        selectedPost?.status === "published"
+          ? selectedPost
+          : publishedPosts.length === 1
+          ? publishedPosts[0]
+          : null;
+      const match = findPostByAnalytics(posts, analytics) ?? preferredPublishedPost;
 
       let updatedPosts: LinkedInPost[];
       let targetPost: LinkedInPost;
@@ -163,7 +170,11 @@ export default function LinkedInStatsPage() {
 
       persist(updatedPosts);
       selectPost(targetPost);
-      setImportMessage(match ? "Import relié à un post existant." : "Import ajouté comme nouveau post analytique.");
+      setImportMessage(
+        match
+          ? "Statistiques mises à jour sur le post existant."
+          : "Import ajouté comme nouveau post analytique."
+      );
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "Import impossible.");
     } finally {

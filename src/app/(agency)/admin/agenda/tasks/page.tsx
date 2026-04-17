@@ -2,9 +2,10 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star, Sparkles, Palette } from "lucide-react";
 import type { AgendaTask, AgendaObjective } from "@/types/agenda";
 import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
+import { resolveTaskColor } from "@/lib/agenda/points";
 
 type SortBy = "date" | "importance" | "status";
 
@@ -33,6 +34,7 @@ export default function TasksPage() {
     parent_task_id: "",
     tags: "",
     recurrence: "",
+    color: "#6366f1",
   });
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export default function TasksPage() {
             onClick={handleAutoSchedule}
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
-            🤖 Auto-planifier aujourd&apos;hui
+            <span className="inline-flex items-center gap-2"><Sparkles size={14} /> Auto-planifier aujourd&apos;hui</span>
           </button>
           <button
             onClick={() => setShowForm(s => !s)}
@@ -227,7 +229,7 @@ export default function TasksPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-400 mt-1">{IMPORTANCE_LABELS[form.importance]} · +{form.importance * 10} pts</p>
+              <p className="text-xs text-gray-400 mt-1">{IMPORTANCE_LABELS[form.importance]} · poids dans la récompense du jour</p>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Objectif lié</label>
@@ -254,6 +256,22 @@ export default function TasksPage() {
                   <option key={t.id} value={t.id}>{t.title}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Couleur</label>
+              <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2">
+                <Palette size={14} className="text-gray-400" />
+                <input
+                  type="color"
+                  value={form.objective_id ? (objectives.find((objective) => objective.id === form.objective_id)?.color ?? form.color) : form.color}
+                  onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                  disabled={Boolean(form.objective_id)}
+                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0 disabled:cursor-not-allowed"
+                />
+                <span className="text-xs text-gray-400">
+                  {form.objective_id ? "Couleur héritée depuis l’objectif" : "Couleur libre pour la tâche"}
+                </span>
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Tags (séparés par virgule)</label>
@@ -380,11 +398,13 @@ function TaskRow({
   isSubtask?: boolean;
 }) {
   const objective = objectives.find(o => o.id === task.objective_id);
+  const taskColor = resolveTaskColor(task, objective?.color);
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-indigo-100 transition-colors ${
         task.status === "done" ? "opacity-60" : ""
       } ${isSubtask ? "border-l-2 border-l-indigo-200" : ""}`}
+      style={{ borderLeftWidth: 4, borderLeftColor: taskColor }}
     >
       <button onClick={() => onToggle(task)} className="shrink-0">
         {task.status === "done"
@@ -425,7 +445,6 @@ function TaskRow({
             <Star key={i} size={10} className={`fill-current ${importanceColors[task.importance]}`} />
           ))}
         </div>
-        <span className="text-xs text-yellow-500 font-medium hidden sm:block">+{task.points}pts</span>
         <span className={`text-xs px-2 py-0.5 rounded-full ${
           task.status === "done" ? "bg-green-100 text-green-600" :
           task.status === "in_progress" ? "bg-blue-100 text-blue-600" :

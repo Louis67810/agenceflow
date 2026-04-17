@@ -1,9 +1,5 @@
 import type { AgendaTask, AgendaHabit, AgendaDailyRecap } from "@/types/agenda";
 
-/**
- * Points pour une tâche individuelle (indicatif, affiché dans l'UI).
- * La vraie récompense est calculée en pondérant par rapport aux autres tâches du jour.
- */
 export function taskPoints(task: AgendaTask): number {
   return task.importance * 10;
 }
@@ -29,12 +25,7 @@ export function computeWeightedTaskPoints(
   return Math.max(1, Math.round((taskImportance / totalImportance) * dailyPool));
 }
 
-export function recapBonusPoints(recap: Partial<AgendaDailyRecap>): number {
-  const score = recap.day_score ?? 0;
-  if (score >= 9) return 50;
-  if (score >= 8) return 30;
-  if (score >= 7) return 15;
-  if (score >= 6) return 5;
+export function recapBonusPoints(_: Partial<AgendaDailyRecap>): number {
   return 0;
 }
 
@@ -51,6 +42,10 @@ export function computeDayScore(
 
   const raw = (taskRate * 0.6 + habitRate * 0.4) * 10;
   return Math.min(10, Math.round(raw));
+}
+
+export function resolveTaskColor(task: Pick<AgendaTask, "color">, objectiveColor?: string | null): string {
+  return objectiveColor || task.color || "#6366f1";
 }
 
 export function getLevelFromPoints(totalPoints: number): {

@@ -30,7 +30,6 @@ export default function HabitsPage() {
     frequency: "daily",
     points: 10,
     color: "#10b981",
-    icon: "⚡",
     target_per_period: 1,
   });
 
@@ -74,7 +73,7 @@ export default function HabitsPage() {
       if (data.error) { setFormError(data.error); return; }
       if (data.habit) {
         load();
-        setForm({ title: "", description: "", frequency: "daily", points: 10, color: "#10b981", icon: "⚡", target_per_period: 1 });
+        setForm({ title: "", description: "", frequency: "daily", points: 10, color: "#10b981", target_per_period: 1 });
         setShowForm(false);
       }
     } catch (e) { setFormError(String(e)); }
@@ -125,16 +124,12 @@ export default function HabitsPage() {
 
       {/* Form */}
       {showForm && (
-        <div className="bg-white border border-indigo-200 rounded-xl p-5 mb-5 shadow-sm">
+        <div className="mb-5 rounded-[28px] border border-emerald-100 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_38%),linear-gradient(180deg,#ffffff_0%,#f7fffb_100%)] p-5 shadow-sm">
           <h3 className="font-semibold text-gray-800 mb-4">Nouvelle habitude</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Titre *</label>
               <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ex: Méditation, Sport, Lecture..." />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Icône</label>
-              <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="⚡" maxLength={2} />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Couleur</label>

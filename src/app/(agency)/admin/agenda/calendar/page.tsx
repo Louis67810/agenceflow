@@ -12,6 +12,8 @@ const WORK_END = 24;  // minuit
 const TOTAL_HOURS = WORK_END - WORK_START;
 const DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const HOURS = Array.from({ length: TOTAL_HOURS }, (_, i) => WORK_START + i);
+const TASK_MENU_WIDTH = 320;
+const TASK_MENU_HEIGHT = 430;
 
 function getWeekDates(base: Date): Date[] {
   const day = base.getDay();
@@ -48,6 +50,20 @@ function pxToMinutes(px: number): number {
 
 function addMins(time: string, mins: number): string {
   return minutesToTime(timeToMinutes(time) + mins);
+}
+
+function clampTaskMenuPosition(clientX: number, clientY: number) {
+  if (typeof window === "undefined") return { x: clientX, y: clientY };
+
+  const padding = 16;
+  const maxX = window.innerWidth - TASK_MENU_WIDTH - padding;
+  const preferAbove = clientY + 12 + TASK_MENU_HEIGHT > window.innerHeight - padding;
+  const nextY = preferAbove ? clientY - TASK_MENU_HEIGHT - 12 : clientY + 12;
+
+  return {
+    x: Math.max(padding, Math.min(clientX, maxX)),
+    y: Math.max(padding, nextY),
+  };
 }
 
 // Auto-push: given a dropped task, rearrange other tasks to avoid overlap
@@ -157,7 +173,7 @@ export default function CalendarPage() {
 
   const handleTaskPointerDown = useCallback((e: React.PointerEvent, task: AgendaTask) => {
     if (!task.start_time) return;
-    if (e.button !== 2) return;
+    if (e.button !== 0) return;
     e.preventDefault();
     setTaskMenu(null);
 
@@ -387,10 +403,11 @@ export default function CalendarPage() {
 
   function openTaskMenu(task: AgendaTask, clientX: number, clientY: number) {
     if (!task.start_time || !task.date) return;
+    const position = clampTaskMenuPosition(clientX, clientY);
     setTaskMenu({
       taskId: task.id,
-      x: clientX,
-      y: clientY,
+      x: position.x,
+      y: position.y,
       title: task.title,
       date: task.date,
       startTime: task.start_time,
@@ -601,7 +618,11 @@ export default function CalendarPage() {
                     transition: dragging && !isDragging ? "top 0.18s ease, left 0.18s ease" : "none",
                   }}
                   onPointerDown={e => handleTaskPointerDown(e, task)}
-                  onContextMenu={e => e.preventDefault()}
+                  onContextMenu={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openTaskMenu(task, e.clientX, e.clientY);
+                  }}
                   onClick={e => {
                     if (suppressClickRef.current === task.id) {
                       suppressClickRef.current = null;
@@ -609,7 +630,6 @@ export default function CalendarPage() {
                       return;
                     }
                     e.stopPropagation();
-                    openTaskMenu(task, e.clientX, e.clientY);
                   }}
                 >
                   <div className="p-1 h-full flex flex-col">
@@ -650,12 +670,12 @@ export default function CalendarPage() {
       {taskMenu && (
         <div
           className="fixed z-50 w-[320px] rounded-2xl border border-gray-200 bg-white shadow-2xl"
-          style={{ left: taskMenu.x, top: taskMenu.y + 12 }}
+          style={{ left: taskMenu.x, top: taskMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-sm font-semibold text-gray-900">Actions rapides</p>
-            <p className="text-xs text-gray-400">Clic droit pour déplacer · clic gauche pour modifier</p>
+            <p className="text-xs text-gray-400">Clic gauche pour déplacer · clic droit pour ouvrir ce menu</p>
           </div>
           <div className="space-y-3 px-4 py-4">
             <div>
@@ -738,7 +758,7 @@ export default function CalendarPage() {
       )}
 
       <p className="text-xs text-gray-400 mt-2 text-center">
-        Clic droit sur une tâche pour la déplacer · clic gauche pour ouvrir les actions rapides
+        Clic gauche sur une tâche pour la déplacer · clic droit pour ouvrir les actions rapides
       </p>
       <p className="hidden text-xs text-gray-400 mt-2 text-center">
         💡 Glissez une tâche pour la déplacer · Cliquez pour créer/terminer

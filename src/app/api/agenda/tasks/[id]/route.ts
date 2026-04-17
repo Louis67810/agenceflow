@@ -15,38 +15,50 @@ export async function PATCH(
 
     const body = await req.json();
     const allowed = ["title", "description", "date", "start_time", "end_time", "duration_minutes",
-      "importance", "status", "objective_id", "parent_task_id", "recurrence", "recurrence_end", "tags"];
+      "importance", "status", "objective_id", "parent_task_id", "recurrence", "recurrence_end", "tags", "color"];
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const k of allowed) {
       if (k in body) updates[k] = body[k];
+    }
+
+    if ("objective_id" in body && body.objective_id) {
+      const { data: objective } = await supabase
+        .from("agenda_objectives")
+        .select("color")
+        .eq("id", body.objective_id)
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
+      updates.color = objective?.color ?? updates.color ?? null;
     }
 
     const { data, error } = await supabase
       .from("agenda_tasks")
       .update(updates)
       .eq("id", id)
-      .eq("user_id", user.id)
+        .eq("user_id", user!.id)
       .select()
       .single();
 
     if (error) throw error;
+    return NextResponse.json({ task: data });
 
     // If completing a task → compute weighted points
-    if (body.status === "done" && data) {
+    if (false && body.status === "done" && data) {
       const taskDate = data.date ?? new Date().toISOString().split("T")[0];
 
       // Fetch all tasks for that day to compute relative weight
       const { data: dayTasks } = await supabase
         .from("agenda_tasks")
         .select("importance")
-        .eq("user_id", user.id)
+        .eq("user_id", user!.id)
         .eq("date", taskDate);
 
       // Fetch daily pool from settings
       const { data: settingsData } = await supabase
         .from("agenda_settings")
         .select("daily_points_pool")
-        .eq("user_id", user.id)
+        .eq("user_id", user!.id)
         .maybeSingle();
 
       const pool = (settingsData as { daily_points_pool?: number } | null)?.daily_points_pool ?? 100;
@@ -54,7 +66,7 @@ export async function PATCH(
       const pts = computeWeightedTaskPoints(data.importance, allImportances, pool);
 
       await supabase.from("agenda_points_log").insert({
-        user_id: user.id,
+        user_id: user!.id,
         points: pts,
         reason: `Tâche complétée: ${data.title}`,
         entity_type: "task",
@@ -83,7 +95,7 @@ export async function DELETE(
       .from("agenda_tasks")
       .delete()
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("user_id", user!.id);
 
     if (error) throw error;
     return NextResponse.json({ success: true });

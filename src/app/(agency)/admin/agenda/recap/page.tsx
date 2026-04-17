@@ -2,9 +2,9 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Star, Flame, Trophy } from "lucide-react";
-import { computeDayScore, recapBonusPoints } from "@/lib/agenda/points";
-import type { AgendaTask, AgendaHabit, AgendaDailyRecap } from "@/types/agenda";
+import { CheckCircle2, ChevronRight, Flame, Trophy, ShieldCheck, Star } from "lucide-react";
+import { computeDayScore, computeWeightedTaskPoints } from "@/lib/agenda/points";
+import type { AgendaTask, AgendaHabit, AgendaDailyRecap, AgendaTaskReviewOutcome } from "@/types/agenda";
 
 type Step = 0 | 1 | 2 | 3;
 
@@ -16,6 +16,8 @@ const MOODS = [
   { emoji: "🚀", label: "Excellent", value: "excellent" },
 ];
 
+type TaskReviewState = Record<string, { outcome: AgendaTaskReviewOutcome; justification: string }>;
+
 export default function RecapPage() {
   const [step, setStep] = useState<Step>(0);
   const [tasks, setTasks] = useState<AgendaTask[]>([]);
@@ -24,6 +26,8 @@ export default function RecapPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [taskReviews, setTaskReviews] = useState<TaskReviewState>({});
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -46,10 +50,17 @@ export default function RecapPage() {
 
     const loadedTasks: AgendaTask[] = tasksRes.tasks ?? [];
     const loadedHabits = habitsRes.habits ?? [];
+    const defaultReviews: TaskReviewState = Object.fromEntries(
+      loadedTasks.map((task: AgendaTask) => [
+        task.id,
+        { outcome: task.status === "done" ? "done" : "missed", justification: "" },
+      ])
+    ) as TaskReviewState;
 
     setTasks(loadedTasks);
     setHabits(loadedHabits);
     setExistingRecap(recapRes.recap);
+    setTaskReviews(defaultReviews);
 
     if (recapRes.recap) {
       setForm({
@@ -59,6 +70,16 @@ export default function RecapPage() {
         tomorrow_priority: recapRes.recap.tomorrow_priority ?? "",
         day_score: recapRes.recap.day_score ?? 0,
       });
+      if (recapRes.recap.task_reviews) {
+        setTaskReviews(
+          Object.fromEntries(
+            recapRes.recap.task_reviews.map((review) => [
+              review.task_id,
+              { outcome: review.outcome, justification: review.justification ?? "" },
+            ])
+          ) as TaskReviewState
+        );
+      }
       setSaved(true);
     } else {
       const doneTasks = loadedTasks.filter((t: AgendaTask) => t.status === "done").length;
@@ -72,31 +93,57 @@ export default function RecapPage() {
 
   async function handleSave() {
     setSaving(true);
-    const doneTasks = tasks.filter(t => t.status === "done").length;
+    setSaveError("");
+    const reviewedTasks = tasks.map((task) => ({
+      task_id: task.id,
+      outcome: taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed"),
+      justification: taskReviews[task.id]?.justification?.trim() ?? "",
+      points_awarded: taskPointShares[task.id] ?? 0,
+    }));
+    const doneTasks = reviewedTasks.filter((task) => task.outcome === "done").length;
     const doneHabits = habits.filter(h => h.done_today).length;
-
-    await agendaFetch("/api/agenda/recap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recap_date: today,
-        tasks_completed: doneTasks,
-        tasks_planned: tasks.length,
-        habits_done: doneHabits,
-        habits_total: habits.length,
-        points_earned: doneTasks * 30 + doneHabits * 10,
-        ...form,
-      }),
-    });
-
-    setSaving(false);
-    setSaved(true);
-    setStep(3);
+    try {
+      const response = await agendaFetch("/api/agenda/recap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recap_date: today,
+          tasks_completed: doneTasks,
+          tasks_planned: tasks.length,
+          habits_done: doneHabits,
+          habits_total: habits.length,
+          task_reviews: reviewedTasks,
+          ...form,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Impossible d'enregistrer le récap.");
+      setExistingRecap(data.recap);
+      setSaved(true);
+      setStep(3);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Impossible d'enregistrer le récap.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const doneTasks = tasks.filter(t => t.status === "done").length;
+  const taskImportances = tasks.map((task) => task.importance);
+  const taskPointShares = Object.fromEntries(
+    tasks.map((task) => {
+      const outcome = taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed");
+      const points =
+        outcome === "done" || outcome === "justified"
+          ? computeWeightedTaskPoints(task.importance, taskImportances, 100)
+          : 0;
+      return [task.id, points];
+    })
+  ) as Record<string, number>;
+  const doneTasks = tasks.filter((task) => (taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed")) === "done").length;
   const doneHabits = habits.filter(h => h.done_today).length;
-  const bonus = recapBonusPoints({ day_score: form.day_score });
+  const justifiedTasks = tasks.filter((task) => taskReviews[task.id]?.outcome === "justified").length;
+  const earnedTaskPoints = Object.values(taskPointShares).reduce((sum, value) => sum + value, 0);
+  const bonus = 0;
   const todayFmt = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
@@ -150,17 +197,61 @@ export default function RecapPage() {
                     <p className="text-xs text-gray-400">restantes</p>
                   </div>
                 </div>
-                <ul className="space-y-1">
-                  {tasks.slice(0, 5).map(t => (
-                    <li key={t.id} className="flex items-center gap-2 text-sm">
-                      {t.status === "done"
-                        ? <CheckCircle2 size={14} className="text-green-500 shrink-0" />
-                        : <div className="w-3.5 h-3.5 rounded-full border border-gray-200 shrink-0" />
-                      }
-                      <span className={t.status === "done" ? "text-gray-400 line-through" : "text-gray-600"}>{t.title}</span>
-                      <span className="text-xs text-yellow-500 ml-auto">+{t.points}pts</span>
-                    </li>
-                  ))}
+                <ul className="space-y-2">
+                  {tasks.slice(0, 5).map(t => {
+                    const outcome = taskReviews[t.id]?.outcome ?? (t.status === "done" ? "done" : "missed");
+                    return (
+                      <li key={t.id} className="rounded-xl border border-gray-100 p-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          {outcome === "done"
+                            ? <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                            : outcome === "justified"
+                            ? <ShieldCheck size={14} className="text-amber-500 shrink-0" />
+                            : <div className="w-3.5 h-3.5 rounded-full border border-gray-200 shrink-0" />
+                          }
+                          <span className="text-gray-700">{t.title}</span>
+                          <span className="ml-auto text-xs font-medium text-indigo-500">+{taskPointShares[t.id] ?? 0} pts</span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {([
+                            ["done", "Faite"],
+                            ["justified", "Justifiée"],
+                            ["missed", "Non faite"],
+                          ] as const).map(([value, label]) => (
+                            <button
+                              key={value}
+                              onClick={() => setTaskReviews((prev) => ({
+                                ...prev,
+                                [t.id]: {
+                                  outcome: value,
+                                  justification: value === "justified" ? prev[t.id]?.justification ?? "" : "",
+                                },
+                              }))}
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                                outcome === value ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {outcome === "justified" && (
+                          <textarea
+                            value={taskReviews[t.id]?.justification ?? ""}
+                            onChange={(e) =>
+                              setTaskReviews((prev) => ({
+                                ...prev,
+                                [t.id]: { outcome: "justified", justification: e.target.value },
+                              }))
+                            }
+                            rows={2}
+                            className="mt-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+                            placeholder="Explique rapidement pourquoi ce report était justifié"
+                          />
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
@@ -207,12 +298,12 @@ export default function RecapPage() {
                   </button>
                 ))}
               </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold text-gray-800">{form.day_score}/10</p>
-                {bonus > 0 && <p className="text-xs text-yellow-500">+{bonus} pts bonus</p>}
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-800">{form.day_score}/10</p>
+                  <p className="text-xs text-gray-400">La note du jour ne donne plus de points</p>
+                </div>
               </div>
             </div>
-          </div>
 
           <button onClick={() => setStep(1)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 flex items-center justify-center gap-2">
             Continuer la réflexion <ChevronRight size={16} />
@@ -234,8 +325,7 @@ export default function RecapPage() {
                     form.mood === m.value ? "border-indigo-500 bg-indigo-50" : "border-gray-100 hover:border-gray-200"
                   }`}
                 >
-                  <span className="text-2xl">{m.emoji}</span>
-                  <span className="text-xs text-gray-500">{m.label}</span>
+                  <span className="text-xs font-medium text-gray-600">{m.label}</span>
                 </button>
               ))}
             </div>
@@ -335,7 +425,7 @@ export default function RecapPage() {
             </div>
             <div className="bg-yellow-50 rounded-xl p-3">
               <div className="flex items-center justify-center gap-1">
-                <p className="text-2xl font-bold text-yellow-600">{doneTasks * 30 + doneHabits * 10 + bonus}</p>
+                <p className="text-2xl font-bold text-yellow-600">{earnedTaskPoints}</p>
               </div>
               <p className="text-xs text-gray-500">points gagnés ⚡</p>
             </div>

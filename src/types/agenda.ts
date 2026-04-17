@@ -19,6 +19,7 @@ export interface AgendaTask {
   recurrence?: string;
   recurrence_end?: string;
   tags?: string[];
+  color?: string;
   points: number;
   created_at: string;
   updated_at: string;
@@ -112,7 +113,18 @@ export interface AgendaDailyRecap {
   tomorrow_priority?: string;
   points_earned: number;
   bonus_points: number;
+  justified_tasks_count?: number;
+  task_reviews?: AgendaTaskReview[];
   created_at: string;
+}
+
+export type AgendaTaskReviewOutcome = "done" | "missed" | "justified";
+
+export interface AgendaTaskReview {
+  task_id: string;
+  outcome: AgendaTaskReviewOutcome;
+  justification?: string;
+  points_awarded: number;
 }
 
 export interface AgendaPointsLog {
@@ -136,6 +148,7 @@ export interface AgendaSettings {
   pomodoro_long_break: number;
   pomodoro_sessions_before_long: number;
   weekly_points_goal: number;
+  daily_points_pool?: number;
   auto_schedule_enabled: boolean;
   recap_reminder_time: string;
   timezone: string;

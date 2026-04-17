@@ -143,6 +143,11 @@ export function findPostByAnalytics(posts: LinkedInPost[], analytics: Partial<Li
     if (byDate) return byDate;
   }
 
+  if (analytics.publishedDate) {
+    const byDay = posts.find((post) => post.publishedAt?.startsWith(analytics.publishedDate!));
+    if (byDay) return byDay;
+  }
+
   return null;
 }
 
