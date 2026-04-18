@@ -7,7 +7,7 @@ import {
   type LinkedInWorkspacePreferences,
   type ProspectionSkeleton,
 } from "@/types/linkedin";
-import { getAccessToken } from "@/lib/supabase/client";
+import { linkedinFetch } from "@/lib/linkedin/fetchWithAuth";
 
 const WORKSPACE_CACHE_KEY = "linkedin_workspace_cache";
 const PENDING_LINKEDIN_WORKSPACE_SYNC_KEY = "linkedin_workspace_pending_remote_sync";
@@ -32,13 +32,6 @@ export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
   skeletons: [],
   preferences: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES,
 };
-
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const accessToken = await getAccessToken();
-  const headers: Record<string, string> = {};
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  return headers;
-}
 
 function persistPendingWorkspace(data: LinkedInWorkspaceData) {
   if (typeof window === "undefined") return;
@@ -218,9 +211,8 @@ export async function fetchRemoteLinkedInWorkspace(): Promise<{
   workspace: LinkedInWorkspaceData;
   hasStoredData: boolean;
 }> {
-  const res = await fetch("/api/linkedin/workspace-store", {
+  const res = await linkedinFetch("/api/linkedin/workspace-store", {
     cache: "no-store",
-    headers: await getAuthHeaders(),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Impossible de charger l'espace LinkedIn.");
@@ -234,11 +226,10 @@ export async function fetchRemoteLinkedInWorkspace(): Promise<{
 export async function patchRemoteLinkedInWorkspace(
   patch: LinkedInWorkspacePatch
 ): Promise<LinkedInWorkspaceData> {
-  const res = await fetch("/api/linkedin/workspace-store", {
+  const res = await linkedinFetch("/api/linkedin/workspace-store", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(await getAuthHeaders()),
     },
     body: JSON.stringify({ patch }),
   });
@@ -251,11 +242,10 @@ export async function saveRemoteLinkedInWorkspace(
   workspace: LinkedInWorkspaceData
 ): Promise<LinkedInWorkspaceData> {
   const normalized = normalizeLinkedInWorkspaceData(workspace);
-  const res = await fetch("/api/linkedin/workspace-store", {
+  const res = await linkedinFetch("/api/linkedin/workspace-store", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(await getAuthHeaders()),
     },
     body: JSON.stringify({ patch: normalized }),
   });

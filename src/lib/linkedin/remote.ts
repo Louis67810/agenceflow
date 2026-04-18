@@ -2,7 +2,7 @@
 
 import type { LinkedInPost } from "@/types/linkedin";
 import { normalizePosts } from "@/lib/linkedin/posts";
-import { getAccessToken } from "@/lib/supabase/client";
+import { linkedinFetch } from "@/lib/linkedin/fetchWithAuth";
 
 const PENDING_LINKEDIN_POSTS_SYNC_KEY = "linkedin_posts_pending_remote_sync";
 
@@ -49,17 +49,9 @@ function clearPendingPayload(expectedPayload?: PendingPostsSyncPayload) {
   }
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const accessToken = await getAccessToken();
-  const headers: Record<string, string> = {};
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  return headers;
-}
-
 export async function fetchRemoteLinkedInPosts(): Promise<LinkedInPost[]> {
-  const res = await fetch("/api/linkedin/posts-store", {
+  const res = await linkedinFetch("/api/linkedin/posts-store", {
     cache: "no-store",
-    headers: await getAuthHeaders(),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Impossible de charger les posts LinkedIn.");
@@ -68,11 +60,10 @@ export async function fetchRemoteLinkedInPosts(): Promise<LinkedInPost[]> {
 
 export async function saveRemoteLinkedInPosts(posts: LinkedInPost[], replace = true): Promise<void> {
   const normalizedPosts = normalizePosts(posts);
-  const res = await fetch("/api/linkedin/posts-store", {
+  const res = await linkedinFetch("/api/linkedin/posts-store", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(await getAuthHeaders()),
     },
     body: JSON.stringify({ posts: normalizedPosts, replace }),
   });

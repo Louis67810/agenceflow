@@ -1,6 +1,6 @@
 "use client";
 
-import { getAccessToken } from "@/lib/supabase/client";
+import { linkedinFetch } from "@/lib/linkedin/fetchWithAuth";
 
 export interface LinkedInSettings {
   openrouterApiKey: string;
@@ -115,13 +115,6 @@ function canUseStorage() {
   return typeof window !== "undefined";
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const accessToken = await getAccessToken();
-  const headers: Record<string, string> = {};
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  return headers;
-}
-
 export function normalizeLinkedInSettings(
   settings?: Partial<LinkedInSettings> | null
 ): LinkedInSettings {
@@ -192,9 +185,8 @@ export function hasMeaningfulLinkedInSettings(settings: LinkedInSettings): boole
 }
 
 export async function fetchRemoteLinkedInSettings(): Promise<LinkedInSettings> {
-  const res = await fetch("/api/linkedin/settings-store", {
+  const res = await linkedinFetch("/api/linkedin/settings-store", {
     cache: "no-store",
-    headers: await getAuthHeaders(),
   });
   const responseData = await res.json();
   if (!res.ok) {
@@ -207,11 +199,10 @@ export async function saveRemoteLinkedInSettings(
   settings: LinkedInSettings
 ): Promise<LinkedInSettings> {
   const normalized = normalizeLinkedInSettings(settings);
-  const res = await fetch("/api/linkedin/settings-store", {
+  const res = await linkedinFetch("/api/linkedin/settings-store", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(await getAuthHeaders()),
     },
     body: JSON.stringify({ settings: normalized }),
   });
