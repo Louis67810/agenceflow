@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { ChevronRight, Lock } from "lucide-react";
+import {
+  AtSign,
+  Building2,
+  ChevronRight,
+  LockKeyhole,
+  Phone,
+  Type,
+  User,
+} from "lucide-react";
 
 interface Field {
   id: string;
@@ -61,13 +69,14 @@ const titleStyle: CSSProperties = {
 };
 
 const subtitleStyle: CSSProperties = {
-  color: "rgba(0,0,0,0.8)",
+  color: "rgba(0,0,0,0.7)",
   fontSize: 18,
   lineHeight: 1.46,
   letterSpacing: "-0.03em",
   textAlign: "center",
   maxWidth: 420,
   margin: "0 auto",
+  fontWeight: 500,
 };
 
 const pillInputStyle: CSSProperties = {
@@ -77,22 +86,22 @@ const pillInputStyle: CSSProperties = {
   border: "1px solid rgba(0,0,0,0.16)",
   background: "#fff",
   color: "rgba(0,0,0,0.8)",
-  fontSize: 17,
+  fontSize: 16,
   lineHeight: 1.15,
   letterSpacing: "-0.03em",
-  textAlign: "center",
   outline: "none",
   boxSizing: "border-box",
-  padding: "0 26px",
+  padding: "0 24px 0 52px",
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
 };
 
 const mutedTextStyle: CSSProperties = {
-  fontSize: 16,
+  fontSize: 14,
   lineHeight: 1.46,
   letterSpacing: "-0.03em",
   color: "rgba(0,0,0,0.82)",
   textAlign: "center",
+  fontWeight: 500,
 };
 
 function findEmailIndex(fields: Field[]) {
@@ -107,6 +116,19 @@ function formatTimer(ms: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")} : ${String(seconds).padStart(2, "0")}m`;
+}
+
+function getFieldIcon(field?: Field | null) {
+  if (!field) return Type;
+
+  const haystack = `${field.type} ${field.key} ${field.label}`.toLowerCase();
+
+  if (haystack.includes("email") || haystack.includes("mail")) return AtSign;
+  if (haystack.includes("phone") || haystack.includes("tel")) return Phone;
+  if (haystack.includes("company") || haystack.includes("entreprise") || haystack.includes("societe")) return Building2;
+  if (haystack.includes("name") || haystack.includes("prenom") || haystack.includes("nom")) return User;
+
+  return Type;
 }
 
 export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData }) {
@@ -128,6 +150,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const [emailSent, setEmailSent] = useState(false);
   const [resourceUrl, setResourceUrl] = useState(magnet.resource_url);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentField = flatFields[stepIndex] ?? null;
@@ -141,6 +164,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const remaining = Math.max(0, flatFields.length - stepIndex - 1);
   const completion = flatFields.length > 0 ? stepIndex / flatFields.length : 0;
   const blurPx = submitted ? 0 : Math.max(12, 28 - completion * 14);
+  const FieldIcon = getFieldIcon(currentField);
 
   useEffect(() => {
     if (!magnet.timer_minutes) return;
@@ -228,6 +252,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
     if (stepIndex < flatFields.length - 1) {
       setStepIndex((index) => index + 1);
       setValue("");
+      setIsInputFocused(false);
       return;
     }
 
@@ -243,11 +268,13 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
   const email = (submitted ? submittedData : currentData).email || (submitted ? submittedData : currentData).mail || "";
   const firstName = (submitted ? submittedData : currentData).firstname || (submitted ? submittedData : currentData).prenom || "";
+  const isGmailAddress = /@gmail\.com$/i.test(email.trim());
+  const successHref = isGmailAddress ? "https://mail.google.com/mail/u/0/#inbox" : null;
 
   if (submitted) {
     return (
       <div style={pageStyle}>
-        <BackgroundGuides />
+        <BackgroundOrnaments />
         <div style={{ ...centerWrapStyle, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 32 }}>
           <div style={{ width: "100%", maxWidth: 760, textAlign: "center" }}>
             {magnet.timer_minutes && timeLeft !== null && (
@@ -260,15 +287,19 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
               {firstName ? `C'est bon, ${firstName}.` : "C'est bon."}
             </h1>
             <p style={{ ...subtitleStyle, maxWidth: 500, marginBottom: 36 }}>
-              {emailSent && email
+              {isGmailAddress
+                ? "Votre ressource vient d'etre envoyee. Ouvrez directement Gmail pour la recuperer."
+                : emailSent && email
                 ? `Votre ressource a ete envoyee a ${email}.`
                 : "Votre ressource est prete, vous pouvez y acceder maintenant."}
             </p>
 
-            <PrimaryButtonLink
-              href={resourceUrl}
-              label={magnet.cta_text || "Acceder a la ressource"}
-            />
+            {successHref ? (
+              <PrimaryButtonLink
+                href={successHref}
+                label="Ouvrir Gmail"
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -277,8 +308,13 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
   return (
     <div style={pageStyle}>
-      <BackgroundGuides />
+      <BackgroundOrnaments />
       <BackgroundFade />
+      <style>{`
+        .lm-input::placeholder {
+          color: rgba(0, 0, 0, 0.38);
+        }
+      `}</style>
 
       <div style={centerWrapStyle}>
         <div style={{ textAlign: "center" }}>
@@ -295,22 +331,42 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
           <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
             {currentField ? (
-              <input
-                ref={inputRef}
-                key={currentField.id}
-                type={currentField.type === "email" ? "email" : currentField.type === "phone" ? "tel" : "text"}
-                value={value}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  setError("");
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder={currentField.placeholder || currentField.label || "Entrez votre adresse mail"}
-                style={{
-                  ...pillInputStyle,
-                  borderColor: error ? "rgba(220,38,38,0.5)" : "rgba(0,0,0,0.16)",
-                }}
-              />
+              <div style={{ position: "relative" }}>
+                <FieldIcon
+                  size={16}
+                  style={{
+                    position: "absolute",
+                    left: 20,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "rgba(0,0,0,0.38)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <input
+                  ref={inputRef}
+                  key={currentField.id}
+                  className="lm-input"
+                  type={currentField.type === "email" ? "email" : currentField.type === "phone" ? "tel" : "text"}
+                  value={value}
+                  onChange={(event) => {
+                    setValue(event.target.value);
+                    setError("");
+                  }}
+                  onFocus={() => setIsInputFocused(true)}
+                  onBlur={() => setIsInputFocused(false)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={currentField.placeholder || currentField.label || "Entrez votre adresse mail"}
+                  style={{
+                    ...pillInputStyle,
+                    borderColor: error
+                      ? "rgba(220,38,38,0.5)"
+                      : isInputFocused
+                      ? "#0147ff"
+                      : "rgba(0,0,0,0.16)",
+                  }}
+                />
+              </div>
             ) : null}
 
             <div style={{ marginTop: 12 }}>
@@ -321,7 +377,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
                   submitting
                     ? "Envoi en cours..."
                     : stepIndex === flatFields.length - 1
-                    ? magnet.cta_text || "Obtenir la ressource"
+                    ? "Acceder a la ressource"
                     : "Continuer"
                 }
               />
@@ -333,8 +389,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
               </p>
             ) : null}
 
-            <p style={{ ...mutedTextStyle, fontSize: 16, margin: "14px 0 0" }}>
-              Plus que {remaining} etape{remaining > 1 ? "s" : ""} restante{remaining > 1 ? "s" : ""}
+            <p style={{ ...mutedTextStyle, margin: "14px 0 0" }}>
+              {remaining === 0
+                ? "C'est tout, accedez a la ressource tout de suite"
+                : `Plus que ${remaining} etape${remaining > 1 ? "s" : ""} restante${remaining > 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
@@ -347,33 +405,37 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   );
 }
 
-function BackgroundGuides() {
+function BackgroundOrnaments() {
   return (
     <>
       <div
         aria-hidden="true"
         style={{
           position: "fixed",
-          top: 18,
-          bottom: 18,
-          left: "max(24px, calc(50% - 535px))",
-          width: 1,
-          background: "rgba(0,0,0,0.1)",
+          top: -80,
+          left: -80,
           zIndex: 0,
+          pointerEvents: "none",
         }}
-      />
+      >
+        <svg width="536" height="381" viewBox="0 0 536 381" fill="none">
+          <path d="M-105.779 298.796L-16.318 200.598C19.5701 161.204 67.5899 134.929 120.117 125.944L165.562 118.171C239.925 105.451 307.961 162.424 308.498 237.865L308.59 250.76C308.852 287.596 288.962 321.63 256.739 339.481C164.916 390.35 66.3265 284.243 123.794 196.399L226.048 40.0931C231.006 32.5132 236.656 25.4082 242.923 18.869L515.967 -266" stroke="black" strokeOpacity="0.04" strokeWidth="54.8704"/>
+        </svg>
+      </div>
       <div
         aria-hidden="true"
         style={{
           position: "fixed",
-          top: 18,
-          bottom: 18,
-          right: "max(24px, calc(50% - 535px))",
-          width: 1,
-          background: "rgba(0,0,0,0.1)",
+          bottom: -120,
+          right: -150,
           zIndex: 0,
+          pointerEvents: "none",
         }}
-      />
+      >
+        <svg width="639" height="523" viewBox="0 0 639 523" fill="none">
+          <path d="M886.172 190.892L755.943 274.388C703.7 307.884 641.765 322.966 579.971 317.241L526.508 312.287C439.026 304.182 379.667 219.588 401.801 134.566L405.584 120.033C416.392 78.5181 449.024 46.2292 490.651 35.8613C609.272 6.31655 688.19 155.388 597.071 236.881L434.937 381.884C427.074 388.915 418.578 395.205 409.557 400.671L16.5576 638.814" stroke="black" strokeOpacity="0.04" strokeWidth="63.8992"/>
+        </svg>
+      </div>
     </>
   );
 }
@@ -414,8 +476,8 @@ function TimerBadge({ label }: { label: string }) {
     <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
       <span
         style={{
-          width: 10,
-          height: 10,
+          width: 16,
+          height: 16,
           borderRadius: "50%",
           background: "#2563eb",
           boxShadow: "0 0 0 0 rgba(37,99,235,0.35)",
@@ -426,9 +488,10 @@ function TimerBadge({ label }: { label: string }) {
       <span
         style={{
           color: "rgba(0,0,0,0.9)",
-          fontSize: 18,
-          lineHeight: 1.15,
-          letterSpacing: "-0.03em",
+          fontFamily: '"Inter", sans-serif',
+          fontSize: 16,
+          lineHeight: 1,
+          letterSpacing: "-0.02em",
           fontWeight: 500,
         }}
       >
@@ -448,9 +511,9 @@ function TimerBadge({ label }: { label: string }) {
 function PreviewStack({ imageUrl, blurPx }: { imageUrl: string | null; blurPx: number }) {
   const shellStyle: CSSProperties = {
     position: "relative",
-    maxWidth: 760,
-    width: "min(100%, 760px)",
-    height: 420,
+    maxWidth: 820,
+    width: "min(100%, 820px)",
+    height: 460,
     margin: "0 auto",
   };
 
@@ -493,10 +556,10 @@ function PreviewStack({ imageUrl, blurPx }: { imageUrl: string | null; blurPx: n
         style={{
           position: "absolute",
           left: "50%",
-          top: 96,
-          transform: "translateX(-50%) rotate(-12deg) translateX(-118px)",
-          width: "min(100%, 420px)",
-          height: 284,
+          top: 116,
+          transform: "translateX(-50%) rotate(-14deg) translateX(-128px)",
+          width: "min(100%, 470px)",
+          height: 310,
           zIndex: 1,
           opacity: 0.92,
         }}
@@ -507,10 +570,10 @@ function PreviewStack({ imageUrl, blurPx }: { imageUrl: string | null; blurPx: n
         style={{
           position: "absolute",
           left: "50%",
-          top: 84,
-          transform: "translateX(-50%) rotate(12deg) translateX(116px)",
-          width: "min(100%, 420px)",
-          height: 284,
+          top: 102,
+          transform: "translateX(-50%) rotate(13deg) translateX(132px)",
+          width: "min(100%, 470px)",
+          height: 310,
           zIndex: 2,
           opacity: 0.92,
         }}
@@ -521,10 +584,10 @@ function PreviewStack({ imageUrl, blurPx }: { imageUrl: string | null; blurPx: n
         style={{
           position: "absolute",
           left: "50%",
-          top: 52,
+          top: 62,
           transform: "translateX(-50%)",
-          width: "min(100%, 468px)",
-          height: 318,
+          width: "min(100%, 520px)",
+          height: 348,
           zIndex: 3,
         }}
         front
@@ -604,7 +667,7 @@ function LockedOverlay() {
           display: "inline-flex",
           alignItems: "center",
           gap: 10,
-          padding: "14px 20px",
+          padding: "12px 18px",
           boxShadow:
             "0 72px 20px rgba(35,41,58,0), 0 45px 18px rgba(35,41,58,0.04), 0 25px 15px rgba(35,41,58,0.13), 0 11px 11px rgba(35,41,58,0.21), 0 3px 6px rgba(35,41,58,0.25), inset 0 3px 0 rgba(255,255,255,0.25)",
           fontSize: 18,
@@ -613,7 +676,7 @@ function LockedOverlay() {
           whiteSpace: "nowrap",
         }}
       >
-        <Lock size={18} />
+        <LockKeyhole size={16} />
         Remplissez les champs
       </div>
     </div>
