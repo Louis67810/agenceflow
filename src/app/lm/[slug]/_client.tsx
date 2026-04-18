@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Lock } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
+import { ChevronRight, Lock } from "lucide-react";
 
 interface Field {
   id: string;
@@ -31,16 +32,97 @@ export interface LeadMagnetData {
   from_name: string;
 }
 
+const pageStyle: CSSProperties = {
+  minHeight: "100vh",
+  background: "#fbfbfb",
+  fontFamily: '"Inter", sans-serif',
+  overflowX: "hidden",
+  position: "relative",
+};
+
+const centerWrapStyle: CSSProperties = {
+  maxWidth: 1220,
+  margin: "0 auto",
+  padding: "72px 24px 32px",
+  position: "relative",
+  zIndex: 2,
+};
+
+const titleStyle: CSSProperties = {
+  fontFamily: '"Plus Jakarta Sans", sans-serif',
+  fontWeight: 700,
+  fontSize: "clamp(42px, 6vw, 64px)",
+  lineHeight: 0.99,
+  letterSpacing: "-0.04em",
+  color: "#000",
+  textAlign: "center",
+  margin: "0 auto 18px",
+  maxWidth: 940,
+};
+
+const subtitleStyle: CSSProperties = {
+  color: "rgba(0,0,0,0.8)",
+  fontSize: 18,
+  lineHeight: 1.46,
+  letterSpacing: "-0.03em",
+  textAlign: "center",
+  maxWidth: 420,
+  margin: "0 auto",
+};
+
+const pillInputStyle: CSSProperties = {
+  width: "100%",
+  height: 56,
+  borderRadius: 999,
+  border: "1px solid rgba(0,0,0,0.16)",
+  background: "#fff",
+  color: "rgba(0,0,0,0.8)",
+  fontSize: 17,
+  lineHeight: 1.15,
+  letterSpacing: "-0.03em",
+  textAlign: "center",
+  outline: "none",
+  boxSizing: "border-box",
+  padding: "0 26px",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+};
+
+const mutedTextStyle: CSSProperties = {
+  fontSize: 16,
+  lineHeight: 1.46,
+  letterSpacing: "-0.03em",
+  color: "rgba(0,0,0,0.82)",
+  textAlign: "center",
+};
+
+function findEmailIndex(fields: Field[]) {
+  return fields.findIndex((field) => {
+    const haystack = `${field.type} ${field.key} ${field.label}`.toLowerCase();
+    return haystack.includes("email") || haystack.includes("mail");
+  });
+}
+
+function formatTimer(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")} : ${String(seconds).padStart(2, "0")}m`;
+}
+
 export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData }) {
-  // Flatten all fields into a single ordered array
-  const flatFields: Field[] = magnet.steps.flatMap((s) => s.fields);
+  const flatFields = useMemo(() => {
+    const ordered = magnet.steps.flatMap((step) => step.fields);
+    const emailIndex = findEmailIndex(ordered);
+    if (emailIndex <= 0) return ordered;
+    const emailField = ordered[emailIndex];
+    return [emailField, ...ordered.filter((_, index) => index !== emailIndex)];
+  }, [magnet.steps]);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [submittedData, setSubmittedData] = useState<Record<string, string>>({});
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const [exiting, setExiting] = useState(false);
-  const [entering, setEntering] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -49,456 +131,429 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentField = flatFields[stepIndex] ?? null;
-  const remaining = flatFields.length - stepIndex - 1;
-  const progress = flatFields.length > 0 ? stepIndex / flatFields.length : 0;
-  // Blur reduces as user fills steps, but always stays slightly blurred until done
-  const blurPx = submitted ? 0 : Math.max(8, 22 - progress * 14);
+  const currentData = useMemo(
+    () =>
+      currentField
+        ? { ...formData, [currentField.key]: value }
+        : formData,
+    [currentField, formData, value]
+  );
+  const remaining = Math.max(0, flatFields.length - stepIndex - 1);
+  const completion = flatFields.length > 0 ? stepIndex / flatFields.length : 0;
+  const blurPx = submitted ? 0 : Math.max(12, 28 - completion * 14);
 
-  // ─── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!magnet.timer_minutes) return;
-    const key = `lm_timer_${magnet.id}`;
-    let endTime: number;
-    const stored = sessionStorage.getItem(key);
-    if (stored) {
-      endTime = parseInt(stored);
-    } else {
-      endTime = Date.now() + magnet.timer_minutes * 60 * 1000;
-      sessionStorage.setItem(key, String(endTime));
+
+    const storageKey = `lm_timer_${magnet.id}`;
+    const stored = sessionStorage.getItem(storageKey);
+    const endTime = stored
+      ? Number.parseInt(stored, 10)
+      : Date.now() + magnet.timer_minutes * 60 * 1000;
+
+    if (!stored) {
+      sessionStorage.setItem(storageKey, String(endTime));
     }
+
     const tick = () => {
       const left = Math.max(0, endTime - Date.now());
       setTimeLeft(left);
-      if (left === 0) clearInterval(iv);
+      if (left === 0) window.clearInterval(interval);
     };
+
     tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
   }, [magnet.id, magnet.timer_minutes]);
 
-  // ─── Auto-focus input ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!submitted) setTimeout(() => inputRef.current?.focus(), 350);
+    if (!submitted) {
+      const timeout = window.setTimeout(() => inputRef.current?.focus(), 220);
+      return () => window.clearTimeout(timeout);
+    }
   }, [stepIndex, submitted]);
 
-  function formatTime(ms: number): string {
-    const totalSec = Math.floor(ms / 1000);
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${String(min).padStart(2, "0")} : ${String(sec).padStart(2, "0")}`;
-  }
-
-  function validate(): boolean {
+  function validateField() {
     if (!currentField) return true;
-    if (currentField.required && !value.trim()) {
-      setError("Ce champ est requis");
+
+    const trimmed = value.trim();
+
+    if (currentField.required && !trimmed) {
+      setError("Ce champ est requis.");
       return false;
     }
-    if (
-      currentField.type === "email" &&
-      value.trim() &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-    ) {
-      setError("Adresse email invalide");
+
+    if (currentField.type === "email" && trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError("Adresse email invalide.");
       return false;
     }
-    if (
-      currentField.type === "phone" &&
-      value.trim() &&
-      !/^[\d\s\+\-\(\)]{6,}$/.test(value)
-    ) {
-      setError("Numéro invalide");
+
+    if (currentField.type === "phone" && trimmed && !/^[\d\s()+-]{6,}$/.test(trimmed)) {
+      setError("Numero invalide.");
       return false;
     }
+
     return true;
   }
 
+  async function submitLead(nextData: Record<string, string>) {
+    setSubmitting(true);
+
+    try {
+      const res = await fetch("/api/lead-magnet/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadMagnetId: magnet.id, data: nextData }),
+      });
+
+      const result = await res.json();
+      setResourceUrl(result.resourceUrl || magnet.resource_url);
+      setEmailSent(Boolean(result.emailSent));
+    } catch {
+      setResourceUrl(magnet.resource_url);
+    } finally {
+      setSubmitting(false);
+      setSubmittedData(nextData);
+      setSubmitted(true);
+    }
+  }
+
   async function goNext() {
-    if (!validate()) return;
+    if (!validateField()) return;
     setError("");
 
-    const newData = {
-      ...formData,
-      ...(currentField ? { [currentField.key]: value } : {}),
-    };
-    setFormData(newData);
+    const nextData = currentField ? { ...formData, [currentField.key]: value } : formData;
+    setFormData(nextData);
 
     if (stepIndex < flatFields.length - 1) {
-      setExiting(true);
-      setTimeout(() => {
-        setStepIndex((i) => i + 1);
-        setValue("");
-        setExiting(false);
-        setEntering(true);
-        setTimeout(() => setEntering(false), 300);
-      }, 220);
-    } else {
-      // Last field — submit
-      setSubmitting(true);
-      try {
-        const res = await fetch("/api/lead-magnet/submit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ leadMagnetId: magnet.id, data: newData }),
-        });
-        const result = await res.json();
-        setResourceUrl(result.resourceUrl || magnet.resource_url);
-        setEmailSent(!!result.emailSent);
-      } catch {
-        // Still show success
-        setResourceUrl(magnet.resource_url);
-      } finally {
-        setSubmitting(false);
-        setSubmitted(true);
-      }
+      setStepIndex((index) => index + 1);
+      setValue("");
+      return;
+    }
+
+    await submitLead(nextData);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void goNext();
     }
   }
 
-  function onKey(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      goNext();
-    }
-  }
+  const email = (submitted ? submittedData : currentData).email || (submitted ? submittedData : currentData).mail || "";
+  const firstName = (submitted ? submittedData : currentData).firstname || (submitted ? submittedData : currentData).prenom || "";
 
-  const email = formData.email || formData.mail || "";
-  const firstname = formData.firstname || formData.prenom || "";
-
-  // ─── SUCCESS SCREEN ────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#f5f5f7",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "48px 24px",
-          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        }}
-      >
-        {magnet.timer_minutes && timeLeft !== null && (
-          <TimerBadge timeLeft={timeLeft} formatTime={formatTime} />
-        )}
+      <div style={pageStyle}>
+        <BackgroundGuides />
+        <div style={{ ...centerWrapStyle, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 32 }}>
+          <div style={{ width: "100%", maxWidth: 760, textAlign: "center" }}>
+            {magnet.timer_minutes && timeLeft !== null && (
+              <div style={{ marginBottom: 28 }}>
+                <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
+              </div>
+            )}
 
-        <div style={{ textAlign: "center", marginBottom: 48 }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
-          <h1
-            style={{
-              fontSize: "clamp(28px, 5vw, 44px)",
-              fontWeight: 900,
-              color: "#0f172a",
-              lineHeight: 1.1,
-              margin: "0 0 12px",
-            }}
-          >
-            C'est tout bon{firstname ? `, ${firstname}` : ""} !
-          </h1>
-          <p style={{ color: "#6b7280", fontSize: 16, lineHeight: 1.6, maxWidth: 380, margin: "0 auto" }}>
-            {emailSent && email
-              ? `Votre ressource a été envoyée à ${email}`
-              : "Voici votre ressource :"}
-          </p>
+            <h1 style={{ ...titleStyle, fontSize: "clamp(36px, 5vw, 56px)", maxWidth: 760 }}>
+              {firstName ? `C'est bon, ${firstName}.` : "C'est bon."}
+            </h1>
+            <p style={{ ...subtitleStyle, maxWidth: 500, marginBottom: 36 }}>
+              {emailSent && email
+                ? `Votre ressource a ete envoyee a ${email}.`
+                : "Votre ressource est prete, vous pouvez y acceder maintenant."}
+            </p>
+
+            <PrimaryButtonLink
+              href={resourceUrl}
+              label={magnet.cta_text || "Acceder a la ressource"}
+            />
+          </div>
         </div>
-
-        <CTAButton href={resourceUrl} text={magnet.cta_text || "Accéder à la ressource"} />
       </div>
     );
   }
 
-  // ─── FORM SCREEN ──────────────────────────────────────────────────────────
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f5f5f7",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        paddingTop: 48,
-        paddingBottom: 0,
-        paddingLeft: 24,
-        paddingRight: 24,
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        overflowX: "hidden",
-      }}
-    >
-      {/* Timer */}
-      {magnet.timer_minutes && timeLeft !== null && (
-        <div style={{ marginBottom: 28 }}>
-          <TimerBadge timeLeft={timeLeft} formatTime={formatTime} />
-        </div>
-      )}
+    <div style={pageStyle}>
+      <BackgroundGuides />
+      <BackgroundFade />
 
-      {/* Title */}
-      <h1
-        style={{
-          fontSize: "clamp(28px, 5vw, 56px)",
-          fontWeight: 900,
-          color: "#0f172a",
-          textAlign: "center",
-          lineHeight: 1.1,
-          maxWidth: 720,
-          margin: "0 0 16px",
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {magnet.title}
-      </h1>
-
-      {/* Subtitle */}
-      <p
-        style={{
-          color: "#9ca3af",
-          textAlign: "center",
-          maxWidth: 380,
-          marginBottom: 32,
-          fontSize: 15,
-          lineHeight: 1.6,
-        }}
-      >
-        {magnet.subtitle}
-      </p>
-
-      {/* Input + progress */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 380,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 0,
-          transition: "opacity 0.22s ease, transform 0.22s ease",
-          opacity: exiting ? 0 : 1,
-          transform: exiting
-            ? "translateY(-10px)"
-            : entering
-            ? "translateY(6px)"
-            : "translateY(0)",
-        }}
-      >
-        <div style={{ width: "100%", position: "relative" }}>
-          <input
-            ref={inputRef}
-            key={stepIndex}
-            type={
-              currentField?.type === "email"
-                ? "email"
-                : currentField?.type === "phone"
-                ? "tel"
-                : "text"
-            }
-            placeholder={currentField?.placeholder || ""}
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-              setError("");
-            }}
-            onKeyDown={onKey}
-            style={{
-              width: "100%",
-              padding: "15px 28px",
-              borderRadius: 999,
-              border: error ? "1.5px solid #ef4444" : "1.5px solid #e5e7eb",
-              background: "white",
-              fontSize: 15,
-              textAlign: "center",
-              outline: "none",
-              boxSizing: "border-box",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-              transition: "border-color 0.15s",
-              color: "#0f172a",
-            }}
-          />
-        </div>
-
-        {error && (
-          <p style={{ color: "#ef4444", fontSize: 12, marginTop: 6, textAlign: "center" }}>
-            {error}
-          </p>
-        )}
-
-        <button
-          onClick={goNext}
-          disabled={submitting}
-          style={{
-            marginTop: 14,
-            padding: "11px 32px",
-            borderRadius: 999,
-            background: "#1f2937",
-            color: "white",
-            fontSize: 14,
-            fontWeight: 600,
-            border: "none",
-            cursor: submitting ? "not-allowed" : "pointer",
-            opacity: submitting ? 0.6 : 1,
-            letterSpacing: "0.01em",
-            transition: "opacity 0.15s, background 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            if (!submitting) (e.currentTarget.style.background = "#111827");
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget.style.background = "#1f2937");
-          }}
-        >
-          {submitting
-            ? "Envoi en cours..."
-            : stepIndex === flatFields.length - 1
-            ? "Obtenir ma ressource →"
-            : "Continuer →"}
-        </button>
-
-        {remaining > 0 && (
-          <p style={{ color: "#9ca3af", fontSize: 13, marginTop: 12, textAlign: "center" }}>
-            Plus que{" "}
-            <strong style={{ color: "#6b7280" }}>
-              {remaining} étape{remaining > 1 ? "s" : ""}
-            </strong>{" "}
-            restante{remaining > 1 ? "s" : ""}
-          </p>
-        )}
-      </div>
-
-      {/* Blurred image stack */}
-      <div
-        style={{
-          marginTop: 40,
-          position: "relative",
-          width: 540,
-          maxWidth: "100%",
-          height: 360,
-          flexShrink: 0,
-        }}
-      >
-        {magnet.image_url ? (
-          <>
-            {/* Card back-left */}
-            <ImageCard
-              src={magnet.image_url}
-              blur={blurPx}
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%) rotate(-10deg) translate(-90px, 24px)",
-                width: 340,
-                height: 248,
-                zIndex: 1,
-                opacity: 0.85,
-              }}
-            />
-            {/* Card back-right */}
-            <ImageCard
-              src={magnet.image_url}
-              blur={blurPx}
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%) rotate(7deg) translate(78px, 14px)",
-                width: 340,
-                height: 248,
-                zIndex: 2,
-                opacity: 0.9,
-              }}
-            />
-            {/* Card front */}
-            <ImageCard
-              src={magnet.image_url}
-              blur={blurPx}
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%) rotate(-2deg)",
-                width: 370,
-                height: 266,
-                zIndex: 3,
-              }}
-            />
-            {/* Lock overlay */}
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 10,
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "13px 22px",
-                  borderRadius: 999,
-                  background: "#1f2937",
-                  color: "white",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                  letterSpacing: "0.01em",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <Lock size={15} />
-                Remplissez les champs
-              </div>
+      <div style={centerWrapStyle}>
+        <div style={{ textAlign: "center" }}>
+          {magnet.timer_minutes && timeLeft !== null && (
+            <div style={{ marginBottom: 22 }}>
+              <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
             </div>
-          </>
-        ) : (
-          // Placeholder when no image
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 370,
-              height: 260,
-              borderRadius: 16,
-              background: "#e5e7eb",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              color: "#9ca3af",
-            }}
-          >
-            <Lock size={24} />
-            <span style={{ fontSize: 13, fontWeight: 500 }}>Aperçu de la ressource</span>
+          )}
+
+          <h1 style={titleStyle}>{magnet.title}</h1>
+          <p style={{ ...subtitleStyle, marginBottom: 18 }}>
+            {magnet.subtitle || "Veuillez remplir les champs ci dessous avant de recevoir votre ressource"}
+          </p>
+
+          <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
+            {currentField ? (
+              <input
+                ref={inputRef}
+                key={currentField.id}
+                type={currentField.type === "email" ? "email" : currentField.type === "phone" ? "tel" : "text"}
+                value={value}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  setError("");
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder={currentField.placeholder || currentField.label || "Entrez votre adresse mail"}
+                style={{
+                  ...pillInputStyle,
+                  borderColor: error ? "rgba(220,38,38,0.5)" : "rgba(0,0,0,0.16)",
+                }}
+              />
+            ) : null}
+
+            <div style={{ marginTop: 12 }}>
+              <PrimaryButton
+                disabled={submitting}
+                onClick={() => void goNext()}
+                label={
+                  submitting
+                    ? "Envoi en cours..."
+                    : stepIndex === flatFields.length - 1
+                    ? magnet.cta_text || "Obtenir la ressource"
+                    : "Continuer"
+                }
+              />
+            </div>
+
+            {error ? (
+              <p style={{ color: "#dc2626", fontSize: 13, margin: "10px 0 0", textAlign: "center" }}>
+                {error}
+              </p>
+            ) : null}
+
+            <p style={{ ...mutedTextStyle, fontSize: 16, margin: "14px 0 0" }}>
+              Plus que {remaining} etape{remaining > 1 ? "s" : ""} restante{remaining > 1 ? "s" : ""}
+            </p>
           </div>
-        )}
+        </div>
+
+        <div style={{ marginTop: 48 }}>
+          <PreviewStack imageUrl={magnet.image_url} blurPx={blurPx} />
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────
+function BackgroundGuides() {
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          top: 18,
+          bottom: 18,
+          left: "max(24px, calc(50% - 535px))",
+          width: 1,
+          background: "rgba(0,0,0,0.1)",
+          zIndex: 0,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          top: 18,
+          bottom: 18,
+          right: "max(24px, calc(50% - 535px))",
+          width: 1,
+          background: "rgba(0,0,0,0.1)",
+          zIndex: 0,
+        }}
+      />
+    </>
+  );
+}
 
-function ImageCard({
+function BackgroundFade() {
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 360,
+          width: 420,
+          height: 700,
+          background: "linear-gradient(90deg, #fbfbfb 78%, rgba(251,251,251,0))",
+          zIndex: 1,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 360,
+          width: 420,
+          height: 700,
+          background: "linear-gradient(270deg, #fbfbfb 78%, rgba(251,251,251,0))",
+          zIndex: 1,
+        }}
+      />
+    </>
+  );
+}
+
+function TimerBadge({ label }: { label: string }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          background: "#2563eb",
+          boxShadow: "0 0 0 0 rgba(37,99,235,0.35)",
+          animation: "lm-pulse 1.9s infinite",
+          display: "inline-block",
+        }}
+      />
+      <span
+        style={{
+          color: "rgba(0,0,0,0.9)",
+          fontSize: 18,
+          lineHeight: 1.15,
+          letterSpacing: "-0.03em",
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </span>
+      <style>{`
+        @keyframes lm-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(37,99,235,0.35); }
+          70% { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
+          100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function PreviewStack({ imageUrl, blurPx }: { imageUrl: string | null; blurPx: number }) {
+  const shellStyle: CSSProperties = {
+    position: "relative",
+    maxWidth: 760,
+    width: "min(100%, 760px)",
+    height: 420,
+    margin: "0 auto",
+  };
+
+  if (!imageUrl) {
+    return (
+      <div style={shellStyle}>
+        <div
+          style={{
+            position: "absolute",
+            inset: "40px auto auto 50%",
+            transform: "translateX(-50%)",
+            width: "min(100%, 460px)",
+            height: 280,
+            borderRadius: 28,
+            border: "10px solid white",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.9), rgba(230,230,235,0.85))",
+            boxShadow: "0 40px 60px rgba(0,0,0,0.14), 0 10px 20px rgba(0,0,0,0.1)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backdropFilter: "blur(12px)",
+              background: "rgba(255,255,255,0.28)",
+              borderRadius: 18,
+            }}
+          />
+          <LockedOverlay />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={shellStyle}>
+      <PreviewCard
+        src={imageUrl}
+        blurPx={blurPx}
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 96,
+          transform: "translateX(-50%) rotate(-12deg) translateX(-118px)",
+          width: "min(100%, 420px)",
+          height: 284,
+          zIndex: 1,
+          opacity: 0.92,
+        }}
+      />
+      <PreviewCard
+        src={imageUrl}
+        blurPx={blurPx}
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 84,
+          transform: "translateX(-50%) rotate(12deg) translateX(116px)",
+          width: "min(100%, 420px)",
+          height: 284,
+          zIndex: 2,
+          opacity: 0.92,
+        }}
+      />
+      <PreviewCard
+        src={imageUrl}
+        blurPx={blurPx}
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 52,
+          transform: "translateX(-50%)",
+          width: "min(100%, 468px)",
+          height: 318,
+          zIndex: 3,
+        }}
+        front
+      />
+      <LockedOverlay />
+    </div>
+  );
+}
+
+function PreviewCard({
   src,
-  blur,
+  blurPx,
   style,
+  front = false,
 }: {
   src: string;
-  blur: number;
-  style: React.CSSProperties;
+  blurPx: number;
+  style: CSSProperties;
+  front?: boolean;
 }) {
   return (
     <div
       style={{
-        borderRadius: 16,
-        background: "white",
-        boxShadow: "0 6px 28px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)",
+        border: front ? "11px solid white" : "10px solid white",
+        borderRadius: front ? 24 : 22,
         overflow: "hidden",
+        boxShadow:
+          "0 54px 71px rgba(0,40,54,0.16), 0 16px 21px rgba(0,18,54,0.13), 0 7px 9px rgba(0,18,54,0.1)",
+        background: "#fff",
         ...style,
       }}
     >
@@ -509,109 +564,130 @@ function ImageCard({
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          filter: `blur(${blur}px)`,
+          filter: `blur(${blurPx}px)`,
           transform: "scale(1.08)",
+          transition: "filter 0.45s ease",
           display: "block",
-          transition: "filter 0.6s ease",
         }}
       />
+      {front ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(255,255,255,0.36)",
+            backdropFilter: "blur(13px)",
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function TimerBadge({
-  timeLeft,
-  formatTime,
-}: {
-  timeLeft: number;
-  formatTime: (ms: number) => string;
-}) {
+function LockedOverlay() {
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 10,
       }}
     >
       <div
         style={{
-          width: 10,
-          height: 10,
-          borderRadius: "50%",
-          background: "#2563eb",
-          boxShadow: "0 0 0 0 rgba(37, 99, 235, 0.4)",
-          animation: "pulse-blue 2s infinite",
-        }}
-      />
-      <span
-        style={{
-          fontSize: 14,
-          color: "#374151",
-          fontWeight: 500,
-          letterSpacing: "0.01em",
+          border: "1.5px solid rgba(0,0,0,0.34)",
+          borderRadius: 999,
+          background: "#23293a",
+          color: "rgba(255,255,255,0.9)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "14px 20px",
+          boxShadow:
+            "0 72px 20px rgba(35,41,58,0), 0 45px 18px rgba(35,41,58,0.04), 0 25px 15px rgba(35,41,58,0.13), 0 11px 11px rgba(35,41,58,0.21), 0 3px 6px rgba(35,41,58,0.25), inset 0 3px 0 rgba(255,255,255,0.25)",
+          fontSize: 18,
+          fontWeight: 600,
+          letterSpacing: "-0.03em",
+          whiteSpace: "nowrap",
         }}
       >
-        Temps restant : {formatTime(timeLeft)}m
-      </span>
-      <style>{`
-        @keyframes pulse-blue {
-          0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.5); }
-          70% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
-        }
-      `}</style>
+        <Lock size={18} />
+        Remplissez les champs
+      </div>
     </div>
   );
 }
 
-function CTAButton({ href, text }: { href: string; text: string }) {
+function PrimaryButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       style={{
         backgroundColor: "rgb(225, 228, 237)",
         borderRadius: 15,
         boxShadow: "rgba(0, 0, 0, 0.1) 0px 0px 2px 0px inset",
         display: "inline-block",
         padding: 4,
-        textDecoration: "none",
+        width: "100%",
       }}
     >
-      <div
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
         style={{
-          background:
-            "linear-gradient(161deg, rgb(78, 125, 250) 0%, rgb(1, 71, 255) 100%)",
+          width: "100%",
+          background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
           borderRadius: 10,
           border: "1px solid rgb(46, 77, 156)",
           boxShadow: [
-            "rgba(255, 255, 255, 0.5) 0px 3px 0px 0px inset",
-            "rgba(0, 0, 0, 0.08) 0px 2px 6px 4px inset",
-            "rgb(14, 65, 199) 0px -3px 0px 0px inset",
-            "rgba(0, 18, 54, 0.07) 0px 2.44555px 3.21545px 0px",
-            "rgba(0, 18, 54, 0.1) 0px 6.76164px 8.8903px 0px",
-            "rgba(0, 18, 54, 0.13) 0px 16.2794px 21.4044px 0px",
-            "rgba(0, 40, 54, 0.16) 0px 54px 71px 0px",
+            "rgba(255,255,255,0.5) 0px 3px 0px 0px inset",
+            "rgba(0,0,0,0.08) 0px 2px 6px 4px inset",
+            "rgb(14,65,199) 0px -3px 0px 0px inset",
+            "rgba(0,18,54,0.07) 0px 2px 3px 0px",
+            "rgba(0,18,54,0.1) 0px 7px 9px 0px",
+            "rgba(0,18,54,0.13) 0px 16px 21px 0px",
+            "rgba(0,40,54,0.16) 0px 24px 34px 0px",
           ].join(", "),
-          padding: "15px 40px",
-          willChange: "auto",
+          padding: "16px 18px",
+          color: "#fff",
+          fontWeight: 500,
+          fontSize: 16,
+          lineHeight: 1.03,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.72 : 1,
         }}
       >
-        <p
-          style={{
-            color: "white",
-            fontWeight: 500,
-            fontSize: 16,
-            margin: 0,
-            lineHeight: 1.03,
-            fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif",
-          }}
-        >
-          {text}
-        </p>
-      </div>
+        <span>{label}</span>
+        {!disabled ? <ChevronRight size={16} /> : null}
+      </button>
+    </div>
+  );
+}
+
+function PrimaryButtonLink({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+      <PrimaryButton label={label} />
     </a>
   );
 }
