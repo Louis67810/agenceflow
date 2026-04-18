@@ -10,6 +10,7 @@ import {
 import { getAccessToken } from "@/lib/supabase/client";
 
 const WORKSPACE_CACHE_KEY = "linkedin_workspace_cache";
+const PENDING_LINKEDIN_WORKSPACE_SYNC_KEY = "linkedin_workspace_pending_remote_sync";
 const STYLES_KEY = "linkedin_styles";
 const IDEAS_KEY = "linkedin_ideas";
 const PROSPECTS_KEY = "linkedin_prospects";
@@ -37,6 +38,39 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return headers;
+}
+
+function persistPendingWorkspace(data: LinkedInWorkspaceData) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    PENDING_LINKEDIN_WORKSPACE_SYNC_KEY,
+    JSON.stringify(normalizeLinkedInWorkspaceData(data))
+  );
+}
+
+function readPendingWorkspace(): LinkedInWorkspaceData | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(PENDING_LINKEDIN_WORKSPACE_SYNC_KEY);
+  if (!raw) return null;
+  try {
+    return normalizeLinkedInWorkspaceData(JSON.parse(raw) as Partial<LinkedInWorkspaceData>);
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingWorkspace(expected?: LinkedInWorkspaceData) {
+  if (typeof window === "undefined") return;
+  if (!expected) {
+    localStorage.removeItem(PENDING_LINKEDIN_WORKSPACE_SYNC_KEY);
+    return;
+  }
+
+  const current = readPendingWorkspace();
+  if (!current) return;
+  if (JSON.stringify(current) === JSON.stringify(normalizeLinkedInWorkspaceData(expected))) {
+    localStorage.removeItem(PENDING_LINKEDIN_WORKSPACE_SYNC_KEY);
+  }
 }
 
 export type LinkedInWorkspacePatch = Partial<
@@ -213,12 +247,56 @@ export async function patchRemoteLinkedInWorkspace(
   return saveLinkedInWorkspaceCache(normalizeLinkedInWorkspaceData(data.workspace));
 }
 
+export async function saveRemoteLinkedInWorkspace(
+  workspace: LinkedInWorkspaceData
+): Promise<LinkedInWorkspaceData> {
+  const normalized = normalizeLinkedInWorkspaceData(workspace);
+  const res = await fetch("/api/linkedin/workspace-store", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await getAuthHeaders()),
+    },
+    body: JSON.stringify({ patch: normalized }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Impossible de sauvegarder l'espace LinkedIn.");
+  return saveLinkedInWorkspaceCache(normalizeLinkedInWorkspaceData(data.workspace));
+}
+
 export function persistLinkedInWorkspacePatch(
   patch: LinkedInWorkspacePatch
 ): LinkedInWorkspaceData {
   const optimistic = patchLinkedInWorkspaceCache(patch);
-  void patchRemoteLinkedInWorkspace(patch).catch((error) => {
+  persistPendingWorkspace(optimistic);
+  void saveRemoteLinkedInWorkspace(optimistic)
+    .then((saved) => {
+      clearPendingWorkspace(saved);
+    })
+    .catch((error) => {
     console.error(error);
   });
   return optimistic;
+}
+
+export async function flushPendingRemoteLinkedInWorkspace(): Promise<LinkedInWorkspaceData | null> {
+  const pending = readPendingWorkspace();
+  if (!pending) return null;
+  const saved = await saveRemoteLinkedInWorkspace(pending);
+  clearPendingWorkspace(saved);
+  return saved;
+}
+
+export function clearLinkedInWorkspaceLocal(): void {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem(WORKSPACE_CACHE_KEY);
+  localStorage.removeItem(PENDING_LINKEDIN_WORKSPACE_SYNC_KEY);
+  localStorage.removeItem(STYLES_KEY);
+  localStorage.removeItem(IDEAS_KEY);
+  localStorage.removeItem(PROSPECTS_KEY);
+  localStorage.removeItem(SKELETONS_KEY);
+  localStorage.removeItem(IDEAS_LANGUAGE_KEY);
+  localStorage.removeItem(IDEAS_LAST_GENERATED_KEY);
+  localStorage.removeItem(PROSPECTION_LANGUAGE_KEY);
 }

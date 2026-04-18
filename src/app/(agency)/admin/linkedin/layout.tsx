@@ -1,137 +1,44 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight } from "lucide-react";
-import { createClient as createSupabaseBrowserClient, getAccessToken } from "@/lib/supabase/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight, RefreshCw, DatabaseZap } from "lucide-react";
+import { clearLinkedInPostsLocal, loadLinkedInPosts, saveLinkedInPosts } from "@/lib/linkedin/posts";
+import {
+  clearPendingRemoteLinkedInPosts,
+  fetchRemoteLinkedInPosts,
+  flushPendingRemoteLinkedInPosts,
+  persistRemoteLinkedInPosts,
+} from "@/lib/linkedin/remote";
+import {
+  DEFAULT_LINKEDIN_WORKSPACE,
+  clearLinkedInWorkspaceLocal,
+  fetchRemoteLinkedInWorkspace,
+  flushPendingRemoteLinkedInWorkspace,
+  hasMeaningfulLinkedInWorkspaceData,
+  loadLinkedInWorkspaceCache,
+  saveLinkedInWorkspaceCache,
+  saveRemoteLinkedInWorkspace,
+} from "@/lib/linkedin/workspace";
+import {
+  DEFAULT_CAROUSEL_TEMPLATE,
+  DEFAULT_SETTINGS,
+  DEFAULT_BIG_PROMPT,
+  DEFAULT_SMALL_PROMPT,
+  MODELS_BIG,
+  MODELS_SMALL,
+  OPENROUTER_MODELS,
+  clearLinkedInSettingsLocal,
+  fetchRemoteLinkedInSettings,
+  flushPendingRemoteLinkedInSettings,
+  hasMeaningfulLinkedInSettings,
+  loadLinkedInSettings,
+  persistRemoteLinkedInSettings,
+  queueRemoteLinkedInSettingsSync,
+  type LinkedInSettings,
+} from "@/lib/linkedin/settings";
 
-export interface LinkedInSettings {
-  openrouterApiKey: string;
-  model: string;
-  carouselTemplate: string;
-  language: string;
-  // Prospection IA
-  prospectionBigModel: string;
-  prospectionSmallModel: string;
-  prospectionBigPrompt: string;
-  prospectionSmallPrompt: string;
-  prospectionAutoAnalysis: boolean;
-  prospectionAutoAnalysisEvery: number;
-  // Airtable
-  airtableKey: string;
-  airtableBaseId: string;
-  airtableTableName: string;
-  airtableAutoSync: boolean;
-}
-
-export const OPENROUTER_MODELS = [
-  // ── Anthropic ──
-  { id: "anthropic/claude-sonnet-4-6",          label: "Claude Sonnet 4.6 ⭐ — meilleur rédacteur" },
-  { id: "anthropic/claude-opus-4-6",            label: "Claude Opus 4.6 — le plus intelligent" },
-  { id: "anthropic/claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5 — ultra rapide & léger" },
-  // ── OpenAI ──
-  { id: "openai/gpt-4o",                        label: "GPT-4o — excellent toutes tâches" },
-  { id: "openai/o4-mini",                       label: "o4-mini — raisonnement rapide" },
-  { id: "openai/o3",                            label: "o3 — raisonnement avancé" },
-  // ── Google ──
-  { id: "google/gemini-2.5-pro-preview",        label: "Gemini 2.5 Pro — très long contexte" },
-  { id: "google/gemini-2.5-flash-preview",      label: "Gemini 2.5 Flash — rapide & capable" },
-  { id: "google/gemini-2.0-flash-001",          label: "Gemini 2.0 Flash — économique" },
-  // ── Meta ──
-  { id: "meta-llama/llama-4-maverick",          label: "Llama 4 Maverick — open source" },
-  // ── Mistral ──
-  { id: "mistralai/mistral-large-2411",         label: "Mistral Large 2411 — très bon en FR" },
-  // ── DeepSeek ──
-  { id: "deepseek/deepseek-chat-v3-0324",       label: "DeepSeek V3 — très économique" },
-];
-
-// Subset for Big AI (heavy analysis)
-export const MODELS_BIG = OPENROUTER_MODELS.filter(m =>
-  ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-6", "openai/gpt-4o",
-   "openai/o3", "google/gemini-2.5-pro-preview", "meta-llama/llama-4-maverick"].includes(m.id)
-);
-
-// Subset for Small AI (fast generation)
-export const MODELS_SMALL = OPENROUTER_MODELS.filter(m =>
-  ["anthropic/claude-haiku-4-5-20251001", "openai/o4-mini", "google/gemini-2.5-flash-preview",
-   "google/gemini-2.0-flash-001", "deepseek/deepseek-chat-v3-0324",
-   "mistralai/mistral-large-2411", "anthropic/claude-sonnet-4-6"].includes(m.id)
-);
-
-export const DEFAULT_CAROUSEL_TEMPLATE = `Pour chaque slide, génère exactement ce format :
-
-TITRE: [3-5 mots — accroche courte et percutante]
-SOUS-TITRE: [8-12 mots — développe et complète le titre]
-TEXTE: [2-4 phrases — contenu principal du slide, concret et actionnable]
-VISUEL: [1 phrase — description précise du visuel ou image idéale pour ce slide]
-
----
-
-Slide 1 = accroche / problématique principale
-Slides intermédiaires = une idée clé par slide
-Dernier slide = résumé + appel à l'action fort`;
-
-export const DEFAULT_BIG_PROMPT = `Analyse les données de prospection LinkedIn et crée 3 à 5 squelettes de messages optimisés.
-
-Un squelette définit LA STRUCTURE d'un message (ordre des éléments, ton, longueur), pas les mots exacts. Il doit capturer ce qui rend les messages performants dans les données.
-
-Pour chaque squelette, génère un objet JSON avec :
-- "name": nom court et mémorable (ex: "Compliment → Problème → Question directe")
-- "description": pourquoi ce squelette fonctionne (1-2 phrases)
-- "actionTypes": tableau parmi ["liked", "commented", "visited_profile"]
-- "structure": le squelette avec étapes numérotées et placeholders [NOM], [DETAIL_CONTEXTE], [QUESTION]
-- "promptFragment": instruction courte (2-4 phrases) à injecter dans le prompt de génération pour guider l'IA dans la personnalisation
-
-Réponds UNIQUEMENT avec un tableau JSON valide, sans markdown ni texte autour.`;
-
-export const DEFAULT_SMALL_PROMPT = `Tu es un expert en prospection LinkedIn. Génère un message personnalisé, authentique et court (3-5 phrases max).
-Règles absolues :
-- Commence par le prénom du prospect
-- Ne pitche JAMAIS dans le premier message
-- Termine par une seule question ouverte simple
-- Sonne comme un humain, pas un template
-- Si un squelette est fourni, respecte sa structure tout en personnalisant chaque élément`;
-
-export const DEFAULT_SETTINGS: LinkedInSettings = {
-  openrouterApiKey: "",
-  model: "anthropic/claude-sonnet-4-6",
-  carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE,
-  language: "fr",
-  prospectionBigModel: "anthropic/claude-sonnet-4-6",
-  prospectionSmallModel: "google/gemini-2.0-flash-001",
-  prospectionBigPrompt: DEFAULT_BIG_PROMPT,
-  prospectionSmallPrompt: DEFAULT_SMALL_PROMPT,
-  prospectionAutoAnalysis: false,
-  prospectionAutoAnalysisEvery: 10,
-  airtableKey: "",
-  airtableBaseId: "",
-  airtableTableName: "Prospects LinkedIn",
-  airtableAutoSync: false,
-};
-
-export const SETTINGS_KEY = "linkedin_settings";
-
-export function loadLinkedInSettings(): LinkedInSettings {
-  try {
-    const saved = localStorage.getItem(SETTINGS_KEY);
-    if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-  } catch {}
-  return DEFAULT_SETTINGS;
-}
-
-async function saveLinkedInSettingsRemote(settings: LinkedInSettings): Promise<LinkedInSettings> {
-  const accessToken = await getAccessToken();
-  const res = await fetch("/api/linkedin/settings-store", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: JSON.stringify({ settings }),
-  });
-  const responseData = await res.json();
-  if (!res.ok) throw new Error(responseData.error || "Impossible de sauvegarder les paramètres LinkedIn.");
-  return { ...DEFAULT_SETTINGS, ...(responseData.settings ?? {}) };
-}
+export type { LinkedInSettings } from "@/lib/linkedin/settings";
+export { loadLinkedInSettings } from "@/lib/linkedin/settings";
 
 function InlineToggle({
   checked,
@@ -185,44 +92,131 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   const [showSmallPrompt, setShowSmallPrompt] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [syncInfo, setSyncInfo] = useState("");
+  const [syncingSupabase, setSyncingSupabase] = useState(false);
+  const [testingPersistence, setTestingPersistence] = useState(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedRemoteRef = useRef(false);
   const lastSavedSnapshotRef = useRef(JSON.stringify(DEFAULT_SETTINGS));
 
-  useEffect(() => {
-    const localSettings = loadLinkedInSettings();
-    setSettings(localSettings);
-    lastSavedSnapshotRef.current = JSON.stringify(localSettings);
+  const describeSyncState = useCallback(
+    (nextSettings: LinkedInSettings, prospectsCount: number, postsCount: number) => {
+      const airtableLabel =
+        nextSettings.airtableBaseId.trim() && nextSettings.airtableTableName.trim()
+          ? "Airtable connecte"
+          : "Airtable non configure";
+      return `Supabase actif · ${airtableLabel} · ${prospectsCount} prospects · ${postsCount} posts`;
+    },
+    []
+  );
 
-    void (async () => {
+  const bootstrapLinkedInState = useCallback(
+    async (options?: { clearLocal?: boolean }) => {
+      const clearLocal = options?.clearLocal ?? false;
+      setSyncingSupabase(true);
+      setSaveError("");
+
+      if (clearLocal) {
+        clearLinkedInSettingsLocal();
+        clearLinkedInWorkspaceLocal();
+        clearLinkedInPostsLocal();
+        clearPendingRemoteLinkedInPosts();
+      }
+
+      const localSettings = clearLocal ? DEFAULT_SETTINGS : loadLinkedInSettings();
+      const localWorkspace = clearLocal ? DEFAULT_LINKEDIN_WORKSPACE : loadLinkedInWorkspaceCache();
+      const localPosts = clearLocal ? [] : loadLinkedInPosts();
+
+      setSettings(localSettings);
+      lastSavedSnapshotRef.current = JSON.stringify(localSettings);
+
+      await Promise.allSettled([
+        flushPendingRemoteLinkedInSettings(),
+        flushPendingRemoteLinkedInWorkspace(),
+        flushPendingRemoteLinkedInPosts(),
+      ]);
+
+      let nextSettings = localSettings;
+      let nextWorkspace = localWorkspace;
+      let nextPosts = localPosts;
+
       try {
-        const accessToken = await getAccessToken();
-        const res = await fetch("/api/linkedin/settings-store", {
-          cache: "no-store",
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-        });
-        const data = await res.json();
-        if (res.ok && data.settings) {
-          const merged = { ...DEFAULT_SETTINGS, ...data.settings };
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
-          setSettings(merged);
-          lastSavedSnapshotRef.current = JSON.stringify(merged);
+        const [remoteSettingsResult, remoteWorkspaceResult, remotePostsResult] = await Promise.allSettled([
+          fetchRemoteLinkedInSettings(),
+          fetchRemoteLinkedInWorkspace(),
+          fetchRemoteLinkedInPosts(),
+        ]);
+
+        if (remoteSettingsResult.status === "fulfilled") {
+          nextSettings = remoteSettingsResult.value;
+        } else if (hasMeaningfulLinkedInSettings(localSettings)) {
+          try {
+            nextSettings = await persistRemoteLinkedInSettings(localSettings);
+          } catch {}
         }
-      } catch {}
-      hasLoadedRemoteRef.current = true;
-      setBootstrapped(true);
-    })();
+
+        if (remoteWorkspaceResult.status === "fulfilled") {
+          const remoteWorkspace = remoteWorkspaceResult.value;
+          if (remoteWorkspace.hasStoredData) {
+            nextWorkspace = remoteWorkspace.workspace;
+            saveLinkedInWorkspaceCache(remoteWorkspace.workspace);
+          } else if (hasMeaningfulLinkedInWorkspaceData(localWorkspace)) {
+            try {
+              nextWorkspace = await saveRemoteLinkedInWorkspace(localWorkspace);
+            } catch {}
+          }
+        } else if (hasMeaningfulLinkedInWorkspaceData(localWorkspace)) {
+          try {
+            nextWorkspace = await saveRemoteLinkedInWorkspace(localWorkspace);
+          } catch {}
+        }
+
+        if (remotePostsResult.status === "fulfilled") {
+          if (remotePostsResult.value.length > 0) {
+            nextPosts = remotePostsResult.value;
+            saveLinkedInPosts(remotePostsResult.value);
+          } else if (localPosts.length > 0) {
+            try {
+              await persistRemoteLinkedInPosts(localPosts, true);
+              nextPosts = localPosts;
+            } catch {}
+          }
+        } else if (localPosts.length > 0) {
+          try {
+            await persistRemoteLinkedInPosts(localPosts, true);
+            nextPosts = localPosts;
+          } catch {}
+        }
+
+        setSettings(nextSettings);
+        lastSavedSnapshotRef.current = JSON.stringify(nextSettings);
+        setSyncInfo(
+          describeSyncState(nextSettings, nextWorkspace.prospects.length, nextPosts.length)
+        );
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Initialisation Supabase impossible.");
+      } finally {
+        hasLoadedRemoteRef.current = true;
+        setBootstrapped(true);
+        setSyncingSupabase(false);
+      }
+    },
+    [describeSyncState]
+  );
+
+  useEffect(() => {
+    void bootstrapLinkedInState();
 
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, []);
+  }, [bootstrapLinkedInState]);
 
   useEffect(() => {
     if (!bootstrapped || !hasLoadedRemoteRef.current) return;
 
-    const serialized = JSON.stringify(settings);
-    localStorage.setItem(SETTINGS_KEY, serialized);
+    const queued = queueRemoteLinkedInSettingsSync(settings);
+    const serialized = JSON.stringify(queued);
 
     if (serialized === lastSavedSnapshotRef.current) return;
 
@@ -232,32 +226,70 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
     autoSaveTimerRef.current = setTimeout(() => {
       void (async () => {
         try {
-          const savedSettings = await saveLinkedInSettingsRemote(settings);
+          const savedSettings = await persistRemoteLinkedInSettings(queued);
           const savedSnapshot = JSON.stringify(savedSettings);
-          localStorage.setItem(SETTINGS_KEY, savedSnapshot);
           lastSavedSnapshotRef.current = savedSnapshot;
+          setSyncInfo((current) =>
+            current || describeSyncState(savedSettings, loadLinkedInWorkspaceCache().prospects.length, loadLinkedInPosts().length)
+          );
         } catch (error) {
           setSaveError(error instanceof Error ? error.message : "Sauvegarde Supabase impossible.");
         }
       })();
-    }, 500);
-  }, [settings, bootstrapped]);
+    }, 250);
+  }, [settings, bootstrapped, describeSyncState]);
 
   const handleSave = async () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     setSaveError("");
     try {
-      const savedSettings = await saveLinkedInSettingsRemote(settings);
+      const savedSettings = await persistRemoteLinkedInSettings(settings);
       const savedSnapshot = JSON.stringify(savedSettings);
-      localStorage.setItem(SETTINGS_KEY, savedSnapshot);
       lastSavedSnapshotRef.current = savedSnapshot;
+      setSyncInfo(
+        describeSyncState(
+          savedSettings,
+          loadLinkedInWorkspaceCache().prospects.length,
+          loadLinkedInPosts().length
+        )
+      );
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Sauvegarde Supabase impossible.");
       return;
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleForceSupabaseSync = async () => {
+    setSyncingSupabase(true);
+    setSaveError("");
+    try {
+      const syncedSettings = await persistRemoteLinkedInSettings(settings);
+      const workspace = loadLinkedInWorkspaceCache();
+      const posts = loadLinkedInPosts();
+      await saveRemoteLinkedInWorkspace(workspace);
+      await persistRemoteLinkedInPosts(posts, true);
+      lastSavedSnapshotRef.current = JSON.stringify(syncedSettings);
+      setSyncInfo(describeSyncState(syncedSettings, workspace.prospects.length, posts.length));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Synchronisation Supabase impossible.");
+    } finally {
+      setSyncingSupabase(false);
+    }
+  };
+
+  const handleTestPersistence = async () => {
+    setTestingPersistence(true);
+    setSaveError("");
+    try {
+      await handleForceSupabaseSync();
+      await bootstrapLinkedInState({ clearLocal: true });
+    } finally {
+      setTestingPersistence(false);
+    }
   };
 
   const handleClose = () => {
@@ -267,7 +299,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   };
 
   const resetCarouselTemplate = () =>
-    setSettings((s) => ({ ...s, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }));
+    setSettings((current) => ({ ...current, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }));
 
   const hasApiKey = settings.openrouterApiKey.trim().length > 0;
 
@@ -290,7 +322,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
             }`}
           >
             <Settings size={14} />
-            {hasApiKey ? "Paramètres IA" : "Configurer l'IA"}
+            {hasApiKey ? "Parametres IA" : "Configurer l'IA"}
           </button>
         </div>
       </div>
@@ -298,7 +330,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
       <div className="flex-1 overflow-hidden" style={{ zoom: 1.04 }}>
         {bootstrapped ? children : (
           <div className="flex h-full items-center justify-center bg-[#fbfbfb] text-sm text-gray-400">
-            Chargement des paramètres LinkedIn...
+            Chargement de l&apos;espace LinkedIn...
           </div>
         )}
       </div>
@@ -306,11 +338,12 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
               <div>
-                <h2 className="font-semibold text-gray-900 text-lg">Paramètres LinkedIn IA</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Connexion OpenRouter, modèles et configuration prospection</p>
+                <h2 className="font-semibold text-gray-900 text-lg">Parametres LinkedIn IA</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Connexion OpenRouter, modeles et configuration prospection
+                </p>
               </div>
               <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
@@ -318,8 +351,20 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <DatabaseZap size={16} className="mt-0.5 text-[#0A66C2]" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      Persistance LinkedIn centralisee dans Supabase
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {syncInfo || "Les parametres, les prospects, les idees, les styles et les posts sont maintenant verifies ensemble."}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-              {/* ── OpenRouter ── */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
                   <div className="w-5 h-5 bg-gray-900 rounded flex items-center justify-center">
@@ -329,7 +374,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                 </h3>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Clé API OpenRouter</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Cle API OpenRouter</label>
                     <div className="relative">
                       <input
                         type={showKey ? "text" : "password"}
@@ -338,43 +383,41 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                         placeholder="sk-or-v1-..."
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 focus:border-[#0A66C2] font-mono"
                       />
-                      <button type="button" onClick={() => setShowKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <button type="button" onClick={() => setShowKey((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
                       </button>
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      Clé stockée localement. Obtenez-la sur{" "}
+                      Cle stockee localement puis synchronisee dans Supabase. Obtenez-la sur{" "}
                       <span className="text-[#0A66C2] font-medium">openrouter.ai/keys</span>
                     </p>
                     {!hasApiKey && (
                       <p className="text-xs text-amber-600 mt-1 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                        Sans clé personnelle, l&apos;IA utilisera la clé serveur si configurée.
+                        Sans cle personnelle, l&apos;IA utilisera la cle serveur si configuree.
                       </p>
                     )}
                   </div>
 
-                  {/* Modèle général */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Modèle général (posts, idées, copywriting)</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Modele general (posts, idees, copywriting)</label>
                     <div className="relative">
                       <select
                         value={settings.model}
                         onChange={(e) => setSettings({ ...settings, model: e.target.value })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
                       >
-                        {OPENROUTER_MODELS.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
+                        {OPENROUTER_MODELS.map((model) => (
+                          <option key={model.id} value={model.id}>{model.label}</option>
                         ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
                   </div>
 
-                  {/* Langue */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Langue par défaut</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Langue par defaut</label>
                     <div className="flex gap-2">
-                      {[{ value: "fr", label: "Français" }, { value: "en", label: "English" }].map((lang) => (
+                      {[{ value: "fr", label: "Francais" }, { value: "en", label: "English" }].map((lang) => (
                         <button
                           key={lang.value}
                           onClick={() => setSettings({ ...settings, language: lang.value })}
@@ -392,7 +435,6 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                 </div>
               </div>
 
-              {/* ── Prospection IA ── */}
               <div className="border-t border-gray-100 pt-6">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
                   <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
@@ -400,13 +442,14 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                   </div>
                   Prospection IA
                 </h3>
-                <p className="text-xs text-gray-400 mb-4">Deux IA distinctes : la Big AI analyse et crée des squelettes, la Small AI génère les messages personnalisés.</p>
+                <p className="text-xs text-gray-400 mb-4">
+                  Deux IA distinctes : la Big AI analyse et cree des squelettes, la Small AI genere les messages personnalises.
+                </p>
 
                 <div className="space-y-4">
-                  {/* Big AI model */}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      🧠 Big AI — Analyse & création de squelettes
+                      Big AI - Analyse & creation de squelettes
                     </label>
                     <div className="relative">
                       <select
@@ -414,23 +457,24 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                         onChange={(e) => setSettings({ ...settings, prospectionBigModel: e.target.value })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
                       >
-                        {MODELS_BIG.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
+                        {MODELS_BIG.map((model) => (
+                          <option key={model.id} value={model.id}>{model.label}</option>
                         ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Utilisée pour créer et améliorer les squelettes de messages à partir de vos données.</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Utilisee pour creer et ameliorer les squelettes de messages a partir de vos donnees.
+                    </p>
                   </div>
 
-                  {/* Big AI prompt */}
                   <div>
                     <button
-                      onClick={() => setShowBigPrompt((v) => !v)}
+                      onClick={() => setShowBigPrompt((value) => !value)}
                       className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                       {showBigPrompt ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                      Prompt Big AI (avancé)
+                      Prompt Big AI (avance)
                     </button>
                     {showBigPrompt && (
                       <div className="mt-2">
@@ -441,19 +485,18 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none text-gray-700 leading-relaxed"
                         />
                         <button
-                          onClick={() => setSettings((s) => ({ ...s, prospectionBigPrompt: DEFAULT_BIG_PROMPT }))}
+                          onClick={() => setSettings((current) => ({ ...current, prospectionBigPrompt: DEFAULT_BIG_PROMPT }))}
                           className="text-xs text-gray-400 hover:text-gray-600 mt-1"
                         >
-                          Réinitialiser
+                          Reinitialiser
                         </button>
                       </div>
                     )}
                   </div>
 
-                  {/* Small AI model */}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                      ⚡ Small AI — Génération des messages
+                      Small AI - Generation des messages
                     </label>
                     <div className="relative">
                       <select
@@ -461,23 +504,24 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                         onChange={(e) => setSettings({ ...settings, prospectionSmallModel: e.target.value })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 pr-8"
                       >
-                        {MODELS_SMALL.map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
+                        {MODELS_SMALL.map((model) => (
+                          <option key={model.id} value={model.id}>{model.label}</option>
                         ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Utilisée pour chaque génération de message — doit être rapide et économique.</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Utilisee pour chaque generation de message - doit etre rapide et economique.
+                    </p>
                   </div>
 
-                  {/* Small AI prompt */}
                   <div>
                     <button
-                      onClick={() => setShowSmallPrompt((v) => !v)}
+                      onClick={() => setShowSmallPrompt((value) => !value)}
                       className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                       {showSmallPrompt ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                      Prompt Small AI (avancé)
+                      Prompt Small AI (avance)
                     </button>
                     {showSmallPrompt && (
                       <div className="mt-2">
@@ -488,24 +532,23 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30 resize-none text-gray-700 leading-relaxed"
                         />
                         <button
-                          onClick={() => setSettings((s) => ({ ...s, prospectionSmallPrompt: DEFAULT_SMALL_PROMPT }))}
+                          onClick={() => setSettings((current) => ({ ...current, prospectionSmallPrompt: DEFAULT_SMALL_PROMPT }))}
                           className="text-xs text-gray-400 hover:text-gray-600 mt-1"
                         >
-                          Réinitialiser
+                          Reinitialiser
                         </button>
                       </div>
                     )}
                   </div>
 
-                  {/* Auto-analysis */}
                   <div className="flex items-center justify-between py-3 border-t border-gray-100">
                     <div>
                       <p className="text-xs font-medium text-gray-700">Auto-analyse des squelettes</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Régénère automatiquement les squelettes tous les N prospects envoyés</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Regenere automatiquement les squelettes tous les N prospects envoyes</p>
                     </div>
                     <InlineToggle
                       checked={settings.prospectionAutoAnalysis}
-                      onClick={() => setSettings((s) => ({ ...s, prospectionAutoAnalysis: !s.prospectionAutoAnalysis }))}
+                      onClick={() => setSettings((current) => ({ ...current, prospectionAutoAnalysis: !current.prospectionAutoAnalysis }))}
                     />
                   </div>
                   {settings.prospectionAutoAnalysis && (
@@ -517,16 +560,15 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                         max={100}
                         step={5}
                         value={settings.prospectionAutoAnalysisEvery}
-                        onChange={(e) => setSettings((s) => ({ ...s, prospectionAutoAnalysisEvery: Math.max(5, parseInt(e.target.value) || 10) }))}
+                        onChange={(e) => setSettings((current) => ({ ...current, prospectionAutoAnalysisEvery: Math.max(5, parseInt(e.target.value, 10) || 10) }))}
                         className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
                       />
-                      <label className="text-xs text-gray-600">prospects envoyés</label>
+                      <label className="text-xs text-gray-600">prospects envoyes</label>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* ── Airtable ── */}
               <div className="border-t border-gray-100 pt-6">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
                   <div className="w-5 h-5 bg-yellow-400 rounded flex items-center justify-center">
@@ -547,7 +589,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                       placeholder="patXXXXXXXX..."
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/30"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Créez-le sur <span className="text-[#0A66C2]">airtable.com/create/tokens</span> avec les scopes <code>data.records:read</code> et <code>data.records:write</code></p>
+                    <p className="text-xs text-gray-400 mt-1">Creez-le sur <span className="text-[#0A66C2]">airtable.com/create/tokens</span> avec les scopes <code>data.records:read</code> et <code>data.records:write</code></p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1.5">Base ID</label>
@@ -573,26 +615,25 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                   <div className="flex items-center justify-between py-2">
                     <div>
                       <p className="text-xs font-medium text-gray-700">Synchronisation automatique</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Synchronise à chaque changement de statut</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Synchronise a chaque changement de statut</p>
                     </div>
                     <InlineToggle
                       checked={settings.airtableAutoSync}
-                      onClick={() => setSettings((s) => ({ ...s, airtableAutoSync: !s.airtableAutoSync }))}
+                      onClick={() => setSettings((current) => ({ ...current, airtableAutoSync: !current.airtableAutoSync }))}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* ── Template carrousel ── */}
               <div className="border-t border-gray-100 pt-6">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-800">Template de carrousel</h3>
                   <button onClick={resetCarouselTemplate} className="text-xs text-gray-400 hover:text-gray-600">
-                    Réinitialiser
+                    Reinitialiser
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
-                  Ces instructions définissent la structure de chaque slide généré.
+                  Ces instructions definissent la structure de chaque slide genere.
                 </p>
                 <textarea
                   value={settings.carouselTemplate}
@@ -603,8 +644,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 shrink-0">
+            <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-gray-100 shrink-0">
               <div className="flex flex-col gap-1">
                 <button onClick={handleClose} className="text-left text-sm text-gray-500 hover:text-gray-700">
                   Annuler
@@ -612,17 +652,38 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                 {saveError ? (
                   <span className="text-xs text-red-500">{saveError}</span>
                 ) : (
-                  <span className="text-xs text-gray-400">Sauvegarde automatique vers Supabase activée</span>
+                  <span className="text-xs text-gray-400">
+                    {syncInfo || "Sauvegarde automatique vers Supabase activee"}
+                  </span>
                 )}
               </div>
-              <button
-                onClick={handleSave}
-                className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  saved ? "bg-green-500 text-white" : "bg-[#0A66C2] text-white hover:bg-[#0057a3]"
-                }`}
-              >
-                {saved ? <><Check size={15} /> Enregistré !</> : "Enregistrer"}
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void handleForceSupabaseSync()}
+                  disabled={syncingSupabase || testingPersistence}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  {syncingSupabase ? <RefreshCw size={14} className="animate-spin" /> : <DatabaseZap size={14} />}
+                  Forcer la sync
+                </button>
+                <button
+                  onClick={() => void handleTestPersistence()}
+                  disabled={syncingSupabase || testingPersistence}
+                  className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-[#0A66C2] hover:bg-blue-100 disabled:opacity-60"
+                >
+                  {testingPersistence ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Tester comme apres un push
+                </button>
+                <button
+                  onClick={() => void handleSave()}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    saved ? "bg-green-500 text-white" : "bg-[#0A66C2] text-white hover:bg-[#0057a3]"
+                  }`}
+                >
+                  {saved ? <><Check size={15} /> Enregistre !</> : "Enregistrer"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

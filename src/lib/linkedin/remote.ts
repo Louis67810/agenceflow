@@ -102,3 +102,8 @@ export async function flushPendingRemoteLinkedInPosts(): Promise<void> {
   if (!pending) return;
   await persistRemoteLinkedInPosts(pending.posts, pending.replace);
 }
+
+export function clearPendingRemoteLinkedInPosts(): void {
+  if (!canUseStorage()) return;
+  localStorage.removeItem(PENDING_LINKEDIN_POSTS_SYNC_KEY);
+}

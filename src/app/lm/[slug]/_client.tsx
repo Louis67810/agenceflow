@@ -398,7 +398,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
           </div>
         </div>
 
-        <div style={{ marginTop: 48 }}>
+        <div style={{ marginTop: 28 }}>
           <PreviewStack imageUrl={magnet.image_url} blurPx={blurPx} />
         </div>
       </div>

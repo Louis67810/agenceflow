@@ -92,6 +92,10 @@ export function saveLinkedInPosts(posts: LinkedInPost[]) {
   localStorage.setItem(LINKEDIN_POSTS_STORAGE_KEY, JSON.stringify(normalizePosts(posts)));
 }
 
+export function clearLinkedInPostsLocal() {
+  localStorage.removeItem(LINKEDIN_POSTS_STORAGE_KEY);
+}
+
 export function computeLinkedInPostScore(post: LinkedInPost): number {
   const analytics = normalizeAnalytics(post.analytics);
   const impressionsBase = analytics.impressions > 0 ? analytics.impressions / 100 : post.impressions / 100;
