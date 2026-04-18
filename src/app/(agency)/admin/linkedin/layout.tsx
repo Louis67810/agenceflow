@@ -120,8 +120,8 @@ export function loadLinkedInSettings(): LinkedInSettings {
 
 async function saveLinkedInSettingsRemote(settings: LinkedInSettings): Promise<LinkedInSettings> {
   const supabase = createSupabaseBrowserClient();
-  const { data } = await supabase.auth.getSession();
-  const accessToken = data.session?.access_token;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
   const res = await fetch("/api/linkedin/settings-store", {
     method: "POST",
     headers: {
@@ -130,9 +130,9 @@ async function saveLinkedInSettingsRemote(settings: LinkedInSettings): Promise<L
     },
     body: JSON.stringify({ settings }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Impossible de sauvegarder les paramètres LinkedIn.");
-  return { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+  const responseData = await res.json();
+  if (!res.ok) throw new Error(responseData.error || "Impossible de sauvegarder les paramètres LinkedIn.");
+  return { ...DEFAULT_SETTINGS, ...(responseData.settings ?? {}) };
 }
 
 function InlineToggle({
