@@ -198,6 +198,7 @@ export async function POST(req: NextRequest) {
       success: true,
       emailSent,
       resourceUrl: magnet.resource_url,
+      senderEmail: resendApiKey && email ? (process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev") : null,
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

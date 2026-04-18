@@ -149,6 +149,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const [submitting, setSubmitting] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [resourceUrl, setResourceUrl] = useState(magnet.resource_url);
+  const [senderEmail, setSenderEmail] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -213,7 +214,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
     }
 
     if (currentField.type === "phone" && trimmed && !/^[\d\s()+-]{6,}$/.test(trimmed)) {
-      setError("Numero invalide.");
+      setError("Numéro invalide.");
       return false;
     }
 
@@ -233,6 +234,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
       const result = await res.json();
       setResourceUrl(result.resourceUrl || magnet.resource_url);
       setEmailSent(Boolean(result.emailSent));
+      setSenderEmail(typeof result.senderEmail === "string" ? result.senderEmail : null);
     } catch {
       setResourceUrl(magnet.resource_url);
     } finally {
@@ -269,7 +271,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const email = (submitted ? submittedData : currentData).email || (submitted ? submittedData : currentData).mail || "";
   const firstName = (submitted ? submittedData : currentData).firstname || (submitted ? submittedData : currentData).prenom || "";
   const isGmailAddress = /@gmail\.com$/i.test(email.trim());
-  const successHref = isGmailAddress ? "https://mail.google.com/mail/u/0/#inbox" : null;
+  const successHref =
+    isGmailAddress && senderEmail
+      ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`in:anywhere from:${senderEmail}`)}`
+      : null;
 
   if (submitted) {
     return (
@@ -288,18 +293,13 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
             </h1>
             <p style={{ ...subtitleStyle, maxWidth: 500, marginBottom: 36 }}>
               {isGmailAddress
-                ? "Votre ressource vient d'etre envoyee. Ouvrez directement Gmail pour la recuperer."
+                ? "Votre ressource vient d'être envoyée. Ouvrez directement Gmail pour la récupérer."
                 : emailSent && email
-                ? `Votre ressource a ete envoyee a ${email}.`
-                : "Votre ressource est prete, vous pouvez y acceder maintenant."}
+                ? `Votre ressource a été envoyée à ${email}.`
+                : "Votre ressource est prête, vous pouvez y accéder maintenant."}
             </p>
 
-            {successHref ? (
-              <PrimaryButtonLink
-                href={successHref}
-                label="Ouvrir Gmail"
-              />
-            ) : null}
+            {successHref ? <PrimaryButtonLink href={successHref} label="Ouvrir Gmail" /> : null}
           </div>
         </div>
       </div>
@@ -309,7 +309,6 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   return (
     <div style={pageStyle}>
       <BackgroundOrnaments />
-      <BackgroundFade />
       <style>{`
         .lm-input::placeholder {
           color: rgba(0, 0, 0, 0.38);
@@ -318,15 +317,15 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
       <div style={centerWrapStyle}>
         <div style={{ textAlign: "center" }}>
-          {magnet.timer_minutes && timeLeft !== null && (
-            <div style={{ marginBottom: 22 }}>
-              <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
-            </div>
+            {magnet.timer_minutes && timeLeft !== null && (
+              <div style={{ marginBottom: 22 }}>
+                <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
+              </div>
           )}
 
           <h1 style={titleStyle}>{magnet.title}</h1>
           <p style={{ ...subtitleStyle, marginBottom: 18 }}>
-            {magnet.subtitle || "Veuillez remplir les champs ci dessous avant de recevoir votre ressource"}
+            {magnet.subtitle || "Veuillez remplir les champs ci-dessous avant de recevoir votre ressource"}
           </p>
 
           <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
@@ -377,7 +376,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
                   submitting
                     ? "Envoi en cours..."
                     : stepIndex === flatFields.length - 1
-                    ? "Acceder a la ressource"
+                    ? "Accéder à la ressource"
                     : "Continuer"
                 }
               />
@@ -391,8 +390,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
             <p style={{ ...mutedTextStyle, margin: "14px 0 0" }}>
               {remaining === 0
-                ? "C'est tout, accedez a la ressource tout de suite"
-                : `Plus que ${remaining} etape${remaining > 1 ? "s" : ""} restante${remaining > 1 ? "s" : ""}`}
+                ? "C'est tout, accédez à la ressource tout de suite"
+                : remaining === 1
+                ? "Plus qu'une étape restante"
+                : `Plus que ${remaining} étapes restantes`}
             </p>
           </div>
         </div>
@@ -426,10 +427,11 @@ function BackgroundOrnaments() {
         aria-hidden="true"
         style={{
           position: "fixed",
-          bottom: -120,
-          right: -150,
+          bottom: -56,
+          right: -68,
           zIndex: 0,
           pointerEvents: "none",
+          opacity: 0.96,
         }}
       >
         <svg width="639" height="523" viewBox="0 0 639 523" fill="none">
@@ -440,44 +442,13 @@ function BackgroundOrnaments() {
   );
 }
 
-function BackgroundFade() {
-  return (
-    <>
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 360,
-          width: 420,
-          height: 700,
-          background: "linear-gradient(90deg, #fbfbfb 78%, rgba(251,251,251,0))",
-          zIndex: 1,
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          right: 0,
-          top: 360,
-          width: 420,
-          height: 700,
-          background: "linear-gradient(270deg, #fbfbfb 78%, rgba(251,251,251,0))",
-          zIndex: 1,
-        }}
-      />
-    </>
-  );
-}
-
 function TimerBadge({ label }: { label: string }) {
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
       <span
         style={{
-          width: 16,
-          height: 16,
+          width: 10,
+          height: 10,
           borderRadius: "50%",
           background: "#2563eb",
           boxShadow: "0 0 0 0 rgba(37,99,235,0.35)",
@@ -670,8 +641,8 @@ function LockedOverlay() {
           padding: "12px 18px",
           boxShadow:
             "0 72px 20px rgba(35,41,58,0), 0 45px 18px rgba(35,41,58,0.04), 0 25px 15px rgba(35,41,58,0.13), 0 11px 11px rgba(35,41,58,0.21), 0 3px 6px rgba(35,41,58,0.25), inset 0 3px 0 rgba(255,255,255,0.25)",
-          fontSize: 18,
-          fontWeight: 600,
+          fontSize: 16,
+          fontWeight: 500,
           letterSpacing: "-0.03em",
           whiteSpace: "nowrap",
         }}
