@@ -1,15 +1,28 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, use, useRef } from "react";
+import { useEffect, useRef, useState, use } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Send, CheckCircle2, Clock, Loader2, ChevronRight,
-  User, MessageSquare, AlertCircle, UserPlus, X,
-  Paperclip, FolderOpen, ExternalLink, Trash2, Plus,
-  Image, ClipboardCheck,
+  AlertCircle,
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  ImageIcon,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+  Plus,
+  Send,
+  Settings,
+  Trash2,
+  User,
+  UserPlus,
 } from "lucide-react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Stage {
   id: string;
@@ -17,14 +30,13 @@ interface Stage {
   duration_days: number;
   completed: boolean;
   completed_at: string | null;
-  assigned_to_designer?: boolean;
+  image_url?: string;
 }
 
 interface Designer {
   id: string;
   name: string;
   speciality: string | null;
-  role: string;
 }
 
 interface Project {
@@ -44,7 +56,6 @@ interface Project {
 
 interface Message {
   id: string;
-  project_id: string;
   sender_role: "admin" | "client";
   sender_name: string;
   content: string;
@@ -59,26 +70,14 @@ interface ProjectFile {
   created_at: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function stageStartDate(stages: Stage[], idx: number, startDate: string): Date {
-  const base = new Date(startDate);
-  for (let i = 0; i < idx; i++) base.setDate(base.getDate() + (stages[i]?.duration_days ?? 0));
-  return base;
+interface ReviewItem {
+  id: string;
+  stage_label: string;
+  message: string | null;
+  link_url: string | null;
+  status: string;
+  created_at: string;
 }
-
-function stageEndDate(stages: Stage[], idx: number, startDate: string): Date {
-  const start = stageStartDate(stages, idx, startDate);
-  start.setDate(start.getDate() + (stages[idx]?.duration_days ?? 0));
-  return start;
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  in_progress: "bg-blue-50 text-blue-700 border-blue-200",
-  review: "bg-purple-50 text-purple-700 border-purple-200",
-  completed: "bg-green-50 text-green-700 border-green-200",
-};
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "En attente",
@@ -87,67 +86,96 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Terminé",
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+  in_progress: "bg-blue-50 text-blue-700 border-blue-200",
+  review: "bg-violet-50 text-violet-700 border-violet-200",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
 
-export default function AdminProjectDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+const FILE_LABELS: Record<string, string> = {
+  figma: "Figma",
+  google_doc: "Google Doc",
+  image: "Image",
+  pdf: "PDF",
+  other: "Autre",
+};
+
+type AdminTab = "brief" | "messages" | "fichiers" | "review" | "settings";
+
+function stageDate(stages: Stage[], upToIdx: number, startDate: string): Date {
+  const date = new Date(startDate);
+  for (let i = 0; i <= upToIdx; i++) date.setDate(date.getDate() + (stages[i]?.duration_days ?? 0));
+  return date;
+}
+
+export default function AdminProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-
-  const [project, setProject]     = useState<Project | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [advancing, setAdvancing]   = useState(false);
-  const [designers, setDesigners]   = useState<Designer[]>([]);
-  const [showAssign, setShowAssign] = useState(false);
-  const [assigning, setAssigning]   = useState(false);
-
-  const [messages, setMessages]     = useState<Message[]>([]);
-  const [msgLoading, setMsgLoading] = useState(false);
-  const [newMsg, setNewMsg]         = useState("");
-  const [sending, setSending]       = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Files
-  const [files, setFiles]           = useState<ProjectFile[]>([]);
-  const [rightTab, setRightTab]     = useState<"messages" | "fichiers" | "banniere" | "review">("messages");
-  const [newFileName, setNewFileName] = useState("");
-  const [newFileUrl, setNewFileUrl]   = useState("");
-  const [newFileType, setNewFileType] = useState("other");
-  const [addingFile, setAddingFile]   = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [designers, setDesigners] = useState<Designer[]>([]);
+  const [tab, setTab] = useState<AdminTab>("brief");
+  const [newMsg, setNewMsg] = useState("");
+  const [sending, setSending] = useState(false);
   const [showAddFile, setShowAddFile] = useState(false);
-  // Bannière
-  const [bannerUrl, setBannerUrl]     = useState("");
-  const [savingBanner, setSavingBanner] = useState(false);
-  // Reviews
-  const [reviews, setReviews]         = useState<{ id: string; stage_label: string; message: string | null; link_url: string | null; status: string; created_at: string }[]>([]);
+  const [addingFile, setAddingFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileUrl, setNewFileUrl] = useState("");
+  const [newFileType, setNewFileType] = useState("other");
   const [showSendReview, setShowSendReview] = useState(false);
-  const [reviewStageIdx, setReviewStageIdx] = useState<number | null>(null);
-  const [reviewMsg, setReviewMsg]     = useState("");
-  const [reviewLink, setReviewLink]   = useState("");
   const [sendingReview, setSendingReview] = useState(false);
+  const [reviewStageIdx, setReviewStageIdx] = useState<number | null>(null);
+  const [reviewMsg, setReviewMsg] = useState("");
+  const [reviewLink, setReviewLink] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [savingBanner, setSavingBanner] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { loadProject(); loadDesigners(); }, [id]);
   useEffect(() => {
-    if (project) {
-      loadMessages();
-      loadFiles();
-      loadReviews();
-      setBannerUrl(project.banner_url ?? "");
-    }
-  }, [project?.id]);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+    void loadData();
+    void loadDesigners();
+  }, [id]);
 
-  async function loadProject() {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!project || !timelineRef.current) return;
+    const currentEl = timelineRef.current.querySelector(`[data-stage="${project.current_stage_index}"]`) as HTMLElement | null;
+    if (currentEl) currentEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    setBannerUrl(project.banner_url ?? "");
+  }, [project]);
+
+  async function loadData() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/projects/${id}`);
-      const d = await r.json();
-      if (!r.ok) { setError(d.error ?? "Erreur"); setLoading(false); return; }
-      setProject(d.project);
+      const [projectRes, messagesRes, filesRes, reviewsRes] = await Promise.all([
+        fetch(`/api/projects/${id}`),
+        fetch(`/api/messages?project_id=${id}`),
+        fetch(`/api/files?project_id=${id}`),
+        fetch(`/api/reviews?project_id=${id}`),
+      ]);
+      const projectData = await projectRes.json();
+      if (!projectRes.ok) {
+        setError(projectData.error ?? "Projet introuvable");
+        setLoading(false);
+        return;
+      }
+      const messagesData = await messagesRes.json();
+      const filesData = await filesRes.json();
+      const reviewsData = await reviewsRes.json();
+      setProject(projectData.project);
+      setMessages(messagesData.messages ?? []);
+      setFiles(filesData.files ?? []);
+      setReviews(reviewsData.reviews ?? []);
     } catch (e) {
       setError(String(e));
     }
@@ -156,699 +184,177 @@ export default function AdminProjectDetailPage({
 
   async function loadDesigners() {
     try {
-      const r = await fetch("/api/designers");
-      const d = await r.json();
-      setDesigners(d.designers ?? []);
-    } catch { /* silent */ }
-  }
-
-  async function handleAssignDesigner(designerId: string | null) {
-    if (!project) return;
-    setAssigning(true);
-    await fetch(`/api/projects/${project.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ designer_id: designerId }),
-    });
-    setProject((p) => p ? { ...p, designer_id: designerId } : p);
-    setShowAssign(false);
-    setAssigning(false);
-  }
-
-  async function loadMessages() {
-    if (!project) return;
-    setMsgLoading(true);
-    try {
-      const r = await fetch(`/api/messages?project_id=${project.id}`);
-      const d = await r.json();
-      setMessages(d.messages ?? []);
-    } catch { /* silent */ }
-    setMsgLoading(false);
-  }
-
-  async function loadFiles() {
-    if (!project) return;
-    try {
-      const r = await fetch(`/api/files?project_id=${project.id}`);
-      const d = await r.json();
-      setFiles(d.files ?? []);
-    } catch { /* silent */ }
-  }
-
-  async function handleAddFile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newFileName.trim() || !newFileUrl.trim() || !project) return;
-    setAddingFile(true);
-    try {
-      const r = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: project.id, name: newFileName.trim(), url: newFileUrl.trim(), type: newFileType }),
-      });
-      const d = await r.json();
-      if (r.ok && d.file) {
-        setFiles((prev) => [d.file, ...prev]);
-        setNewFileName(""); setNewFileUrl(""); setNewFileType("other");
-        setShowAddFile(false);
-      }
-    } catch { /* silent */ }
-    setAddingFile(false);
-  }
-
-  async function handleDeleteFile(fileId: string) {
-    try {
-      await fetch("/api/files", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: fileId }),
-      });
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    } catch { /* silent */ }
-  }
-
-  async function toggleStageDesigner(idx: number) {
-    if (!project) return;
-    const stages = project.stages.map((s, i) =>
-      i === idx ? { ...s, assigned_to_designer: !s.assigned_to_designer } : s
-    );
-    const r = await fetch(`/api/projects/${project.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stages }),
-    });
-    const d = await r.json();
-    if (r.ok) setProject(d.project);
-  }
-
-  async function handleAdvanceStage() {
-    if (!project) return;
-    setAdvancing(true);
-    try {
-      const r = await fetch(`/api/projects/${project.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "advance_stage" }),
-      });
-      const d = await r.json();
-      if (r.ok) setProject(d.project);
-      else alert(d.error ?? "Erreur lors de la validation");
-    } catch (e) {
-      alert(String(e));
+      const res = await fetch("/api/designers");
+      const data = await res.json();
+      setDesigners(data.designers ?? []);
+    } catch {
+      setDesigners([]);
     }
-    setAdvancing(false);
+  }
+
+  async function updateProject(updates: Record<string, unknown>) {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (res.ok && data.project) setProject(data.project);
   }
 
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!newMsg.trim() || !project) return;
+    if (!project || !newMsg.trim()) return;
     setSending(true);
     try {
-      const r = await fetch("/api/messages", {
+      const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: project.id,
-          sender_role: "admin",
-          sender_name: "Agence",
-          content: newMsg.trim(),
-        }),
+        body: JSON.stringify({ project_id: project.id, sender_role: "admin", sender_name: "Agence", content: newMsg.trim() }),
       });
-      const d = await r.json();
-      if (r.ok && d.message) {
-        setMessages((prev) => [...prev, d.message]);
+      const data = await res.json();
+      if (res.ok && data.message) {
+        setMessages((prev) => [...prev, data.message]);
         setNewMsg("");
       }
-    } catch { /* silent */ }
-    setSending(false);
+    } finally {
+      setSending(false);
+    }
   }
 
-  async function loadReviews() {
-    if (!project) return;
+  async function handleAddFile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || !newFileName.trim() || !newFileUrl.trim()) return;
+    setAddingFile(true);
     try {
-      const r = await fetch(`/api/reviews?project_id=${project.id}`);
-      const d = await r.json();
-      setReviews(d.reviews ?? []);
-    } catch { /* silent */ }
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: project.id, name: newFileName.trim(), url: newFileUrl.trim(), type: newFileType }),
+      });
+      const data = await res.json();
+      if (res.ok && data.file) {
+        setFiles((prev) => [data.file, ...prev]);
+        setNewFileName("");
+        setNewFileUrl("");
+        setNewFileType("other");
+        setShowAddFile(false);
+      }
+    } finally {
+      setAddingFile(false);
+    }
   }
 
-  async function saveBanner() {
-    if (!project) return;
-    setSavingBanner(true);
-    const r = await fetch(`/api/projects/${project.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ banner_url: bannerUrl || null }),
-    });
-    const d = await r.json();
-    if (r.ok) setProject(d.project);
-    setSavingBanner(false);
+  async function handleDeleteFile(fileId: string) {
+    await fetch("/api/files", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: fileId }) });
+    setFiles((prev) => prev.filter((file) => file.id !== fileId));
+  }
+
+  async function handleAssignDesigner(designerId: string | null) {
+    setAssigning(true);
+    try {
+      await updateProject({ designer_id: designerId });
+    } finally {
+      setAssigning(false);
+    }
   }
 
   async function handleSendReview(e: React.FormEvent) {
     e.preventDefault();
     if (!project || reviewStageIdx === null) return;
+    const stage = project.stages?.[reviewStageIdx];
+    if (!stage) return;
     setSendingReview(true);
-    const stage = stages[reviewStageIdx];
-    const r = await fetch("/api/reviews", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        project_id: project.id,
-        stage_index: reviewStageIdx,
-        stage_label: stage.label,
-        message: reviewMsg || null,
-        link_url: reviewLink || null,
-      }),
-    });
-    const d = await r.json();
-    if (r.ok) setReviews(prev => [d.review, ...prev]);
-    setSendingReview(false);
-    setShowSendReview(false);
-    setReviewMsg("");
-    setReviewLink("");
-    setReviewStageIdx(null);
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: project.id, stage_index: reviewStageIdx, stage_label: stage.label, message: reviewMsg || null, link_url: reviewLink || null }),
+      });
+      const data = await res.json();
+      if (res.ok && data.review) {
+        setReviews((prev) => [data.review, ...prev]);
+        setShowSendReview(false);
+        setReviewStageIdx(null);
+        setReviewMsg("");
+        setReviewLink("");
+      }
+    } finally {
+      setSendingReview(false);
+    }
   }
 
-  // ── Loading / Error ────────────────────────────────────────────────────────
+  async function handleSaveBanner() {
+    setSavingBanner(true);
+    try {
+      await updateProject({ banner_url: bannerUrl || null });
+    } finally {
+      setSavingBanner(false);
+    }
+  }
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <Loader2 className="animate-spin text-indigo-500" size={28} />
-    </div>
-  );
-
-  if (error || !project) return (
-    <div className="p-8">
-      <Link href="/admin/projects" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-6">
-        <ArrowLeft size={16} />Retour aux projets
-      </Link>
-      <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-        <AlertCircle size={16} className="mt-0.5 shrink-0" />
-        <p className="text-sm">{error ?? "Projet introuvable"}</p>
-      </div>
-    </div>
-  );
+  if (loading) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={28} /></div>;
+  if (error || !project) {
+    return <div className="p-8"><Link href="/admin/projects" className="mb-4 flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"><ArrowLeft size={16} />Retour</Link><div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700"><AlertCircle size={16} className="mt-0.5 shrink-0" /><p className="text-sm">{error ?? "Projet introuvable"}</p></div></div>;
+  }
 
   const stages = project.stages ?? [];
   const currentIdx = project.current_stage_index ?? 0;
   const currentStage = stages[currentIdx];
-  const allDone = currentIdx >= stages.length;
   const startDate = project.start_date ?? project.created_at.split("T")[0];
+  const doneCount = stages.filter((stage) => stage.completed).length;
+  const progress = stages.length > 0 ? Math.round((doneCount / stages.length) * 100) : 0;
+  const allDone = currentIdx >= stages.length && stages.length > 0;
+  const assignedDesigner = designers.find((designer) => designer.id === project.designer_id) ?? null;
+  const pendingReviews = reviews.filter((review) => review.status === "pending").length;
+  const tabs: { key: AdminTab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { key: "brief", label: "Brief", icon: <FileText size={14} /> },
+    { key: "messages", label: "Messages", icon: <MessageSquare size={14} />, count: messages.length || undefined },
+    { key: "fichiers", label: "Fichiers", icon: <Paperclip size={14} />, count: files.length || undefined },
+    { key: "review", label: "Review", icon: <ClipboardCheck size={14} />, count: pendingReviews || undefined },
+    { key: "settings", label: "Paramètres", icon: <Settings size={14} /> },
+  ];
 
   return (
     <div className="min-h-screen bg-[#fbfbfb]">
-      {project.banner_url && (
-        <div className="h-56 overflow-hidden border-b border-gray-200 bg-white">
-          <img src={project.banner_url} alt="" className="h-full w-full object-cover" />
-        </div>
-      )}
-      <div className="mx-auto max-w-6xl p-8">
-      {/* Back */}
-      <Link href="/admin/projects" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 text-sm mb-6 transition-colors">
-        <ArrowLeft size={16} />Retour aux projets
-      </Link>
-
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_COLORS[project.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
-              {STATUS_LABELS[project.status] ?? project.status}
-            </span>
-          </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            {project.client_name && (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <User size={14} />
-                <span>{project.client_name}</span>
-                {project.client_email && <span className="text-gray-400">— {project.client_email}</span>}
-              </div>
-            )}
-            {/* Designer assignment */}
-            <div className="relative">
-              {project.designer_id ? (
-                <button
-                  onClick={() => setShowAssign((v) => !v)}
-                  className="flex items-center gap-2 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition-colors"
-                >
-                  <UserPlus size={13} />
-                  {designers.find((d) => d.id === project.designer_id)?.name ?? "Prestataire assigné"}
-                  <X size={11} className="text-indigo-400" />
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowAssign((v) => !v)}
-                  className="flex items-center gap-2 text-sm text-gray-500 border border-dashed border-gray-300 px-3 py-1 rounded-full hover:border-indigo-300 hover:text-indigo-600 transition-colors"
-                >
-                  <UserPlus size={13} />Assigner un prestataire
-                </button>
-              )}
-              {showAssign && (
-                <div className="absolute top-8 left-0 z-20 bg-white rounded-xl border border-gray-200 shadow-lg p-2 min-w-52">
-                  {project.designer_id && (
-                    <button
-                      onClick={() => handleAssignDesigner(null)}
-                      className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50 rounded-lg"
-                    >
-                      Retirer le prestataire
-                    </button>
-                  )}
-                  {designers.length === 0 ? (
-                    <p className="text-xs text-gray-400 px-3 py-2">Aucun prestataire</p>
-                  ) : designers.map((d) => (
-                    <button
-                      key={d.id}
-                      onClick={() => handleAssignDesigner(d.id)}
-                      disabled={assigning}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${project.designer_id === d.id ? "bg-indigo-50 text-indigo-700" : "hover:bg-gray-50 text-gray-700"}`}
-                    >
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
-                        {d.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium">{d.name}</p>
-                        {d.speciality && <p className="text-xs text-gray-400">{d.speciality}</p>}
-                      </div>
-                      {project.designer_id === d.id && <ChevronRight size={12} className="ml-auto text-indigo-500" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+      {project.banner_url && <div className="h-48 overflow-hidden border-b border-gray-200 bg-white"><img src={project.banner_url} alt="" className="h-full w-full object-cover" /></div>}
+      <div className="mx-auto max-w-6xl p-6 lg:p-10">
+        <div className="mb-8 flex items-start gap-4">
+          <Link href="/admin/projects" className="mt-1 flex shrink-0 items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-gray-700"><ArrowLeft size={15} />Retour</Link>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3"><h1 className="text-xl font-bold text-gray-900">{project.name}</h1><span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${STATUS_COLORS[project.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>{STATUS_LABELS[project.status] ?? project.status}</span></div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400"><span>Créé le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span>{project.client_name && <span className="flex items-center gap-1.5"><User size={12} />{project.client_name}{project.client_email ? ` • ${project.client_email}` : ""}</span>}</div>
           </div>
         </div>
-        <p className="text-xs text-gray-400">
-          Créé le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
-        </p>
-      </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        {/* Left: stages + form data */}
-        <div className="space-y-5">
+        {stages.length > 0 && <div className="mb-5 overflow-hidden rounded-2xl border border-gray-200 bg-white p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold text-gray-700">Calendrier du projet</h2><div className="flex items-center gap-2"><span className="text-xs text-gray-400">{doneCount}/{stages.length} étapes</span><div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${progress}%` }} /></div><span className="text-xs font-semibold text-indigo-600">{progress}%</span></div></div><div ref={timelineRef} className="overflow-x-auto pb-1"><div className="relative flex min-w-max"><div className="absolute left-6 right-6 top-5 z-0 h-0.5 bg-gray-100" />{stages.map((stage, idx) => { const isDone = stage.completed; const isCurrent = idx === currentIdx; const deadline = stageDate(stages, idx, startDate); return <div key={stage.id ?? idx} data-stage={idx} className="relative z-10 flex min-w-32 flex-col items-center px-3"><div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full border-2 bg-white transition-all ${isDone ? "border-emerald-400 bg-emerald-50" : isCurrent ? "border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100" : "border-gray-200"}`}>{stage.image_url ? <img src={stage.image_url} alt="" className="h-6 w-6 rounded-full object-cover" /> : isDone ? <CheckCircle2 size={16} className="text-emerald-500" /> : isCurrent ? <div className="h-3 w-3 rounded-full bg-indigo-500 animate-pulse" /> : <span className="text-xs font-bold text-gray-400">{idx + 1}</span>}</div><p className={`mb-0.5 text-center text-xs font-semibold leading-tight ${isDone ? "text-emerald-700" : isCurrent ? "text-indigo-700" : "text-gray-400"}`}>{stage.label}</p><p className="text-[10px] text-gray-400">{stage.duration_days}j</p><div className={`mt-1.5 rounded-lg px-2 py-0.5 text-center text-[10px] ${isDone ? "bg-emerald-50 text-emerald-600" : isCurrent ? "bg-indigo-50 font-medium text-indigo-600" : "text-gray-300"}`}>{isDone && stage.completed_at ? `? ${new Date(stage.completed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}` : isCurrent ? `? ${deadline.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}` : deadline.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</div></div>; })}</div></div></div>}
 
-          {/* Stages */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900 text-sm">Étapes du projet</h2>
-              {stages.length > 0 && (
-                <span className="text-xs text-gray-400">{Math.min(currentIdx, stages.length)}/{stages.length}</span>
-              )}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5">
+              <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-gray-400">Pilotage projet</h2>
+              {allDone ? <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600"><CheckCircle2 size={16} />Projet terminé</div> : !currentStage ? <p className="text-xs text-gray-400">Aucune étape active pour l’instant.</p> : <><div className="mb-4 rounded-xl bg-indigo-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-400">Étape en cours</p><p className="mt-1 text-sm font-semibold text-indigo-700">{currentStage.label}</p><div className="mt-2 flex items-center gap-1.5 text-xs text-indigo-500"><CalendarDays size={12} />Fin estimée : {stageDate(stages, currentIdx, startDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}</div></div><div className="space-y-3"><div className="rounded-xl border border-gray-100 bg-gray-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Prestataire assigné</p><p className="mt-1 text-sm font-medium text-gray-800">{assignedDesigner ? assignedDesigner.name : "Aucun prestataire assigné"}</p>{assignedDesigner?.speciality && <p className="mt-1 text-xs text-gray-400">{assignedDesigner.speciality}</p>}</div><button onClick={() => { setTab("review"); setShowSendReview(true); setReviewStageIdx(currentIdx < stages.length ? currentIdx : null); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"><ClipboardCheck size={14} />Envoyer en review<ChevronRight size={14} /></button></div></>}
             </div>
-
-            {stages.length === 0 ? (
-              <p className="text-xs text-gray-400">Aucune étape définie (prestation sans étapes).</p>
-            ) : (
-              <div className="space-y-3">
-                {stages.map((stage, idx) => {
-                  const isCurrent = idx === currentIdx;
-                  const isDone = stage.completed;
-                  const isFuture = idx > currentIdx;
-                  const end = stageEndDate(stages, idx, startDate);
-
-                  return (
-                    <div key={stage.id ?? idx} className={`flex items-start gap-3 pb-3 ${idx < stages.length - 1 ? "border-b border-gray-50" : ""}`}>
-                      <div className="shrink-0 mt-0.5">
-                        {isDone ? (
-                          <CheckCircle2 size={16} className="text-green-500" />
-                        ) : isCurrent ? (
-                          <div className="w-4 h-4 rounded-full bg-indigo-500 animate-pulse" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full border-2 border-gray-200" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDone ? "text-green-700" : isCurrent ? "text-indigo-700" : "text-gray-400"}`}>
-                          {stage.label}
-                        </p>
-                        <p className="text-xs text-gray-400">{stage.duration_days} jour{stage.duration_days !== 1 ? "s" : ""}</p>
-                        {isDone && stage.completed_at && (
-                          <p className="text-xs text-green-500">
-                            Validé le {new Date(stage.completed_at).toLocaleDateString("fr-FR")}
-                          </p>
-                        )}
-                        {isCurrent && (
-                          <p className="text-xs text-indigo-400">
-                            Fin prévue : {end.toLocaleDateString("fr-FR")}
-                          </p>
-                        )}
-                        {isFuture && (
-                          <p className="text-xs text-gray-300">
-                            À partir du {stageStartDate(stages, idx, startDate).toLocaleDateString("fr-FR")}
-                          </p>
-                        )}
-                      </div>
-                      {/* Assign stage to designer */}
-                      {project.designer_id && (
-                        <button
-                          onClick={() => toggleStageDesigner(idx)}
-                          title={stage.assigned_to_designer ? "Retirer du prestataire" : "Assigner au prestataire"}
-                          className={`shrink-0 mt-0.5 text-xs px-2 py-0.5 rounded-full border transition-colors ${
-                            stage.assigned_to_designer
-                              ? "bg-purple-100 text-purple-700 border-purple-200"
-                              : "bg-gray-50 text-gray-300 border-gray-100 hover:border-purple-200 hover:text-purple-500"
-                          }`}
-                        >
-                          {stage.assigned_to_designer ? "★" : "☆"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Note: validation is done by the client via the review system */}
-            {allDone && stages.length > 0 && (
-              <div className="mt-4 flex items-center gap-2 text-green-600 text-sm font-medium">
-                <CheckCircle2 size={15} />Projet terminé !
-              </div>
-            )}
+            {stages.length > 0 && <div className="rounded-2xl border border-gray-200 bg-white p-4"><h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Toutes les étapes</h2><div className="space-y-2">{stages.map((stage, idx) => { const isDone = stage.completed; const isCurrent = idx === currentIdx; return <div key={stage.id ?? idx} className="flex items-center gap-2.5"><div className="shrink-0">{isDone ? <CheckCircle2 size={13} className="text-emerald-500" /> : isCurrent ? <div className="h-3 w-3 rounded-full bg-indigo-500 animate-pulse" /> : <div className="h-3 w-3 rounded-full border-2 border-gray-200" />}</div><p className={`truncate text-xs ${isDone ? "text-emerald-700 line-through" : isCurrent ? "font-semibold text-indigo-700" : "text-gray-400"}`}>{stage.label}</p></div>; })}</div></div>}
           </div>
 
-          {/* Form data */}
-          {Object.keys(project.form_data ?? {}).length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="font-semibold text-gray-900 text-sm mb-4">Réponses du formulaire</h2>
-              <div className="space-y-2.5">
-                {Object.entries(project.form_data).map(([key, val]) => (
-                  <div key={key}>
-                    <p className="text-xs text-gray-400 capitalize">{key.replace(/_/g, " ")}</p>
-                    <p className="text-sm text-gray-800 font-medium">
-                      {Array.isArray(val) ? val.join(", ") : String(val || "—")}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+          <div className="col-span-2 flex max-h-[720px] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="flex shrink-0 border-b border-gray-100 px-1 pt-1">{tabs.map((item) => <button key={item.key} onClick={() => setTab(item.key)} className={`flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-3 text-sm font-medium transition-colors ${tab === item.key ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>{item.icon}{item.label}{item.count !== undefined && <span className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${tab === item.key ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-500"}`}>{item.count}</span>}</button>)}</div>
 
-        {/* Right: tabs Messages / Fichiers */}
-        <div className="col-span-2 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden" style={{ height: "600px" }}>
-          {/* Tab bar */}
-          <div className="flex border-b border-gray-100 shrink-0">
-            <button
-              onClick={() => setRightTab("messages")}
-              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "messages" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              <MessageSquare size={14} />Messages
-            </button>
-            <button
-              onClick={() => setRightTab("review")}
-              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "review" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              <ClipboardCheck size={14} />
-              Review{reviews.filter(r => r.status === "pending").length > 0 ? ` (${reviews.filter(r => r.status === "pending").length})` : ""}
-            </button>
-            <button
-              onClick={() => setRightTab("banniere")}
-              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "banniere" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              <Image size={14} />Bannière
-            </button>
-            <button
-              onClick={() => setRightTab("fichiers")}
-              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors border-b-2 ${rightTab === "fichiers" ? "border-indigo-500 text-indigo-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-            >
-              <Paperclip size={14} />
-              Fichiers{files.length > 0 ? ` (${files.length})` : ""}
-            </button>
+            {tab === "brief" && <div className="flex-1 overflow-y-auto p-5">{!project.form_data || Object.keys(project.form_data).length === 0 ? <div className="flex h-full flex-col items-center justify-center py-12 text-gray-400"><FileText size={32} className="mb-3 opacity-30" /><p className="text-sm font-medium">Aucun brief disponible</p></div> : <div className="space-y-2.5">{Object.entries(project.form_data).map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-4"><p className="mb-1 text-xs font-medium capitalize text-gray-400">{key.replace(/_/g, " ")}</p><p className="text-sm text-gray-800">{Array.isArray(value) ? value.join(", ") : String(value ?? "")}</p></div>)}</div>}</div>}
+
+            {tab === "messages" && <><div className="flex-1 space-y-4 overflow-y-auto p-5">{messages.length === 0 ? <div className="flex h-full flex-col items-center justify-center py-12 text-gray-400"><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-50"><MessageSquare size={20} className="opacity-40" /></div><p className="text-sm font-medium">Aucun message pour l’instant</p><p className="mt-1 text-xs text-gray-400">Démarrez la conversation avec le client.</p></div> : messages.map((msg) => { const isAdmin = msg.sender_role === "admin"; return <div key={msg.id} className={`flex gap-3 ${isAdmin ? "flex-row-reverse" : ""}`}><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isAdmin ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-600"}`}>{msg.sender_name.charAt(0).toUpperCase()}</div><div className={`flex max-w-xs flex-col lg:max-w-sm ${isAdmin ? "items-end" : "items-start"}`}><span className="mb-1 text-xs text-gray-400">{msg.sender_name}</span><div className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isAdmin ? "rounded-tr-sm bg-indigo-600 text-white" : "rounded-tl-sm bg-gray-100 text-gray-800"}`}>{msg.content}</div><span className="mt-1 text-xs text-gray-400">{new Date(msg.created_at).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</span></div></div>; })}<div ref={messagesEndRef} /></div><form onSubmit={handleSendMessage} className="flex shrink-0 gap-2 border-t border-gray-100 p-4"><input type="text" value={newMsg} onChange={(e) => setNewMsg(e.target.value)} placeholder="Écrire un message..." className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm transition-all focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" /><button type="submit" disabled={sending || !newMsg.trim()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition-colors hover:bg-indigo-700 disabled:opacity-50">{sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}</button></form></>}
+
+            {tab === "review" && <div className="flex-1 space-y-4 overflow-y-auto p-5">{!showSendReview ? <button onClick={() => { setShowSendReview(true); if (reviewStageIdx === null && currentIdx < stages.length) setReviewStageIdx(currentIdx); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700"><ClipboardCheck size={14} />Envoyer une tâche à review</button> : <form onSubmit={handleSendReview} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4"><div><label className="mb-1 block text-xs font-medium text-gray-600">Étape concernée</label><select value={reviewStageIdx ?? ""} onChange={(e) => setReviewStageIdx(Number(e.target.value))} required className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"><option value="">Choisir une étape...</option>{stages.map((stage, index) => <option key={stage.id ?? index} value={index}>{stage.label}</option>)}</select></div><div><label className="mb-1 block text-xs font-medium text-gray-600">Message</label><textarea value={reviewMsg} onChange={(e) => setReviewMsg(e.target.value)} rows={3} placeholder="Instructions pour le client..." className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div><div><label className="mb-1 block text-xs font-medium text-gray-600">Lien à partager</label><input type="url" value={reviewLink} onChange={(e) => setReviewLink(e.target.value)} placeholder="https://..." className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div><div className="flex gap-2"><button type="submit" disabled={sendingReview || reviewStageIdx === null} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">{sendingReview ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}Envoyer</button><button type="button" onClick={() => setShowSendReview(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">Annuler</button></div></form>}{reviews.length === 0 ? <p className="py-4 text-center text-sm text-gray-400">Aucune review envoyée pour ce projet.</p> : reviews.map((review) => <div key={review.id} className="space-y-2 rounded-xl border border-gray-200 p-4"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-gray-900">{review.stage_label}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${review.status === "validated" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>{review.status === "validated" ? "Validé" : "En attente"}</span></div>{review.message && <p className="text-xs text-gray-500">{review.message}</p>}{review.link_url && <a href={review.link_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700"><ExternalLink size={11} />{review.link_url}</a>}<p className="text-xs text-gray-400">{new Date(review.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p></div>)}</div>}
+
+            {tab === "fichiers" && <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">{showAddFile ? <form onSubmit={handleAddFile} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4"><div className="grid grid-cols-1 gap-3 md:grid-cols-2"><div><label className="mb-1 block text-xs font-medium text-gray-600">Nom du fichier</label><input value={newFileName} onChange={(e) => setNewFileName(e.target.value)} placeholder="Ex : Maquette Figma" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div><div><label className="mb-1 block text-xs font-medium text-gray-600">Type</label><select value={newFileType} onChange={(e) => setNewFileType(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">{Object.entries(FILE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div><div><label className="mb-1 block text-xs font-medium text-gray-600">URL</label><input value={newFileUrl} onChange={(e) => setNewFileUrl(e.target.value)} placeholder="https://..." type="url" required className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div><div className="flex gap-2"><button type="submit" disabled={addingFile} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">{addingFile ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}Ajouter</button><button type="button" onClick={() => setShowAddFile(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Annuler</button></div></form> : <button onClick={() => setShowAddFile(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-300 px-4 py-2.5 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"><Plus size={14} />Ajouter un fichier</button>}{files.length === 0 ? <div className="flex flex-1 flex-col items-center justify-center py-12 text-gray-400"><div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-50"><FolderOpen size={20} className="opacity-40" /></div><p className="text-sm font-medium">Aucun fichier partagé</p><p className="mt-1 text-xs text-gray-400">Ajoute ici les livrables, liens ou documents du projet.</p></div> : <div className="space-y-2">{files.map((file) => <div key={file.id} className="group flex items-center gap-3.5 rounded-xl border border-gray-100 p-3.5 transition-all hover:border-indigo-200 hover:bg-indigo-50"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 text-xs font-semibold text-gray-500 group-hover:border-indigo-200">{FILE_LABELS[file.type] ?? "Fichier"}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-gray-800 group-hover:text-indigo-700">{file.name}</p><p className="text-xs text-gray-400">{new Date(file.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p></div><a href={file.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-gray-300 transition-colors hover:text-indigo-500"><ExternalLink size={14} /></a><button onClick={() => handleDeleteFile(file.id)} className="shrink-0 text-gray-200 transition-colors hover:text-red-400"><Trash2 size={14} /></button></div>)}</div>}</div>}
+
+            {tab === "settings" && <div className="flex-1 space-y-5 overflow-y-auto p-5"><div className="rounded-xl border border-gray-200 p-4"><div className="mb-3 flex items-center gap-2"><UserPlus size={15} className="text-indigo-500" /><h3 className="text-sm font-semibold text-gray-900">Prestataire assigné</h3></div><div className="space-y-2"><button onClick={() => void handleAssignDesigner(null)} disabled={assigning} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm ${!project.designer_id ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}><span>Aucun prestataire</span>{!project.designer_id && <CheckCircle2 size={14} />}</button>{designers.map((designer) => { const selected = project.designer_id === designer.id; return <button key={designer.id} onClick={() => void handleAssignDesigner(designer.id)} disabled={assigning} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left ${selected ? "border-indigo-200 bg-indigo-50" : "border-gray-200 hover:bg-gray-50"}`}><div><p className={`text-sm font-medium ${selected ? "text-indigo-700" : "text-gray-900"}`}>{designer.name}</p>{designer.speciality && <p className="text-xs text-gray-400">{designer.speciality}</p>}</div>{selected && <CheckCircle2 size={14} className="text-indigo-600" />}</button>; })}</div></div><div className="rounded-xl border border-gray-200 p-4"><div className="mb-3 flex items-center gap-2"><ImageIcon size={15} className="text-indigo-500" /><h3 className="text-sm font-semibold text-gray-900">Bannière du projet</h3></div>{project.banner_url && <div className="mb-3 h-28 overflow-hidden rounded-xl border border-gray-200"><img src={project.banner_url} alt="" className="h-full w-full object-cover" /></div>}<label className="mb-1 block text-xs font-medium text-gray-600">URL de l’image</label><input type="url" value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="https://..." className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" /><div className="mt-3 flex gap-2"><button onClick={() => void handleSaveBanner()} disabled={savingBanner} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60">{savingBanner ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}Enregistrer</button>{project.banner_url && <button onClick={() => { setBannerUrl(""); void updateProject({ banner_url: null }); }} className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-500 hover:bg-red-50">Supprimer</button>}</div></div></div>}
           </div>
-
-          {/* ── Messages ── */}
-          {rightTab === "messages" && (
-            <>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {msgLoading ? (
-                  <div className="flex justify-center py-8"><Loader2 className="animate-spin text-gray-300" size={20} /></div>
-                ) : messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
-                    <MessageSquare size={28} className="mb-2 opacity-30" />
-                    <p>Aucun message pour l&apos;instant</p>
-                    <p className="text-xs mt-1">Envoyez le premier message au client</p>
-                  </div>
-                ) : (
-                  messages.map((msg) => {
-                    const isAdmin = msg.sender_role === "admin";
-                    return (
-                      <div key={msg.id} className={`flex gap-3 ${isAdmin ? "flex-row-reverse" : ""}`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isAdmin ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-600"}`}>
-                          {msg.sender_name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className={`flex flex-col max-w-xs ${isAdmin ? "items-end" : "items-start"}`}>
-                          <span className="text-xs text-gray-400 mb-1">{msg.sender_name}</span>
-                          <div className={`px-3 py-2 rounded-xl text-sm ${isAdmin ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800"}`}>
-                            {msg.content}
-                          </div>
-                          <span className="text-xs text-gray-400 mt-1">
-                            {new Date(msg.created_at).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 flex gap-2 shrink-0">
-                <input
-                  type="text"
-                  value={newMsg}
-                  onChange={(e) => setNewMsg(e.target.value)}
-                  placeholder="Écrire un message au client..."
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-                <button
-                  type="submit"
-                  disabled={sending || !newMsg.trim()}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                >
-                  {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                </button>
-              </form>
-            </>
-          )}
-
-          {/* ── Bannière ── */}
-          {rightTab === "banniere" && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              <p className="text-sm text-gray-500">Définissez une bannière qui s&apos;affichera en haut de l&apos;espace client. Format recommandé : 1440×220px, JPG ou PNG.</p>
-              {project.banner_url && (
-                <div className="rounded-xl overflow-hidden border border-gray-200" style={{ height: 120 }}>
-                  <img src={project.banner_url} alt="Bannière" className="w-full h-full object-cover" />
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">URL de l&apos;image</label>
-                <input
-                  type="url"
-                  value={bannerUrl}
-                  onChange={(e) => setBannerUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-              </div>
-              <button
-                onClick={saveBanner}
-                disabled={savingBanner}
-                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-              >
-                {savingBanner ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                {project.banner_url ? "Mettre à jour la bannière" : "Définir la bannière"}
-              </button>
-              {project.banner_url && (
-                <button
-                  onClick={() => { setBannerUrl(""); saveBanner(); }}
-                  className="text-xs text-red-500 hover:text-red-700 transition-colors"
-                >
-                  Supprimer la bannière
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ── Review ── */}
-          {rightTab === "review" && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {/* Envoyer une review */}
-              {!showSendReview ? (
-                <button
-                  onClick={() => setShowSendReview(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-                >
-                  <ClipboardCheck size={14} />Envoyer une tâche à review
-                </button>
-              ) : (
-                <form onSubmit={handleSendReview} className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Étape concernée</label>
-                    <select
-                      value={reviewStageIdx ?? ""}
-                      onChange={(e) => setReviewStageIdx(Number(e.target.value))}
-                      required
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    >
-                      <option value="">Choisir une étape...</option>
-                      {stages.map((s, i) => (
-                        <option key={i} value={i}>{s.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Message (optionnel)</label>
-                    <textarea
-                      value={reviewMsg}
-                      onChange={(e) => setReviewMsg(e.target.value)}
-                      rows={3}
-                      placeholder="Instructions pour le client..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Lien à partager (optionnel)</label>
-                    <input
-                      type="url"
-                      value={reviewLink}
-                      onChange={(e) => setReviewLink(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={sendingReview || reviewStageIdx === null}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 transition-colors">
-                      {sendingReview ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                      Envoyer
-                    </button>
-                    <button type="button" onClick={() => setShowSendReview(false)}
-                      className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors">
-                      Annuler
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Liste des reviews */}
-              {reviews.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">Aucune review envoyée pour ce projet.</p>
-              ) : (
-                reviews.map((rv) => (
-                  <div key={rv.id} className="border border-gray-200 rounded-xl p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-900">{rv.stage_label}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${rv.status === "validated" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
-                        {rv.status === "validated" ? "Validé" : "En attente"}
-                      </span>
-                    </div>
-                    {rv.message && <p className="text-xs text-gray-500">{rv.message}</p>}
-                    {rv.link_url && (
-                      <a href={rv.link_url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1">
-                        <ExternalLink size={11} />{rv.link_url}
-                      </a>
-                    )}
-                    <p className="text-xs text-gray-400">{new Date(rv.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* ── Fichiers ── */}
-          {rightTab === "fichiers" && (
-            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-              {/* Add file form */}
-              {showAddFile ? (
-                <form onSubmit={handleAddFile} className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Nom du fichier</label>
-                      <input
-                        value={newFileName}
-                        onChange={(e) => setNewFileName(e.target.value)}
-                        placeholder="Ex : Maquette Figma"
-                        required
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                      <select
-                        value={newFileType}
-                        onChange={(e) => setNewFileType(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      >
-                        <option value="figma">🎨 Figma</option>
-                        <option value="google_doc">📄 Google Doc</option>
-                        <option value="image">🖼️ Image</option>
-                        <option value="pdf">📕 PDF</option>
-                        <option value="other">📎 Autre</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">URL</label>
-                    <input
-                      value={newFileUrl}
-                      onChange={(e) => setNewFileUrl(e.target.value)}
-                      placeholder="https://..."
-                      type="url"
-                      required
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={addingFile} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
-                      {addingFile ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                      Ajouter
-                    </button>
-                    <button type="button" onClick={() => setShowAddFile(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-                      Annuler
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <button
-                  onClick={() => setShowAddFile(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 border border-dashed border-indigo-300 text-indigo-600 rounded-xl text-sm font-medium hover:bg-indigo-50 transition-colors w-full justify-center"
-                >
-                  <Plus size={14} />Ajouter un fichier
-                </button>
-              )}
-
-              {/* Files list */}
-              {files.length === 0 ? (
-                <div className="flex flex-col items-center justify-center flex-1 text-gray-400">
-                  <FolderOpen size={32} className="mb-3 opacity-40" />
-                  <p className="text-sm">Aucun fichier partagé</p>
-                  <p className="text-xs mt-1">Les fichiers ajoutés seront visibles par le client et le prestataire.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {files.map((file) => (
-                    <div key={file.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 group hover:border-indigo-200 hover:bg-indigo-50 transition-colors">
-                      <span className="text-xl shrink-0">
-                        {file.type === "figma" ? "🎨" : file.type === "google_doc" ? "📄" : file.type === "image" ? "🖼️" : file.type === "pdf" ? "📕" : "📎"}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-400">{new Date(file.created_at).toLocaleDateString("fr-FR")}</p>
-                      </div>
-                      <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-indigo-500 transition-colors">
-                        <ExternalLink size={14} />
-                      </a>
-                      <button onClick={() => handleDeleteFile(file.id)} className="text-gray-200 hover:text-red-400 transition-colors">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
-      </div>
       </div>
     </div>
   );
 }
+

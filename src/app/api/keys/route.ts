@@ -12,7 +12,7 @@ function admin() {
 export async function GET() {
   const { data, error } = await admin()
     .from("access_keys")
-    .select("id, key, name, role, form_fields, used_at, form_data, service_type_id, created_at")
+    .select("id, key, name, role, form_fields, used_at, form_data, service_type_id, banner_url, created_at")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, role, formFields, formPages, serviceTypeId } = await request.json();
+    const { name, role, formFields, formPages, serviceTypeId, bannerUrl } = await request.json();
     if (!name || !role) return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
 
     const key = crypto.randomUUID().replace(/-/g, "");
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         form_fields: flatFields,
         form_pages: formPages ?? [],
         service_type_id: serviceTypeId ?? null,
+        banner_url: bannerUrl ?? null,
       })
       .select()
       .single();

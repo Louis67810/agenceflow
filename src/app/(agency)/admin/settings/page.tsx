@@ -23,6 +23,7 @@ interface Integration {
 interface AccessKey {
   id: string; key: string; name: string; role: "client" | "designer" | "developer";
   form_fields: { id: string; label: string; required?: boolean }[];
+  banner_url?: string | null;
   used_at: string | null; created_at: string;
 }
 
@@ -81,6 +82,7 @@ export default function SettingsPage() {
   const [selectedFormId, setSelectedFormId] = useState("");
   const [serviceTypes, setServiceTypes]     = useState<ServiceType[]>([]);
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState("");
+  const [newBannerUrl, setNewBannerUrl]           = useState("");
   const [creating, setCreating]             = useState(false);
   const [createError, setCreateError]       = useState<string | null>(null);
   const [createdKey, setCreatedKey]         = useState<AccessKey | null>(null);
@@ -137,12 +139,18 @@ export default function SettingsPage() {
     if (!selectedForm) { setCreateError("Sélectionne un formulaire."); setCreating(false); return; }
     const res = await fetch("/api/keys", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, role: newRole, formPages: selectedForm.pages ?? [], serviceTypeId: selectedServiceTypeId || null }),
+      body: JSON.stringify({
+        name: newName,
+        role: newRole,
+        formPages: selectedForm.pages ?? [],
+        serviceTypeId: selectedServiceTypeId || null,
+        bannerUrl: newBannerUrl.trim() || null,
+      }),
     });
     const data = await res.json();
     if (!res.ok) { setCreateError(data.error ?? "Erreur"); setCreating(false); return; }
     setCreatedKey(data.key);
-    setNewName(""); setNewRole("client"); setShowCreate(false); setCreating(false);
+    setNewName(""); setNewRole("client"); setNewBannerUrl(""); setShowCreate(false); setCreating(false);
     loadKeys();
   }
 
@@ -257,7 +265,7 @@ export default function SettingsPage() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: 32, maxWidth: 672, ...jk }}>
+    <div style={{ padding: 32, maxWidth: 1120, ...jk }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -686,6 +694,20 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Bannière du projet <span style={{ color: "rgba(18,26,46,0.4)", fontWeight: 400 }}>(optionnel)</span></label>
+                  <input
+                    type="url"
+                    value={newBannerUrl}
+                    onChange={e => setNewBannerUrl(e.target.value)}
+                    placeholder="https://... image de bannière"
+                    style={inp}
+                  />
+                  <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginTop: 6, marginBottom: 0 }}>
+                    Cette image sera appliquée automatiquement quand le projet sera créé via cette clé.
+                  </p>
+                </div>
+
+                <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Formulaire d&apos;onboarding</label>
                   {forms.length === 0 ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 9, fontSize: 13, color: "#92400e" }}>
@@ -730,11 +752,11 @@ export default function SettingsPage() {
               <p style={{ fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.5)", margin: 0 }}>Aucune clé créée</p>
             </div>
           ) : (
-            <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.1)", overflow: "hidden" }}>
+            <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.1)", overflow: "hidden", width: "100%" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#f9f9f9" }}>
-                    {["Nom", "Type", "Statut", "Créé le", ""].map(h => (
+                    {["Nom", "Type", "Bannière", "Statut", "Créé le", ""].map(h => (
                       <th key={h} style={{ padding: "10px 20px", textAlign: h === "" ? "right" : "left", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.45)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                     ))}
                   </tr>
@@ -747,6 +769,15 @@ export default function SettingsPage() {
                         <span style={{ fontSize: 12, fontWeight: 500, padding: "3px 8px", borderRadius: 20, ...ROLE_STYLES[k.role] }}>
                           {k.role === "client" ? "Client" : k.role === "developer" ? "Développeur" : "Designer"}
                         </span>
+                      </td>
+                      <td style={{ padding: "12px 20px", fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
+                        {k.banner_url ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#0147ff", fontWeight: 500 }}>
+                            <ImageIcon size={12} />Définie
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td style={{ padding: "12px 20px" }}>
                         {k.used_at ? (
@@ -779,4 +810,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

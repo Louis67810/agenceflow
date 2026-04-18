@@ -56,7 +56,7 @@ export async function POST(
     // Get service type stages and role
     const { data: keyRow } = await admin()
       .from("access_keys")
-      .select("service_type_id, name, role")
+      .select("service_type_id, name, role, banner_url")
       .eq("key", key)
       .single();
 
@@ -113,6 +113,7 @@ export async function POST(
         status: stages.length > 0 ? "in_progress" : "pending",
         form_data: formData,
         service_type_id: keyRow?.service_type_id ?? null,
+        banner_url: keyRow?.banner_url ?? null,
         stages,
         current_stage_index: 0,
         start_date: new Date().toISOString().split("T")[0],

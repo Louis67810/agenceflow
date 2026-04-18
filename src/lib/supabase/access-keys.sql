@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS access_keys (
   created_by  UUID,
   used_at     TIMESTAMPTZ,
   form_data   JSONB,
+  banner_url  TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
