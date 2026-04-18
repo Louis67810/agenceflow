@@ -49,11 +49,13 @@ function clearPendingPayload(expectedPayload?: PendingPostsSyncPayload) {
   }
 }
 
-async function getAuthHeaders() {
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createSupabaseBrowserClient();
   const { data } = await supabase.auth.getSession();
   const accessToken = data.session?.access_token;
-  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
 }
 
 export async function fetchRemoteLinkedInPosts(): Promise<LinkedInPost[]> {
