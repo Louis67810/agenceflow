@@ -21,9 +21,20 @@ const DEFAULT_SETTINGS = {
 async function getAuthenticatedUser(req: NextRequest) {
   const supabase = await createClient();
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  const { data: { user }, error } = await supabase.auth.getUser(token ?? undefined);
-  if (error || !user) return { supabase, user: null };
-  return { supabase, user };
+
+  const { data: cookieAuth, error: cookieError } = await supabase.auth.getUser();
+  if (!cookieError && cookieAuth.user) {
+    return { supabase, user: cookieAuth.user };
+  }
+
+  if (token) {
+    const { data: tokenAuth, error: tokenError } = await supabase.auth.getUser(token);
+    if (!tokenError && tokenAuth.user) {
+      return { supabase, user: tokenAuth.user };
+    }
+  }
+
+  return { supabase, user: null };
 }
 
 export async function GET(req: NextRequest) {

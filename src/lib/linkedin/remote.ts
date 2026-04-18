@@ -2,7 +2,7 @@
 
 import type { LinkedInPost } from "@/types/linkedin";
 import { normalizePosts } from "@/lib/linkedin/posts";
-import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getAccessToken } from "@/lib/supabase/client";
 
 const PENDING_LINKEDIN_POSTS_SYNC_KEY = "linkedin_posts_pending_remote_sync";
 
@@ -50,9 +50,7 @@ function clearPendingPayload(expectedPayload?: PendingPostsSyncPayload) {
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createSupabaseBrowserClient();
-  const { data } = await supabase.auth.getSession();
-  const accessToken = data.session?.access_token;
+  const accessToken = await getAccessToken();
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return headers;

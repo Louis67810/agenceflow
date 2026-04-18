@@ -7,7 +7,7 @@ import {
   type LinkedInWorkspacePreferences,
   type ProspectionSkeleton,
 } from "@/types/linkedin";
-import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getAccessToken } from "@/lib/supabase/client";
 
 const WORKSPACE_CACHE_KEY = "linkedin_workspace_cache";
 const STYLES_KEY = "linkedin_styles";
@@ -33,9 +33,7 @@ export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
 };
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createSupabaseBrowserClient();
-  const { data } = await supabase.auth.getSession();
-  const accessToken = data.session?.access_token;
+  const accessToken = await getAccessToken();
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return headers;
