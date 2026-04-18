@@ -7,6 +7,7 @@ import {
   type LinkedInWorkspacePreferences,
   type ProspectionSkeleton,
 } from "@/types/linkedin";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const WORKSPACE_CACHE_KEY = "linkedin_workspace_cache";
 const STYLES_KEY = "linkedin_styles";
@@ -30,6 +31,13 @@ export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
   skeletons: [],
   preferences: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES,
 };
+
+async function getAuthHeaders() {
+  const supabase = createSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
 
 export type LinkedInWorkspacePatch = Partial<
   Omit<LinkedInWorkspaceData, "preferences">
@@ -176,7 +184,10 @@ export async function fetchRemoteLinkedInWorkspace(): Promise<{
   workspace: LinkedInWorkspaceData;
   hasStoredData: boolean;
 }> {
-  const res = await fetch("/api/linkedin/workspace-store", { cache: "no-store" });
+  const res = await fetch("/api/linkedin/workspace-store", {
+    cache: "no-store",
+    headers: await getAuthHeaders(),
+  });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Impossible de charger l'espace LinkedIn.");
   const workspace = saveLinkedInWorkspaceCache(normalizeLinkedInWorkspaceData(data.workspace));
@@ -191,7 +202,10 @@ export async function patchRemoteLinkedInWorkspace(
 ): Promise<LinkedInWorkspaceData> {
   const res = await fetch("/api/linkedin/workspace-store", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(await getAuthHeaders()),
+    },
     body: JSON.stringify({ patch }),
   });
   const data = await res.json();

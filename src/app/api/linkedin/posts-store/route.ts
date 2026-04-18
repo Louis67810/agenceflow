@@ -76,15 +76,20 @@ function postToRow(userId: string, post: LinkedInPost) {
 }
 
 async function getAuthenticatedUser() {
+  return getAuthenticatedUserFromRequest();
+}
+
+async function getAuthenticatedUserFromRequest(req?: NextRequest) {
   const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const token = req?.headers.get("Authorization")?.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token ?? undefined);
   if (error || !user) return { supabase, user: null };
   return { supabase, user };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { supabase, user } = await getAuthenticatedUser();
+    const { supabase, user } = await getAuthenticatedUserFromRequest(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data, error } = await supabase
@@ -102,7 +107,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { supabase, user } = await getAuthenticatedUser();
+    const { supabase, user } = await getAuthenticatedUserFromRequest(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json() as { posts?: LinkedInPost[]; replace?: boolean };

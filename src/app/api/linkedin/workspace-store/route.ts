@@ -8,18 +8,23 @@ import {
 import type { LinkedInWorkspaceData } from "@/types/linkedin";
 
 async function getAuthenticatedUser() {
+  return getAuthenticatedUserFromRequest();
+}
+
+async function getAuthenticatedUserFromRequest(req?: Request) {
   const supabase = await createClient();
+  const token = req?.headers.get("Authorization")?.replace("Bearer ", "");
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser();
+  } = await supabase.auth.getUser(token ?? undefined);
   if (error || !user) return { supabase, user: null };
   return { supabase, user };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const { supabase, user } = await getAuthenticatedUser();
+    const { supabase, user } = await getAuthenticatedUserFromRequest(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data, error } = await supabase
@@ -43,7 +48,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user } = await getAuthenticatedUser();
+    const { supabase, user } = await getAuthenticatedUserFromRequest(req);
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = (await req.json()) as { patch?: LinkedInWorkspacePatch };

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export interface LinkedInSettings {
   openrouterApiKey: string;
@@ -118,9 +119,15 @@ export function loadLinkedInSettings(): LinkedInSettings {
 }
 
 async function saveLinkedInSettingsRemote(settings: LinkedInSettings): Promise<LinkedInSettings> {
+  const supabase = createSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
   const res = await fetch("/api/linkedin/settings-store", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
     body: JSON.stringify({ settings }),
   });
   const data = await res.json();
@@ -191,7 +198,13 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
 
     void (async () => {
       try {
-        const res = await fetch("/api/linkedin/settings-store", { cache: "no-store" });
+        const supabase = createSupabaseBrowserClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        const res = await fetch("/api/linkedin/settings-store", {
+          cache: "no-store",
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        });
         const data = await res.json();
         if (res.ok && data.settings) {
           const merged = { ...DEFAULT_SETTINGS, ...data.settings };

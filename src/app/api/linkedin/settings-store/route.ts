@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 const DEFAULT_SETTINGS = {
@@ -18,11 +18,18 @@ const DEFAULT_SETTINGS = {
   airtableAutoSync: false,
 };
 
-export async function GET() {
+async function getAuthenticatedUser(req: NextRequest) {
+  const supabase = await createClient();
+  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(token ?? undefined);
+  if (error || !user) return { supabase, user: null };
+  return { supabase, user };
+}
+
+export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { supabase, user } = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data, error: fetchError } = await supabase
       .from("linkedin_user_settings")
@@ -38,11 +45,10 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { supabase, user } = await getAuthenticatedUser(req);
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     const settings = { ...DEFAULT_SETTINGS, ...(body?.settings ?? {}) };
