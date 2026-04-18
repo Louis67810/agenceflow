@@ -1213,6 +1213,7 @@ export default function LinkedInProspectionPage() {
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [rightView, setRightView] = useState<"prospects" | "chat">("prospects");
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [syncingAirtable, setSyncingAirtable] = useState(false);
   const [airtableSyncMsg, setAirtableSyncMsg] = useState<string | null>(null);
   const hasLoadedProspectsRef = useRef(false);
@@ -1225,7 +1226,6 @@ export default function LinkedInProspectionPage() {
     setProspects(cachedWorkspace.prospects);
     setLanguage(cachedWorkspace.preferences.prospectionLanguage);
     setSkeletons(cachedWorkspace.skeletons);
-    hasLoadedProspectsRef.current = true;
 
     void (async () => {
       try {
@@ -1237,7 +1237,10 @@ export default function LinkedInProspectionPage() {
         } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
           await patchRemoteLinkedInWorkspace(cachedWorkspace);
         }
-      } catch {}
+      } catch {} finally {
+        hasLoadedProspectsRef.current = true;
+        setWorkspaceReady(true);
+      }
     })();
   }, []);
 
@@ -1315,12 +1318,13 @@ export default function LinkedInProspectionPage() {
   };
 
   useEffect(() => {
+    if (!workspaceReady) return;
     persistLinkedInWorkspacePatch({
       preferences: {
         prospectionLanguage: language,
       },
     });
-  }, [language]);
+  }, [language, workspaceReady]);
 
   const handleAirtableSync = async (
     prospectList: LinkedInProspect[],
