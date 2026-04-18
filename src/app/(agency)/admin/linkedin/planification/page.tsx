@@ -5,7 +5,11 @@ import { ChevronLeft, ChevronRight, Calendar, Clock, Plus } from "lucide-react";
 import { LinkedInPost } from "@/types/linkedin";
 import Link from "next/link";
 import { loadLinkedInPosts, saveLinkedInPosts } from "@/lib/linkedin/posts";
-import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
+import {
+  fetchRemoteLinkedInPosts,
+  flushPendingRemoteLinkedInPosts,
+  persistRemoteLinkedInPosts,
+} from "@/lib/linkedin/remote";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -52,12 +56,13 @@ export default function LinkedInPlanificationPage() {
     setPosts(localPosts);
     void (async () => {
       try {
+        await flushPendingRemoteLinkedInPosts();
         const remotePosts = await fetchRemoteLinkedInPosts();
         if (remotePosts.length > 0) {
           setPosts(remotePosts);
           saveLinkedInPosts(remotePosts);
         } else if (localPosts.length > 0) {
-          await saveRemoteLinkedInPosts(localPosts, true);
+          await persistRemoteLinkedInPosts(localPosts, true);
         }
       } catch {}
     })();

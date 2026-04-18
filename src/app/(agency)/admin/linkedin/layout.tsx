@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight } from "lucide-react";
 
 export interface LinkedInSettings {
@@ -117,6 +117,17 @@ export function loadLinkedInSettings(): LinkedInSettings {
   return DEFAULT_SETTINGS;
 }
 
+async function saveLinkedInSettingsRemote(settings: LinkedInSettings): Promise<LinkedInSettings> {
+  const res = await fetch("/api/linkedin/settings-store", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Impossible de sauvegarder les paramètres LinkedIn.");
+  return { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+}
+
 function InlineToggle({
   checked,
   onClick,
@@ -168,10 +179,15 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
   const [showBigPrompt, setShowBigPrompt] = useState(false);
   const [showSmallPrompt, setShowSmallPrompt] = useState(false);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedRemoteRef = useRef(false);
+  const lastSavedSnapshotRef = useRef(JSON.stringify(DEFAULT_SETTINGS));
 
   useEffect(() => {
     const localSettings = loadLinkedInSettings();
     setSettings(localSettings);
+    lastSavedSnapshotRef.current = JSON.stringify(localSettings);
 
     void (async () => {
       try {
@@ -181,21 +197,56 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
           const merged = { ...DEFAULT_SETTINGS, ...data.settings };
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
           setSettings(merged);
+          lastSavedSnapshotRef.current = JSON.stringify(merged);
         }
       } catch {}
+      hasLoadedRemoteRef.current = true;
       setBootstrapped(true);
     })();
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
   }, []);
 
+  useEffect(() => {
+    if (!bootstrapped || !hasLoadedRemoteRef.current) return;
+
+    const serialized = JSON.stringify(settings);
+    localStorage.setItem(SETTINGS_KEY, serialized);
+
+    if (serialized === lastSavedSnapshotRef.current) return;
+
+    setSaveError("");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const savedSettings = await saveLinkedInSettingsRemote(settings);
+          const savedSnapshot = JSON.stringify(savedSettings);
+          localStorage.setItem(SETTINGS_KEY, savedSnapshot);
+          lastSavedSnapshotRef.current = savedSnapshot;
+        } catch (error) {
+          setSaveError(error instanceof Error ? error.message : "Sauvegarde Supabase impossible.");
+        }
+      })();
+    }, 500);
+  }, [settings, bootstrapped]);
+
   const handleSave = async () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    setSaveError("");
     try {
-      await fetch("/api/linkedin/settings-store", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
-      });
-    } catch {}
+      const savedSettings = await saveLinkedInSettingsRemote(settings);
+      const savedSnapshot = JSON.stringify(savedSettings);
+      localStorage.setItem(SETTINGS_KEY, savedSnapshot);
+      lastSavedSnapshotRef.current = savedSnapshot;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Sauvegarde Supabase impossible.");
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -545,9 +596,16 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
 
             {/* Footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 shrink-0">
-              <button onClick={handleClose} className="text-sm text-gray-500 hover:text-gray-700">
-                Annuler
-              </button>
+              <div className="flex flex-col gap-1">
+                <button onClick={handleClose} className="text-left text-sm text-gray-500 hover:text-gray-700">
+                  Annuler
+                </button>
+                {saveError ? (
+                  <span className="text-xs text-red-500">{saveError}</span>
+                ) : (
+                  <span className="text-xs text-gray-400">Sauvegarde automatique vers Supabase activée</span>
+                )}
+              </div>
               <button
                 onClick={handleSave}
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors ${

@@ -8,10 +8,15 @@ import {
   loadLinkedInPosts,
   mergePostAnalytics,
   normalizeAnalytics,
+  normalizePosts,
   saveLinkedInPosts,
   computeLinkedInPostScore,
 } from "@/lib/linkedin/posts";
-import { fetchRemoteLinkedInPosts, saveRemoteLinkedInPosts } from "@/lib/linkedin/remote";
+import {
+  fetchRemoteLinkedInPosts,
+  flushPendingRemoteLinkedInPosts,
+  persistRemoteLinkedInPosts,
+} from "@/lib/linkedin/remote";
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -58,13 +63,14 @@ export default function LinkedInStatsPage() {
 
     void (async () => {
       try {
+        await flushPendingRemoteLinkedInPosts();
         const remotePosts = await fetchRemoteLinkedInPosts();
         if (remotePosts.length > 0) {
           setPosts(remotePosts);
           saveLinkedInPosts(remotePosts);
           if (remotePosts[0]) selectPost(remotePosts[0]);
         } else if (loaded.length > 0) {
-          await saveRemoteLinkedInPosts(loaded, true);
+          await persistRemoteLinkedInPosts(loaded, true);
         }
       } catch {}
     })();
@@ -89,9 +95,10 @@ export default function LinkedInStatsPage() {
     : publishedPosts.reduce((sum, post) => sum + (post.analytics?.engagementRate ?? 0), 0) / publishedPosts.length;
 
   function persist(updatedPosts: LinkedInPost[]) {
-    setPosts(updatedPosts);
-    saveLinkedInPosts(updatedPosts);
-    void saveRemoteLinkedInPosts(updatedPosts, true);
+    const normalized = normalizePosts(updatedPosts);
+    setPosts(normalized);
+    saveLinkedInPosts(normalized);
+    void persistRemoteLinkedInPosts(normalized, true);
   }
 
   function selectPost(post: LinkedInPost) {
