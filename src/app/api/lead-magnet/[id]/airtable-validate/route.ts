@@ -4,7 +4,7 @@ import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 import { formatSupabaseError } from "@/lib/supabase/format-error";
 import {
   readLeadMagnetAirtableSettingsByUserId,
-  validateLeadMagnetAirtableConfig,
+  testLeadMagnetAirtableConnection,
 } from "@/lib/airtable/lead-magnet";
 
 export async function POST(
@@ -21,7 +21,7 @@ export async function POST(
     const supabase = await createClient();
     const { data: magnet, error: magnetError } = await supabase
       .from("lead_magnets")
-      .select("id, title, airtable_table_name, airtable_table_id, owner_user_id")
+      .select("id, title, airtable_table_name, owner_user_id")
       .eq("id", id)
       .single();
 
@@ -42,20 +42,10 @@ export async function POST(
     }
 
     const settings = await readLeadMagnetAirtableSettingsByUserId(ownerUserId);
-    const result = await validateLeadMagnetAirtableConfig({
+    const result = await testLeadMagnetAirtableConnection({
       settings,
       magnet,
     });
-    result.logs = [
-      `Utilisateur authentifie: ${user.id}`,
-      `Owner du lead magnet: ${ownerUserId}`,
-      `Owner identique a l'utilisateur courant: ${ownerUserId === user.id ? "oui" : "non"}`,
-      ...result.logs,
-    ];
-
-    if (!result.ok && result.reason === "missing_settings") {
-      return NextResponse.json(result, { status: 400 });
-    }
 
     if (!result.ok) {
       return NextResponse.json(result, { status: 500 });

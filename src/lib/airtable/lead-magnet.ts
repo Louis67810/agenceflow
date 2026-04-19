@@ -27,31 +27,45 @@ export type LeadMagnetSyncConfig = {
   steps: LeadMagnetStep[];
   airtable_auto_sync?: boolean | null;
   airtable_table_name?: string | null;
-  airtable_table_id?: string | null;
 };
 
 export type LeadMagnetLeadSyncRecord = {
+  id?: string;
   data: Record<string, unknown>;
   email: string;
   email_sent: boolean;
   created_at: string;
 };
 
-export type LeadMagnetAirtableValidationResult =
+type AirtableSyncResult =
+  | { synced: false; reason: "auto_sync_disabled" | "missing_settings" | "missing_table" }
   | {
-      ok: true;
+      synced: true;
+      tableName: string;
+      createdTable: false;
+      addedFields: 0;
+      recordsCreated: number;
+      recordsUpdated?: number;
       message: string;
-      logs: string[];
-    }
-  | {
-      ok: false;
-      reason: "missing_settings" | "validation_failed";
-      message: string;
-      logs: string[];
     };
 
-type AirtableRecordsResponse = {
-  records?: Array<{ id: string }>;
+type AirtableRecordFieldMap = {
+  lead_id: string;
+  Lead: string;
+  Email: string;
+  "Date de soumission": string | null;
+  "Email envoye": boolean;
+  "Lead Magnet": string;
+  "Lead Magnet ID": string;
+  Payload: string;
+};
+
+type AirtableListResponse = {
+  records?: Array<{
+    id: string;
+    fields?: Partial<AirtableRecordFieldMap>;
+  }>;
+  offset?: string;
 };
 
 const DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS: LeadMagnetAirtableSettings = {
@@ -65,14 +79,6 @@ function admin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
-}
-
-function getAirtableHeaders(airtableKey: string) {
-  return {
-    Authorization: `Bearer ${airtableKey}`,
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
 }
 
 function normalizeSettings(
@@ -90,6 +96,33 @@ function sanitizeAirtableName(value: string, fallback: string) {
   return (sanitized || fallback).slice(0, 100);
 }
 
+function getAirtableHeaders(airtableKey: string) {
+  return {
+    Authorization: `Bearer ${airtableKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function formatAirtableError(errText: string, tableName: string, baseId: string) {
+  if (errText.includes('"error":"NOT_FOUND"') || errText.includes('"error": "NOT_FOUND"')) {
+    return `Airtable introuvable. Verifiez le Base ID (${baseId}), le nom exact de la table ("${tableName}") et que le token a bien acces a cette base.`;
+  }
+
+  if (errText.includes("INVALID_PERMISSIONS")) {
+    return "Permissions Airtable insuffisantes. Verifiez que le token a les droits data.records:read et data.records:write sur cette base.";
+  }
+
+  if (errText.includes("INVALID_VALUE_FOR_COLUMN")) {
+    return `Valeur Airtable invalide pour une colonne. Verifiez surtout les types de champs dans la table "${tableName}". Detail: ${errText}`;
+  }
+
+  if (errText.includes("INVALID_REQUEST")) {
+    return `Requete Airtable invalide. Verifiez le Base ID (${baseId}) et le nom exact de la table ("${tableName}"). Detail: ${errText}`;
+  }
+
+  return `Airtable API: ${errText}`;
+}
+
 function getLeadValue(data: Record<string, unknown>, key: string) {
   const value = data[key];
   if (value == null) return "";
@@ -102,189 +135,17 @@ function getLeadValue(data: Record<string, unknown>, key: string) {
   }
 }
 
-async function airtableFetch<T>(url: string, init: RequestInit, fallbackError: string): Promise<T> {
-  const res = await fetch(url, init);
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(formatLeadMagnetAirtableError(fallbackError, errText, url, res.status));
-  }
-  return res.json() as Promise<T>;
-}
-
-async function airtableFetchRaw(url: string, init: RequestInit) {
-  const res = await fetch(url, init);
-  const body = (await res.text()).replace(/\s+/g, " ").trim();
-  return {
-    ok: res.ok,
-    status: res.status,
-    body,
-  };
-}
-
-function describeInputValue(label: string, value: string) {
-  const invisibleChars = Array.from(value)
-    .filter((char) => /[\u200B-\u200D\uFEFF]/u.test(char))
-    .map((char) => `U+${char.codePointAt(0)?.toString(16).toUpperCase()}`);
-
-  return `${label}: "${value}" (len=${value.length}${invisibleChars.length ? `, hidden=${invisibleChars.join(",")}` : ""})`;
-}
-
-function maskToken(token: string) {
-  if (!token) return "vide";
-  if (token.length <= 8) return `${token.slice(0, 2)}***`;
-  return `${token.slice(0, 4)}***${token.slice(-4)} (len=${token.length})`;
-}
-
-function formatLeadMagnetAirtableError(fallbackError: string, errText: string, url: string, status?: number) {
-  const compact = errText.replace(/\s+/g, " ").trim();
-  const statusLabel = typeof status === "number" ? `HTTP ${status}. ` : "";
-
-  if (compact.includes('"error":"NOT_FOUND"') || compact.includes('"error": "NOT_FOUND"')) {
-    return `${fallbackError}: ${statusLabel}Airtable introuvable. Verifie le Base ID, le nom exact de la table et l'acces du token a cette base. Detail Airtable: ${compact}`;
-  }
-
-  if (
-    compact.includes("INVALID_PERMISSIONS")
-    || compact.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND")
-  ) {
-    return `${fallbackError}: ${statusLabel}permissions Airtable insuffisantes ou table/base introuvable pour ce token. Verifie les droits data.records:read et data.records:write ainsi que l'acces a la base. Detail Airtable: ${compact}`;
-  }
-
-  if (compact.includes('"type":"INVALID_REQUEST"') || compact.includes('"type": "INVALID_REQUEST"')) {
-    return `${fallbackError}: ${statusLabel}requete Airtable invalide. Verifie surtout le Base ID, le nom exact de table et le token. Detail Airtable: ${compact}`;
-  }
-
-  if (compact.includes("INVALID_VALUE_FOR_COLUMN")) {
-    return `${fallbackError}: ${statusLabel}valeur invalide pour une colonne Airtable. Verifie la structure de la table cible et les types de colonnes attendus. Detail Airtable: ${compact}`;
-  }
-
-  return `${fallbackError}: ${statusLabel}${compact}`;
-}
-
-export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">) {
+export function getLeadMagnetAirtableTableName(
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">
+) {
   return sanitizeAirtableName(
     magnet.airtable_table_name?.trim() || `LM - ${magnet.title}`,
     "Lead Magnet"
   );
 }
 
-export function getLeadMagnetAirtableTableRef(
-  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name" | "airtable_table_id">
-) {
-  const tableId = magnet.airtable_table_id?.trim() || "";
-  if (tableId) {
-    return tableId;
-  }
-  return getLeadMagnetAirtableTableName(magnet);
-}
-
-async function checkTableAccess(
-  airtableKey: string,
-  baseId: string,
-  tableRef: string
-) {
-  const normalizedBaseId = baseId.trim();
-  const url = `https://api.airtable.com/v0/${normalizedBaseId}/${encodeURIComponent(tableRef)}?maxRecords=1`;
-  return airtableFetch<AirtableRecordsResponse>(
-    url,
-    {
-      method: "GET",
-      headers: getAirtableHeaders(airtableKey),
-    },
-    "Impossible d'acceder a la table Airtable"
-  );
-}
-
-export async function validateLeadMagnetAirtableConfig(input: {
-  settings: LeadMagnetAirtableSettings;
-  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name" | "airtable_table_id">;
-}): Promise<LeadMagnetAirtableValidationResult> {
-  const settings = normalizeSettings(input.settings);
-  const tableName = getLeadMagnetAirtableTableName(input.magnet);
-  const tableId = input.magnet.airtable_table_id?.trim() || "";
-  const tableRef = getLeadMagnetAirtableTableRef(input.magnet);
-  const logs = [
-    describeInputValue("Base ID utilise", settings.airtableBaseId),
-    describeInputValue("Nom de table utilise", tableName),
-    describeInputValue("Table ID utilise", tableId),
-    describeInputValue("Identifiant reel envoye a Airtable", tableRef),
-    `Token Airtable utilise: ${maskToken(settings.airtableKey)}`,
-  ];
-
-  if (!settings.airtableKey || !settings.airtableBaseId) {
-    return {
-      ok: false,
-      reason: "missing_settings",
-      message: "Validation Airtable impossible: renseignez d'abord le token Airtable et le Base ID.",
-      logs,
-    };
-  }
-
-  if (!tableRef) {
-    return {
-      ok: false,
-      reason: "missing_settings",
-      message: "Validation Airtable impossible: renseignez au minimum le nom exact de la table Airtable existante, ou mieux son Table ID.",
-      logs,
-    };
-  }
-
-  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableRef)}?maxRecords=1`;
-  const headers = getAirtableHeaders(settings.airtableKey);
-
-  try {
-    logs.push(`Appel 1 - records GET ${recordsUrl}`);
-    const recordsRes = await airtableFetchRaw(recordsUrl, {
-      method: "GET",
-      headers,
-    });
-    logs.push(`Resultat records: HTTP ${recordsRes.status} | ${recordsRes.body || "<vide>"}`);
-
-    if (recordsRes.ok) {
-      try {
-        const parsed = JSON.parse(recordsRes.body) as AirtableRecordsResponse;
-        logs.push(`Lecture records OK: ${parsed.records?.length ?? 0} ligne(s) retournee(s) sur le test.`);
-      } catch {
-        logs.push("Lecture records OK mais le JSON n'a pas pu etre parse proprement.");
-      }
-
-      return {
-        ok: true,
-        message: `Validation Airtable OK: la table cible "${tableRef}" est accessible via l'API records.`,
-        logs,
-      };
-    }
-
-    const recordsMessage = formatLeadMagnetAirtableError(
-      "Impossible d'acceder a la table Airtable",
-      recordsRes.body,
-      recordsUrl,
-      recordsRes.status
-    );
-    logs.push(`Erreur records interpretee: ${recordsMessage}`);
-
-    return {
-      ok: false,
-      reason: "validation_failed",
-      message: `${recordsMessage} Conclusion: la table Airtable attendue n'est pas accessible via l'API records. Verifie le Base ID, puis essaye en priorite le Table ID Airtable (tbl...) si le nom de table exact retourne encore 422. Controle aussi les droits data.records:read/data.records:write du token.`,
-      logs,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Validation Airtable impossible.";
-    logs.push(`Exception inattendue pendant la validation: ${message}`);
-    return {
-      ok: false,
-      reason: "validation_failed",
-      message,
-      logs,
-    };
-  }
-}
-
 export async function readLeadMagnetAirtableSettingsByUserId(userId?: string | null) {
-  if (!userId) {
-    return DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS;
-  }
+  if (!userId) return DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS;
 
   const { data, error } = await admin()
     .from("lead_magnet_user_settings")
@@ -299,76 +160,122 @@ export async function readLeadMagnetAirtableSettingsByUserId(userId?: string | n
   return normalizeSettings((data?.settings as Partial<LeadMagnetAirtableSettings> | null) ?? null);
 }
 
+async function fetchAirtableTable(
+  airtableKey: string,
+  baseId: string,
+  tableName: string
+) {
+  const baseUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
+  const res = await fetch(`${baseUrl}?maxRecords=1`, {
+    method: "GET",
+    headers: getAirtableHeaders(airtableKey),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(formatAirtableError(errText, tableName, baseId));
+  }
+
+  return baseUrl;
+}
+
+export async function testLeadMagnetAirtableConnection(input: {
+  settings: LeadMagnetAirtableSettings;
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
+}) {
+  const settings = normalizeSettings(input.settings);
+  const tableName = getLeadMagnetAirtableTableName(input.magnet);
+
+  if (!settings.airtableKey || !settings.airtableBaseId || !input.magnet.airtable_table_name?.trim()) {
+    return {
+      ok: false as const,
+      message: "Configuration Airtable incomplete (cle, Base ID, nom de table).",
+    };
+  }
+
+  await fetchAirtableTable(settings.airtableKey, settings.airtableBaseId, tableName);
+
+  return {
+    ok: true as const,
+    message: "Airtable connecte",
+  };
+}
+
 export async function syncLeadMagnetLeadsToAirtable(input: {
   magnet: LeadMagnetSyncConfig;
   leads: LeadMagnetLeadSyncRecord[];
-}) {
+}): Promise<AirtableSyncResult> {
   const { magnet, leads } = input;
   if (!magnet.airtable_auto_sync) {
-    return { synced: false, reason: "auto_sync_disabled" as const };
+    return { synced: false, reason: "auto_sync_disabled" };
   }
 
   const settings = await readLeadMagnetAirtableSettingsByUserId(magnet.owner_user_id);
   if (!settings.airtableKey || !settings.airtableBaseId) {
-    return { synced: false, reason: "missing_settings" as const };
+    return { synced: false, reason: "missing_settings" };
   }
 
-  const tableRef = getLeadMagnetAirtableTableRef(magnet);
-  if (!tableRef) {
-    throw new Error("Synchronisation Airtable impossible: renseignez le nom exact de la table Airtable existante ou son Table ID.");
+  if (!magnet.airtable_table_name?.trim()) {
+    return { synced: false, reason: "missing_table" };
   }
 
   const tableName = getLeadMagnetAirtableTableName(magnet);
-  const targetLabel = tableName || tableRef;
-  await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableRef);
+  const baseUrl = await fetchAirtableTable(settings.airtableKey, settings.airtableBaseId, tableName);
 
-  if (leads.length === 0) {
+  if (!leads.length) {
     return {
       synced: true,
-      tableName: targetLabel,
+      tableName,
       createdTable: false,
       addedFields: 0,
       recordsCreated: 0,
-      message: "Table Airtable accessible · 0 ligne ajoutee",
+      recordsUpdated: 0,
+      message: "0 crees, 0 mis a jour, 0 supprimes",
     };
   }
 
   const records = leads.map((lead) => ({
     fields: {
-      lead_id: `${magnet.id}:${lead.created_at}:${lead.email || "sans-email"}`,
+      lead_id: lead.id || `${magnet.id}:${lead.created_at}:${lead.email || "sans-email"}`,
       Lead:
         lead.email
         || magnet.steps.flatMap((step) => step.fields).map((field) => getLeadValue(lead.data, field.key)).find(Boolean)
         || `Lead ${new Date(lead.created_at).toLocaleString("fr-FR")}`,
       Email: lead.email || "",
-      "Date de soumission": lead.created_at,
-      "Email envoye": lead.email_sent,
+      "Date de soumission": lead.created_at ? new Date(lead.created_at).toISOString().split("T")[0] : null,
+      "Email envoye": !!lead.email_sent,
       "Lead Magnet": magnet.title,
       "Lead Magnet ID": magnet.id,
       Payload: JSON.stringify(lead.data ?? {}),
-    },
+    } as AirtableRecordFieldMap,
   }));
 
-  await airtableFetch(
-    `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableRef)}`,
-    {
-      method: "PATCH",
-      headers: getAirtableHeaders(settings.airtableKey),
-      body: JSON.stringify({
-        records,
-        performUpsert: { fieldsToMergeOn: ["lead_id"] },
-      }),
-    },
-    "Impossible de synchroniser les leads Airtable"
-  );
+  const res = await fetch(baseUrl, {
+    method: "PATCH",
+    headers: getAirtableHeaders(settings.airtableKey),
+    body: JSON.stringify({
+      records,
+      performUpsert: { fieldsToMergeOn: ["lead_id"] },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(formatAirtableError(errText, tableName, settings.airtableBaseId));
+  }
+
+  const data = await res.json();
+  const created = Array.isArray(data.createdRecords) ? data.createdRecords.length : records.length;
+  const updated = Array.isArray(data.updatedRecords) ? data.updatedRecords.length : 0;
 
   return {
-      synced: true,
-    tableName: targetLabel,
+    synced: true,
+    tableName,
     createdTable: false,
     addedFields: 0,
-    recordsCreated: records.length,
-    message: `${records.length} ligne${records.length > 1 ? "s" : ""} synchronisee${records.length > 1 ? "s" : ""} dans la table existante "${targetLabel}" via "${tableRef}"`,
+    recordsCreated: created,
+    recordsUpdated: updated,
+    message: `${created} crees, ${updated} mis a jour, 0 supprimes`,
   };
 }
 
@@ -390,4 +297,47 @@ export async function syncLeadMagnetLeadToAirtable(input: {
       },
     ],
   });
+}
+
+export async function pullLeadMagnetAirtableSummary(input: {
+  settings: LeadMagnetAirtableSettings;
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
+}) {
+  const settings = normalizeSettings(input.settings);
+  const tableName = getLeadMagnetAirtableTableName(input.magnet);
+
+  if (!settings.airtableKey || !settings.airtableBaseId || !input.magnet.airtable_table_name?.trim()) {
+    throw new Error("Configuration Airtable incomplete (cle, Base ID, nom de table).");
+  }
+
+  const baseUrl = await fetchAirtableTable(settings.airtableKey, settings.airtableBaseId, tableName);
+  let count = 0;
+  let offset: string | undefined;
+
+  do {
+    const url = new URL(baseUrl);
+    url.searchParams.append("fields[]", "lead_id");
+    url.searchParams.set("maxRecords", "100");
+    if (offset) url.searchParams.set("offset", offset);
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: getAirtableHeaders(settings.airtableKey),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(formatAirtableError(errText, tableName, settings.airtableBaseId));
+    }
+
+    const data = (await res.json()) as AirtableListResponse;
+    count += Array.isArray(data.records) ? data.records.length : 0;
+    offset = data.offset;
+  } while (offset);
+
+  return {
+    ok: true as const,
+    count,
+    message: count > 0 ? `${count} lignes detectees dans Airtable` : "Airtable connecte",
+  };
 }
