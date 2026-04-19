@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { formatSupabaseError } from "@/lib/supabase/format-error";
 
 const DEFAULT_SETTINGS = {
   openrouterApiKey: "",
@@ -50,9 +51,28 @@ export async function GET(req: NextRequest) {
 
     if (fetchError) throw fetchError;
 
-    return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(data?.settings ?? {}) } });
+    if (!data) {
+      const bootstrappedSettings = { ...DEFAULT_SETTINGS };
+      const { data: inserted, error: insertError } = await supabase
+        .from("linkedin_user_settings")
+        .upsert(
+          {
+            user_id: user.id,
+            settings: bootstrappedSettings,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
+        .select("settings")
+        .single();
+
+      if (insertError) throw insertError;
+      return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(inserted?.settings ?? {}) } });
+    }
+
+    return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) } });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(e) }, { status: 500 });
   }
 }
 
@@ -81,6 +101,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ settings: data.settings });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(e) }, { status: 500 });
   }
 }

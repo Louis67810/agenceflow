@@ -6,6 +6,7 @@ import {
   normalizeLinkedInWorkspaceData,
 } from "@/lib/linkedin/workspace";
 import type { LinkedInWorkspaceData } from "@/types/linkedin";
+import { formatSupabaseError } from "@/lib/supabase/format-error";
 
 async function getAuthenticatedUser() {
   return getAuthenticatedUserFromRequest();
@@ -49,6 +50,32 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
+    if (!data) {
+      const bootstrappedWorkspace = normalizeLinkedInWorkspaceData(DEFAULT_LINKEDIN_WORKSPACE);
+      const { data: inserted, error: insertError } = await supabase
+        .from("linkedin_user_workspace")
+        .upsert(
+          {
+            user_id: user.id,
+            data: bootstrappedWorkspace,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
+        .select("data")
+        .single();
+
+      if (insertError) throw insertError;
+
+      return NextResponse.json({
+        workspace: normalizeLinkedInWorkspaceData(
+          (inserted?.data as Partial<LinkedInWorkspaceData> | null) ?? DEFAULT_LINKEDIN_WORKSPACE
+        ),
+        hasStoredData: false,
+        bootstrapped: true,
+      });
+    }
+
     return NextResponse.json({
       workspace: normalizeLinkedInWorkspaceData(
         (data?.data as Partial<LinkedInWorkspaceData> | null) ?? DEFAULT_LINKEDIN_WORKSPACE
@@ -56,7 +83,7 @@ export async function GET(req: Request) {
       hasStoredData: Boolean(data?.data),
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 }
 
@@ -108,6 +135,6 @@ export async function POST(req: Request) {
       hasStoredData: true,
     });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import type { LinkedInPost } from "@/types/linkedin";
+import { formatSupabaseError } from "@/lib/supabase/format-error";
 
 interface StoredLinkedInPostRow {
   client_post_id: string;
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ posts: (data ?? []).map((row) => rowToPost(row as StoredLinkedInPostRow)) });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 }
 
@@ -142,6 +143,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
   }
 }

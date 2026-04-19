@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { formatSupabaseError } from "@/lib/supabase/format-error";
 
 type DiagnosticSection = {
   ok: boolean;
@@ -24,11 +25,6 @@ async function getAuthenticatedUser(req: NextRequest) {
   }
 
   return { supabase, user: null };
-}
-
-function toMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }
 
 export async function GET(req: NextRequest) {
@@ -61,7 +57,8 @@ export async function GET(req: NextRequest) {
       if (error) throw error;
 
       sections.settings = {
-        ok: true,
+        ok: Boolean(data),
+        error: data ? undefined : "Aucune ligne linkedin_user_settings pour cet utilisateur.",
         details: {
           has_row: Boolean(data),
           updated_at: data?.updated_at ?? null,
@@ -74,7 +71,7 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       sections.settings = {
         ok: false,
-        error: toMessage(error),
+        error: formatSupabaseError(error),
       };
     }
 
@@ -96,7 +93,8 @@ export async function GET(req: NextRequest) {
       };
 
       sections.workspace = {
-        ok: true,
+        ok: Boolean(data),
+        error: data ? undefined : "Aucune ligne linkedin_user_workspace pour cet utilisateur.",
         details: {
           has_row: Boolean(data),
           updated_at: data?.updated_at ?? null,
@@ -110,7 +108,7 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       sections.workspace = {
         ok: false,
-        error: toMessage(error),
+        error: formatSupabaseError(error),
       };
     }
 
@@ -141,7 +139,7 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       sections.posts = {
         ok: false,
-        error: toMessage(error),
+        error: formatSupabaseError(error),
       };
     }
 
@@ -161,7 +159,7 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       sections.style_examples = {
         ok: false,
-        error: toMessage(error),
+        error: formatSupabaseError(error),
       };
     }
 
@@ -180,7 +178,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: toMessage(error),
+        error: formatSupabaseError(error),
       },
       { status: 500 }
     );
