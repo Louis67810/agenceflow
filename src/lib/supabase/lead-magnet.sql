@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS lead_magnets (
   from_name text DEFAULT 'AgenceFlow',
   airtable_auto_sync boolean NOT NULL DEFAULT false,
   airtable_table_name text,
+  airtable_table_id text,
   status text DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused')),
   created_at timestamptz DEFAULT now() NOT NULL
 );
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS lead_magnet_leads (
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS owner_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_auto_sync boolean NOT NULL DEFAULT false;
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_table_name text;
+ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_table_id text;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_lead_magnets_slug ON lead_magnets(slug);

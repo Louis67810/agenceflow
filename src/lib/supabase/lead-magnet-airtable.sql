@@ -32,4 +32,7 @@ alter table public.lead_magnets
 alter table public.lead_magnets
   add column if not exists airtable_table_name text;
 
+alter table public.lead_magnets
+  add column if not exists airtable_table_id text;
+
 create index if not exists idx_lead_magnets_owner_user_id on public.lead_magnets(owner_user_id);

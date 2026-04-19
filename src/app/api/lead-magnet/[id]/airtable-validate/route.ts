@@ -21,7 +21,7 @@ export async function POST(
     const supabase = await createClient();
     const { data: magnet, error: magnetError } = await supabase
       .from("lead_magnets")
-      .select("id, title, airtable_table_name, owner_user_id")
+      .select("id, title, airtable_table_name, airtable_table_id, owner_user_id")
       .eq("id", id)
       .single();
 

@@ -27,6 +27,7 @@ export type LeadMagnetSyncConfig = {
   steps: LeadMagnetStep[];
   airtable_auto_sync?: boolean | null;
   airtable_table_name?: string | null;
+  airtable_table_id?: string | null;
 };
 
 export type LeadMagnetLeadSyncRecord = {
@@ -167,13 +168,23 @@ export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig
   );
 }
 
+export function getLeadMagnetAirtableTableRef(
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name" | "airtable_table_id">
+) {
+  const tableId = magnet.airtable_table_id?.trim() || "";
+  if (tableId) {
+    return tableId;
+  }
+  return getLeadMagnetAirtableTableName(magnet);
+}
+
 async function checkTableAccess(
   airtableKey: string,
   baseId: string,
-  tableName: string
+  tableRef: string
 ) {
   const normalizedBaseId = baseId.trim();
-  const url = `https://api.airtable.com/v0/${normalizedBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
+  const url = `https://api.airtable.com/v0/${normalizedBaseId}/${encodeURIComponent(tableRef)}?maxRecords=1`;
   return airtableFetch<AirtableRecordsResponse>(
     url,
     {
@@ -186,13 +197,17 @@ async function checkTableAccess(
 
 export async function validateLeadMagnetAirtableConfig(input: {
   settings: LeadMagnetAirtableSettings;
-  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name" | "airtable_table_id">;
 }): Promise<LeadMagnetAirtableValidationResult> {
   const settings = normalizeSettings(input.settings);
   const tableName = getLeadMagnetAirtableTableName(input.magnet);
+  const tableId = input.magnet.airtable_table_id?.trim() || "";
+  const tableRef = getLeadMagnetAirtableTableRef(input.magnet);
   const logs = [
     describeInputValue("Base ID utilise", settings.airtableBaseId),
     describeInputValue("Nom de table utilise", tableName),
+    describeInputValue("Table ID utilise", tableId),
+    describeInputValue("Identifiant reel envoye a Airtable", tableRef),
     `Token Airtable utilise: ${maskToken(settings.airtableKey)}`,
   ];
 
@@ -205,16 +220,16 @@ export async function validateLeadMagnetAirtableConfig(input: {
     };
   }
 
-  if (!input.magnet.airtable_table_name?.trim()) {
+  if (!tableRef) {
     return {
       ok: false,
       reason: "missing_settings",
-      message: "Validation Airtable impossible: renseignez le nom exact de la table Airtable existante.",
+      message: "Validation Airtable impossible: renseignez au minimum le nom exact de la table Airtable existante, ou mieux son Table ID.",
       logs,
     };
   }
 
-  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
+  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableRef)}?maxRecords=1`;
   const headers = getAirtableHeaders(settings.airtableKey);
 
   try {
@@ -235,7 +250,7 @@ export async function validateLeadMagnetAirtableConfig(input: {
 
       return {
         ok: true,
-        message: `Validation Airtable OK: la table "${tableName}" est accessible via l'API records.`,
+        message: `Validation Airtable OK: la table cible "${tableRef}" est accessible via l'API records.`,
         logs,
       };
     }
@@ -251,7 +266,7 @@ export async function validateLeadMagnetAirtableConfig(input: {
     return {
       ok: false,
       reason: "validation_failed",
-      message: `${recordsMessage} Conclusion: la table Airtable attendue n'est pas accessible via l'API records. Verifie le nom exact de la table, le Base ID et les droits data.records:read/data.records:write du token.`,
+      message: `${recordsMessage} Conclusion: la table Airtable attendue n'est pas accessible via l'API records. Verifie le Base ID, puis essaye en priorite le Table ID Airtable (tbl...) si le nom de table exact retourne encore 422. Controle aussi les droits data.records:read/data.records:write du token.`,
       logs,
     };
   } catch (error) {
@@ -298,17 +313,19 @@ export async function syncLeadMagnetLeadsToAirtable(input: {
     return { synced: false, reason: "missing_settings" as const };
   }
 
-  if (!magnet.airtable_table_name?.trim()) {
-    throw new Error("Synchronisation Airtable impossible: renseignez le nom exact de la table Airtable existante.");
+  const tableRef = getLeadMagnetAirtableTableRef(magnet);
+  if (!tableRef) {
+    throw new Error("Synchronisation Airtable impossible: renseignez le nom exact de la table Airtable existante ou son Table ID.");
   }
 
   const tableName = getLeadMagnetAirtableTableName(magnet);
-  await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
+  const targetLabel = tableName || tableRef;
+  await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableRef);
 
   if (leads.length === 0) {
     return {
       synced: true,
-      tableName,
+      tableName: targetLabel,
       createdTable: false,
       addedFields: 0,
       recordsCreated: 0,
@@ -333,7 +350,7 @@ export async function syncLeadMagnetLeadsToAirtable(input: {
   }));
 
   await airtableFetch(
-    `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}`,
+    `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableRef)}`,
     {
       method: "PATCH",
       headers: getAirtableHeaders(settings.airtableKey),
@@ -346,12 +363,12 @@ export async function syncLeadMagnetLeadsToAirtable(input: {
   );
 
   return {
-    synced: true,
-    tableName,
+      synced: true,
+    tableName: targetLabel,
     createdTable: false,
     addedFields: 0,
     recordsCreated: records.length,
-    message: `${records.length} ligne${records.length > 1 ? "s" : ""} synchronisee${records.length > 1 ? "s" : ""} dans la table existante "${tableName}"`,
+    message: `${records.length} ligne${records.length > 1 ? "s" : ""} synchronisee${records.length > 1 ? "s" : ""} dans la table existante "${targetLabel}" via "${tableRef}"`,
   };
 }
 

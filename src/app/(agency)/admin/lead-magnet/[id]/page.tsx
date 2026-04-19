@@ -48,6 +48,7 @@ interface LeadMagnet {
   from_name: string;
   airtable_auto_sync: boolean;
   airtable_table_name: string | null;
+  airtable_table_id: string | null;
   status: "draft" | "active" | "paused";
 }
 
@@ -130,7 +131,7 @@ export default function LeadMagnetEditPage() {
   const airtableBootstrappedRef = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedSettingsSnapshotRef = useRef(JSON.stringify(DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS));
-  const lastSavedMagnetSnapshotRef = useRef(JSON.stringify({ airtable_auto_sync: false, airtable_table_name: null }));
+  const lastSavedMagnetSnapshotRef = useRef(JSON.stringify({ airtable_auto_sync: false, airtable_table_name: null, airtable_table_id: null }));
 
   const siteUrl =
     typeof window !== "undefined"
@@ -145,9 +146,12 @@ export default function LeadMagnetEditPage() {
   }
 
   const describeAirtableState = useCallback(
-    (nextSettings: LeadMagnetAirtableSettings, nextMagnet?: Pick<LeadMagnet, "airtable_auto_sync" | "airtable_table_name" | "title"> | null) => {
+    (nextSettings: LeadMagnetAirtableSettings, nextMagnet?: Pick<LeadMagnet, "airtable_auto_sync" | "airtable_table_name" | "airtable_table_id" | "title"> | null) => {
       const baseLabel = nextSettings.airtableBaseId.trim() ? "Airtable configure" : "Airtable non configure";
-      const magnetLabel = nextMagnet?.airtable_auto_sync ? `auto sync active · ${nextMagnet.airtable_table_name?.trim() || `LM - ${nextMagnet.title}`}` : "auto sync desactive";
+      const targetLabel = nextMagnet?.airtable_table_id?.trim()
+        || nextMagnet?.airtable_table_name?.trim()
+        || `LM - ${nextMagnet?.title || ""}`;
+      const magnetLabel = nextMagnet?.airtable_auto_sync ? `auto sync active · ${targetLabel}` : "auto sync desactive";
       return `Supabase actif · ${baseLabel} · ${magnetLabel}`;
     },
     []
@@ -174,6 +178,7 @@ export default function LeadMagnetEditPage() {
         lastSavedMagnetSnapshotRef.current = JSON.stringify({
           airtable_auto_sync: Boolean(data.magnet.airtable_auto_sync),
           airtable_table_name: data.magnet.airtable_table_name ?? null,
+          airtable_table_id: data.magnet.airtable_table_id ?? null,
         });
       }
     } catch {}
@@ -274,6 +279,7 @@ export default function LeadMagnetEditPage() {
           body: JSON.stringify({
             airtable_auto_sync: nextMagnet.airtable_auto_sync,
             airtable_table_name: nextMagnet.airtable_table_name,
+            airtable_table_id: nextMagnet.airtable_table_id,
           }),
         });
         const magnetData = await magnetRes.json();
@@ -286,6 +292,7 @@ export default function LeadMagnetEditPage() {
         const magnetSnapshot = JSON.stringify({
           airtable_auto_sync: Boolean(nextMagnet.airtable_auto_sync),
           airtable_table_name: nextMagnet.airtable_table_name ?? null,
+          airtable_table_id: nextMagnet.airtable_table_id ?? null,
         });
 
         lastSavedSettingsSnapshotRef.current = settingsSnapshot;
@@ -357,6 +364,7 @@ export default function LeadMagnetEditPage() {
             slug: magnet.slug,
             airtable_auto_sync: magnet.airtable_auto_sync,
             airtable_table_name: magnet.airtable_table_name,
+            airtable_table_id: magnet.airtable_table_id,
           }),
         }),
         leadMagnetFetch("/api/lead-magnet/settings-store", {
@@ -397,6 +405,7 @@ export default function LeadMagnetEditPage() {
     const magnetSnapshot = JSON.stringify({
       airtable_auto_sync: Boolean(magnet.airtable_auto_sync),
       airtable_table_name: magnet.airtable_table_name ?? null,
+      airtable_table_id: magnet.airtable_table_id ?? null,
     });
 
     if (
@@ -411,7 +420,7 @@ export default function LeadMagnetEditPage() {
     autoSaveTimerRef.current = setTimeout(() => {
       void persistAirtableConfig(queuedSettings, magnet);
     }, 350);
-  }, [airtableSettings, magnet?.airtable_auto_sync, magnet?.airtable_table_name, magnet, persistAirtableConfig]);
+  }, [airtableSettings, magnet?.airtable_auto_sync, magnet?.airtable_table_name, magnet?.airtable_table_id, magnet, persistAirtableConfig]);
 
   useEffect(() => {
     if (!magnet || !airtableBootstrappedRef.current) return;
@@ -556,6 +565,7 @@ export default function LeadMagnetEditPage() {
   const publicUrl = `${siteUrl}/lm/${magnet.slug}`;
   const flatFieldCount = magnet.steps.reduce((s, st) => s + st.fields.length, 0);
   const generatedAirtableTableName = (magnet.airtable_table_name?.trim() || `LM - ${magnet.title}`).slice(0, 100);
+  const generatedAirtableTarget = magnet.airtable_table_id?.trim() || generatedAirtableTableName;
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
@@ -1039,7 +1049,7 @@ export default function LeadMagnetEditPage() {
 
               <Field
                 label="Nom de table Airtable"
-                hint="Entrez le nom exact d'une table Airtable deja existante dans cette base."
+                hint="Entrez le nom exact d'une table Airtable deja existante dans cette base. Si Airtable renvoie encore 422, renseignez aussi le Table ID ci-dessous."
               >
                 <input
                   type="text"
@@ -1050,11 +1060,24 @@ export default function LeadMagnetEditPage() {
                 />
               </Field>
 
+              <Field
+                label="Table ID Airtable"
+                hint="Optionnel mais recommande si le nom de table exact retourne HTTP 422. Exemple : tblXXXXXXXXXXXXXX"
+              >
+                <input
+                  type="text"
+                  value={magnet.airtable_table_id || ""}
+                  onChange={(e) => update("airtable_table_id", e.target.value || null)}
+                  placeholder="tbl..."
+                  className="input"
+                />
+              </Field>
+
               <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
                 <p className="font-medium text-gray-800">Table cible actuelle</p>
-                <p className="mt-1">{generatedAirtableTableName}</p>
+                <p className="mt-1">{generatedAirtableTarget}</p>
                 <p className="mt-2 text-xs text-gray-500">
-                  La table doit deja exister dans Airtable et contenir au minimum les colonnes compatibles avec la synchronisation.
+                  Priorite de resolution : Table ID si renseigne, sinon nom exact de table. La table doit deja exister dans Airtable et contenir au minimum les colonnes compatibles avec la synchronisation.
                 </p>
               </div>
 
