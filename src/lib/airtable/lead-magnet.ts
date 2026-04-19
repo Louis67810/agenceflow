@@ -65,6 +65,10 @@ type AirtableMetaTablesResponse = {
   tables?: AirtableTableSchema[];
 };
 
+type AirtableRecordsResponse = {
+  records?: Array<{ id: string }>;
+};
+
 const DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS: LeadMagnetAirtableSettings = {
   airtableKey: "",
   airtableBaseId: "",
@@ -257,12 +261,56 @@ async function createField(
   );
 }
 
+async function checkTableAccess(
+  airtableKey: string,
+  baseId: string,
+  tableName: string
+) {
+  const normalizedBaseId = baseId.trim();
+  const url = `https://api.airtable.com/v0/${normalizedBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
+  return airtableFetch<AirtableRecordsResponse>(
+    url,
+    {
+      method: "GET",
+      headers: getAirtableHeaders(airtableKey),
+    },
+    "Impossible d'acceder a la table Airtable"
+  );
+}
+
 async function ensureLeadMagnetTable(
   settings: LeadMagnetAirtableSettings,
   magnet: LeadMagnetSyncConfig
 ) {
   const tableName = getLeadMagnetAirtableTableName(magnet);
-  const schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
+  let schema: AirtableMetaTablesResponse;
+
+  try {
+    schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Validation du schema Airtable impossible.";
+    if (message.includes("schema Airtable invalide")) {
+      try {
+        await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
+        return {
+          tableName,
+          createdTable: false,
+          addedFields: 0,
+        };
+      } catch (tableAccessError) {
+        const tableMessage = tableAccessError instanceof Error
+          ? tableAccessError.message
+          : "Impossible d'acceder a la table Airtable.";
+
+        throw new Error(
+          `${message} Fallback table direct: ${tableMessage} Si la table n'existe pas encore, l'API de schema Airtable doit fonctionner pour la creer automatiquement.`
+        );
+      }
+    }
+
+    throw error;
+  }
+
   let table = (schema.tables ?? []).find((item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase());
 
   let createdTable = false;
@@ -325,10 +373,34 @@ export async function validateLeadMagnetAirtableConfig(input: {
         : `Validation Airtable OK: la base est accessible. La table "${tableName}" n'existe pas encore et sera creee au moment de la synchronisation.`,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Validation Airtable impossible.";
+
+    if (message.includes("schema Airtable invalide")) {
+      try {
+        await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
+        return {
+          ok: true,
+          tableName,
+          tableExists: true,
+          message: `Validation Airtable partielle OK: l'API schema Airtable est indisponible, mais la table "${tableName}" est accessible via l'API records. La synchronisation des lignes peut continuer.`,
+        };
+      } catch (tableAccessError) {
+        const tableMessage = tableAccessError instanceof Error
+          ? tableAccessError.message
+          : "Impossible d'acceder a la table Airtable.";
+
+        return {
+          ok: false,
+          reason: "validation_failed",
+          message: `${message} Verification directe de la table "${tableName}" echouee aussi: ${tableMessage} Conclusion: la base n'est pas validable automatiquement et la table ne semble pas accessible en direct.`,
+        };
+      }
+    }
+
     return {
       ok: false,
       reason: "validation_failed",
-      message: error instanceof Error ? error.message : "Validation Airtable impossible.",
+      message,
     };
   }
 }
