@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 import { formatSupabaseError } from "@/lib/supabase/format-error";
@@ -8,22 +7,34 @@ const DEFAULT_SETTINGS = {
   airtableBaseId: "",
 };
 
-function admin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
+function formatLeadMagnetSettingsError(error: unknown) {
+  const formatted = formatSupabaseError(error);
+
+  if (
+    formatted.includes("lead_magnet_user_settings")
+    && (formatted.includes("PGRST205") || formatted.includes("does not exist"))
+  ) {
+    return `Table Supabase manquante: lead_magnet_user_settings. SQL requis: oui. Execute src/lib/supabase/lead-magnet-airtable.sql dans le SQL Editor. Detail: ${formatted}`;
+  }
+
+  if (
+    formatted.includes("lead_magnet_user_settings")
+    && (formatted.includes("42501") || formatted.toLowerCase().includes("row-level security"))
+  ) {
+    return `Politique RLS invalide sur lead_magnet_user_settings. SQL requis: oui. Reexecute src/lib/supabase/lead-magnet-airtable.sql pour recreer la policy. Detail: ${formatted}`;
+  }
+
+  return formatted;
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const { user } = await getRouteAuthenticatedUser(req);
+    const { supabase, user } = await getRouteAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data, error } = await admin()
+    const { data, error } = await supabase
       .from("lead_magnet_user_settings")
       .select("settings")
       .eq("user_id", user.id)
@@ -32,7 +43,7 @@ export async function GET(req: NextRequest) {
     if (error) throw error;
 
     if (!data) {
-      const { data: inserted, error: insertError } = await admin()
+      const { data: inserted, error: insertError } = await supabase
         .from("lead_magnet_user_settings")
         .upsert(
           {
@@ -51,13 +62,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) } });
   } catch (error) {
-    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
+    return NextResponse.json({ error: formatLeadMagnetSettingsError(error) }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { user } = await getRouteAuthenticatedUser(req);
+    const { supabase, user } = await getRouteAuthenticatedUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -65,7 +76,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const settings = { ...DEFAULT_SETTINGS, ...(body?.settings ?? {}) };
 
-    const { data, error } = await admin()
+    const { data, error } = await supabase
       .from("lead_magnet_user_settings")
       .upsert(
         {
@@ -82,6 +93,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ settings: data.settings });
   } catch (error) {
-    return NextResponse.json({ error: formatSupabaseError(error) }, { status: 500 });
+    return NextResponse.json({ error: formatLeadMagnetSettingsError(error) }, { status: 500 });
   }
 }
