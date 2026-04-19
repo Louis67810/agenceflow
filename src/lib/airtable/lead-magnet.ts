@@ -36,6 +36,19 @@ export type LeadMagnetLeadSyncRecord = {
   created_at: string;
 };
 
+export type LeadMagnetAirtableValidationResult =
+  | {
+      ok: true;
+      tableName: string;
+      tableExists: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      reason: "missing_settings" | "validation_failed";
+      message: string;
+    };
+
 type AirtableFieldSchema = {
   id: string;
   name: string;
@@ -280,6 +293,44 @@ async function ensureLeadMagnetTable(
     createdTable,
     addedFields,
   };
+}
+
+export async function validateLeadMagnetAirtableConfig(input: {
+  settings: LeadMagnetAirtableSettings;
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
+}): Promise<LeadMagnetAirtableValidationResult> {
+  const settings = normalizeSettings(input.settings);
+  const tableName = getLeadMagnetAirtableTableName(input.magnet);
+
+  if (!settings.airtableKey || !settings.airtableBaseId) {
+    return {
+      ok: false,
+      reason: "missing_settings",
+      message: "Validation Airtable impossible: renseignez d'abord le token Airtable et le Base ID.",
+    };
+  }
+
+  try {
+    const schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
+    const tableExists = (schema.tables ?? []).some(
+      (item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase()
+    );
+
+    return {
+      ok: true,
+      tableName,
+      tableExists,
+      message: tableExists
+        ? `Validation Airtable OK: la base est accessible et la table "${tableName}" existe deja.`
+        : `Validation Airtable OK: la base est accessible. La table "${tableName}" n'existe pas encore et sera creee au moment de la synchronisation.`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "validation_failed",
+      message: error instanceof Error ? error.message : "Validation Airtable impossible.",
+    };
+  }
 }
 
 export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">) {

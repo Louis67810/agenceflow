@@ -56,6 +56,13 @@ type LeadMagnetAirtableSettings = {
   airtableBaseId: string;
 };
 
+type StatusTone = "neutral" | "success" | "error" | "loading";
+
+type LayerStatus = {
+  tone: StatusTone;
+  message: string;
+};
+
 interface Lead {
   id: string;
   data: Record<string, string>;
@@ -106,8 +113,18 @@ export default function LeadMagnetEditPage() {
   const [airtableSettings, setAirtableSettings] = useState<LeadMagnetAirtableSettings>(
     DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS
   );
-  const [saveError, setSaveError] = useState("");
-  const [syncInfo, setSyncInfo] = useState("");
+  const [supabaseStatus, setSupabaseStatus] = useState<LayerStatus>({
+    tone: "neutral",
+    message: "Sauvegarde Supabase en attente.",
+  });
+  const [validationStatus, setValidationStatus] = useState<LayerStatus>({
+    tone: "neutral",
+    message: "Validation Airtable non lancee.",
+  });
+  const [syncStatus, setSyncStatus] = useState<LayerStatus>({
+    tone: "neutral",
+    message: "Aucune synchronisation Airtable declenchee pour le moment.",
+  });
   const [syncingAirtable, setSyncingAirtable] = useState(false);
   const airtableBootstrappedRef = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,6 +135,13 @@ export default function LeadMagnetEditPage() {
     typeof window !== "undefined"
       ? window.location.origin
       : "";
+
+  function getStatusClasses(tone: StatusTone) {
+    if (tone === "success") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    if (tone === "error") return "border-red-200 bg-red-50 text-red-700";
+    if (tone === "loading") return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-blue-100 bg-blue-50 text-blue-700";
+  }
 
   const describeAirtableState = useCallback(
     (nextSettings: LeadMagnetAirtableSettings, nextMagnet?: Pick<LeadMagnet, "airtable_auto_sync" | "airtable_table_name" | "title"> | null) => {
@@ -166,8 +190,15 @@ export default function LeadMagnetEditPage() {
       const remoteSettings = await fetchRemoteLeadMagnetAirtableSettings();
       setAirtableSettings(remoteSettings);
       lastSavedSettingsSnapshotRef.current = JSON.stringify(remoteSettings);
+      setSupabaseStatus({
+        tone: "success",
+        message: "Configuration Airtable chargee depuis Supabase.",
+      });
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Chargement Airtable impossible.");
+      setSupabaseStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Chargement Airtable impossible.",
+      });
     } finally {
       airtableBootstrappedRef.current = true;
     }
@@ -183,10 +214,53 @@ export default function LeadMagnetEditPage() {
     setLeadsLoading(false);
   }
 
+  const validateAirtableConfig = useCallback(
+    async (nextSettings: LeadMagnetAirtableSettings, nextMagnet: LeadMagnet) => {
+      if (!nextMagnet.airtable_auto_sync) {
+        setValidationStatus({
+          tone: "neutral",
+          message: "Validation Airtable en pause : l'auto sync est desactivee pour ce lead magnet.",
+        });
+        return;
+      }
+
+      if (!nextSettings.airtableKey.trim() || !nextSettings.airtableBaseId.trim()) {
+        setValidationStatus({
+          tone: "neutral",
+          message: "Validation Airtable en attente : renseignez le token et le Base ID pour tester la base.",
+        });
+        return;
+      }
+
+      setValidationStatus({
+        tone: "loading",
+        message: "Validation Airtable en cours...",
+      });
+
+      const validationRes = await leadMagnetFetch(`/api/lead-magnet/${id}/airtable-validate`, {
+        method: "POST",
+      });
+      const validationData = await validationRes.json();
+
+      if (!validationRes.ok) {
+        throw new Error(validationData.error || validationData.message || "Validation Airtable impossible.");
+      }
+
+      setValidationStatus({
+        tone: "success",
+        message: validationData.message || describeAirtableState(nextSettings, nextMagnet),
+      });
+    },
+    [describeAirtableState, id]
+  );
+
   const persistAirtableConfig = useCallback(
     async (nextSettings: LeadMagnetAirtableSettings, nextMagnet: LeadMagnet) => {
-      setSaveError("");
       setSyncingAirtable(true);
+      setSupabaseStatus({
+        tone: "loading",
+        message: "Sauvegarde Supabase en cours...",
+      });
 
       try {
         const savedSettings = await persistRemoteLeadMagnetAirtableSettings(nextSettings);
@@ -213,34 +287,52 @@ export default function LeadMagnetEditPage() {
         lastSavedSettingsSnapshotRef.current = settingsSnapshot;
         lastSavedMagnetSnapshotRef.current = magnetSnapshot;
 
-        if (nextMagnet.airtable_auto_sync && savedSettings.airtableKey.trim() && savedSettings.airtableBaseId.trim()) {
-          const syncRes = await leadMagnetFetch(`/api/lead-magnet/${id}/airtable-sync`, {
-            method: "POST",
+        setSupabaseStatus({
+          tone: "success",
+          message: `Configuration sauvegardee dans Supabase. ${describeAirtableState(savedSettings, nextMagnet)}`,
+        });
+
+        try {
+          await validateAirtableConfig(savedSettings, nextMagnet);
+          setSyncStatus({
+            tone: "neutral",
+            message: nextMagnet.airtable_auto_sync
+              ? "Configuration prete. La vraie synchronisation Airtable se declenchera a la creation d'un lead ou via la route de sync."
+              : "Synchronisation Airtable desactivee pour ce lead magnet.",
           });
-          const syncData = await syncRes.json();
-          if (!syncRes.ok) {
-            throw new Error(syncData.error || "Impossible de synchroniser Airtable.");
-          }
-          setSyncInfo(syncData.message || describeAirtableState(savedSettings, nextMagnet));
-        } else {
-          setSyncInfo(describeAirtableState(savedSettings, nextMagnet));
+        } catch (validationError) {
+          setValidationStatus({
+            tone: "error",
+            message: validationError instanceof Error ? validationError.message : "Validation Airtable impossible.",
+          });
+          setSyncStatus({
+            tone: "neutral",
+            message: "Synchronisation Airtable non declenchee car la validation de la base n'est pas encore validee.",
+          });
         }
 
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : "Synchronisation Airtable impossible.");
+        const message = error instanceof Error ? error.message : "Sauvegarde Airtable impossible.";
+        setSupabaseStatus({
+          tone: "error",
+          message,
+        });
       } finally {
         setSyncingAirtable(false);
       }
     },
-    [describeAirtableState, id]
+    [describeAirtableState, id, validateAirtableConfig]
   );
 
   async function handleSave() {
     if (!magnet) return;
     setSaving(true);
-    setSaveError("");
+    setSupabaseStatus({
+      tone: "loading",
+      message: "Sauvegarde generale en cours...",
+    });
     try {
       const [magnetRes, settingsRes] = await Promise.all([
         leadMagnetFetch(`/api/lead-magnet/${id}`, {
@@ -274,10 +366,17 @@ export default function LeadMagnetEditPage() {
         throw new Error("Impossible de sauvegarder la configuration Lead Magnet.");
       }
 
+      setSupabaseStatus({
+        tone: "success",
+        message: "Contenu du lead magnet et configuration Airtable sauvegardes dans Supabase.",
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Sauvegarde du lead magnet impossible.");
+      setSupabaseStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Sauvegarde du lead magnet impossible.",
+      });
     }
     setSaving(false);
   }
@@ -303,7 +402,6 @@ export default function LeadMagnetEditPage() {
       return;
     }
 
-    setSaveError("");
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(() => {
@@ -313,10 +411,15 @@ export default function LeadMagnetEditPage() {
 
   useEffect(() => {
     if (!magnet || !airtableBootstrappedRef.current) return;
-    if (!syncInfo) {
-      setSyncInfo(describeAirtableState(airtableSettings, magnet));
+    if (validationStatus.message === "Validation Airtable non lancee.") {
+      setValidationStatus({
+        tone: "neutral",
+        message: magnet.airtable_auto_sync
+          ? "Validation Airtable en attente apres la prochaine sauvegarde."
+          : "Validation Airtable en pause : activez l'auto sync pour tester la base.",
+      });
     }
-  }, [airtableSettings, describeAirtableState, magnet, syncInfo]);
+  }, [airtableSettings, magnet, validationStatus.message]);
 
   // ─── Steps / Fields helpers ────────────────────────────────────────────────
 
@@ -951,16 +1054,23 @@ export default function LeadMagnetEditPage() {
                 </p>
               </div>
 
-              <div className={`rounded-xl border px-4 py-3 text-sm ${saveError ? "border-red-200 bg-red-50 text-red-700" : "border-blue-100 bg-blue-50 text-blue-700"}`}>
+              <div className={`rounded-xl border px-4 py-3 text-sm ${getStatusClasses(supabaseStatus.tone)}`}>
+                <p className="font-medium">1. Sauvegarde Supabase</p>
+                <p className="mt-1 text-xs">{supabaseStatus.message}</p>
+              </div>
+
+              <div className={`rounded-xl border px-4 py-3 text-sm ${getStatusClasses(validationStatus.tone)}`}>
                 <p className="font-medium">
-                  {saveError
-                    ? "Erreur de synchronisation"
-                    : syncingAirtable
-                      ? "Synchronisation Airtable en cours..."
-                      : "Etat de la synchronisation"}
+                  2. Validation Airtable
+                  {syncingAirtable && validationStatus.tone === "loading" ? " en cours..." : ""}
                 </p>
+                <p className="mt-1 text-xs">{validationStatus.message}</p>
+              </div>
+
+              <div className={`rounded-xl border px-4 py-3 text-sm ${getStatusClasses(syncStatus.tone)}`}>
+                <p className="font-medium">3. Synchronisation Airtable</p>
                 <p className="mt-1 text-xs">
-                  {saveError || syncInfo || "Les reglages Airtable seront verifies ici automatiquement."}
+                  {syncStatus.message}
                 </p>
               </div>
             </Section>

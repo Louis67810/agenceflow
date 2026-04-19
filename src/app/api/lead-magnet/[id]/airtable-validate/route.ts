@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 import { formatSupabaseError } from "@/lib/supabase/format-error";
-import { syncLeadMagnetLeadsToAirtable } from "@/lib/airtable/lead-magnet";
+import {
+  readLeadMagnetAirtableSettingsByUserId,
+  validateLeadMagnetAirtableConfig,
+} from "@/lib/airtable/lead-magnet";
 
 export async function POST(
   req: NextRequest,
@@ -16,10 +19,9 @@ export async function POST(
     }
 
     const supabase = await createClient();
-
     const { data: magnet, error: magnetError } = await supabase
       .from("lead_magnets")
-      .select("*")
+      .select("id, title, airtable_table_name, owner_user_id")
       .eq("id", id)
       .single();
 
@@ -27,51 +29,30 @@ export async function POST(
       return NextResponse.json({ error: "Lead magnet introuvable." }, { status: 404 });
     }
 
+    const ownerUserId = magnet.owner_user_id ?? user.id;
     if (!magnet.owner_user_id) {
       const { error: updateError } = await supabase
         .from("lead_magnets")
-        .update({ owner_user_id: user.id })
+        .update({ owner_user_id: ownerUserId })
         .eq("id", id);
 
       if (updateError) {
         throw updateError;
       }
-
-      magnet.owner_user_id = user.id;
     }
 
-    const { data: leads, error: leadsError } = await supabase
-      .from("lead_magnet_leads")
-      .select("data, email, email_sent, created_at")
-      .eq("lead_magnet_id", id)
-      .order("created_at", { ascending: false });
-
-    if (leadsError) {
-      throw leadsError;
-    }
-
-    const result = await syncLeadMagnetLeadsToAirtable({
+    const settings = await readLeadMagnetAirtableSettingsByUserId(ownerUserId);
+    const result = await validateLeadMagnetAirtableConfig({
+      settings,
       magnet,
-      leads: (leads ?? []).map((lead) => ({
-        data: (lead.data as Record<string, unknown>) ?? {},
-        email: lead.email ?? "",
-        email_sent: Boolean(lead.email_sent),
-        created_at: lead.created_at,
-      })),
     });
 
-    if (!result.synced) {
-      if (result.reason === "missing_settings") {
-        return NextResponse.json(
-          { error: "Synchronisation Airtable impossible: le token Airtable ou le Base ID est manquant dans la configuration sauvegardee sur Supabase." },
-          { status: 400 }
-        );
-      }
+    if (!result.ok && result.reason === "missing_settings") {
+      return NextResponse.json(result, { status: 400 });
+    }
 
-      return NextResponse.json(
-        { error: "Synchronisation Airtable ignoree: l'auto sync n'est pas active pour ce lead magnet." },
-        { status: 400 }
-      );
+    if (!result.ok) {
+      return NextResponse.json(result, { status: 500 });
     }
 
     return NextResponse.json(result);
