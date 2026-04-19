@@ -49,22 +49,6 @@ export type LeadMagnetAirtableValidationResult =
       logs: string[];
     };
 
-type AirtableFieldSchema = {
-  id: string;
-  name: string;
-  type: string;
-};
-
-type AirtableTableSchema = {
-  id: string;
-  name: string;
-  fields?: AirtableFieldSchema[];
-};
-
-type AirtableMetaTablesResponse = {
-  tables?: AirtableTableSchema[];
-};
-
 type AirtableRecordsResponse = {
   records?: Array<{ id: string }>;
 };
@@ -105,17 +89,6 @@ function sanitizeAirtableName(value: string, fallback: string) {
   return (sanitized || fallback).slice(0, 100);
 }
 
-function dedupeFieldNames(names: string[]) {
-  const seen = new Map<string, number>();
-  return names.map((name) => {
-    const normalized = name.trim().toLowerCase();
-    const count = seen.get(normalized) ?? 0;
-    seen.set(normalized, count + 1);
-    if (count === 0) return name;
-    return `${name} (${count + 1})`;
-  });
-}
-
 function getLeadValue(data: Record<string, unknown>, key: string) {
   const value = data[key];
   if (value == null) return "";
@@ -126,39 +99,6 @@ function getLeadValue(data: Record<string, unknown>, key: string) {
   } catch {
     return "";
   }
-}
-
-function getQuestionSchemas(steps: LeadMagnetStep[]) {
-  const rawNames = steps.flatMap((step) =>
-    step.fields.map((field) => sanitizeAirtableName(field.label || field.key, field.key || "Champ"))
-  );
-  const uniqueNames = dedupeFieldNames(rawNames);
-
-  const schemas: Array<{ field: LeadMagnetField; airtableName: string; airtableType: string }> = [];
-  let index = 0;
-
-  for (const step of steps) {
-    for (const field of step.fields) {
-      const airtableName = uniqueNames[index++] ?? sanitizeAirtableName(field.key || "Champ", "Champ");
-      const normalizedName = airtableName.trim().toLowerCase();
-      if (["lead", "email", "date de soumission", "email envoye", "lead magnet", "lead magnet id"].includes(normalizedName)) {
-        continue;
-      }
-
-      schemas.push({
-        field,
-        airtableName,
-        airtableType:
-          field.type === "email"
-            ? "email"
-            : field.type === "phone"
-              ? "phoneNumber"
-              : "singleLineText",
-      });
-    }
-  }
-
-  return schemas;
 }
 
 async function airtableFetch<T>(url: string, init: RequestInit, fallbackError: string): Promise<T> {
@@ -198,91 +138,32 @@ function formatLeadMagnetAirtableError(fallbackError: string, errText: string, u
   const compact = errText.replace(/\s+/g, " ").trim();
   const statusLabel = typeof status === "number" ? `HTTP ${status}. ` : "";
 
-  if (compact.includes('"type":"INVALID_REQUEST"') || compact.includes('"type": "INVALID_REQUEST"')) {
-    if (url.includes("/meta/bases/")) {
-      return `${fallbackError}: ${statusLabel}requete de schema Airtable invalide. Cause la plus probable: Base ID incorrect, Base ID copie avec un espace/retour ligne, ou token sans acces schema sur cette base. Verifie un Base ID qui commence par "app" depuis la doc API de la base et un token avec schema.bases:read et schema.bases:write. Detail Airtable: ${compact}`;
-    }
-
-    return `${fallbackError}: ${statusLabel}requete Airtable invalide. Detail Airtable: ${compact}`;
+  if (compact.includes('"error":"NOT_FOUND"') || compact.includes('"error": "NOT_FOUND"')) {
+    return `${fallbackError}: ${statusLabel}Airtable introuvable. Verifie le Base ID, le nom exact de la table et l'acces du token a cette base. Detail Airtable: ${compact}`;
   }
 
   if (
     compact.includes("INVALID_PERMISSIONS")
     || compact.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND")
   ) {
-    return `${fallbackError}: ${statusLabel}permissions Airtable insuffisantes ou base introuvable pour ce token. Verifie que le token a acces a cette base et les scopes schema.bases:read, schema.bases:write, data.records:read et data.records:write. Detail Airtable: ${compact}`;
+    return `${fallbackError}: ${statusLabel}permissions Airtable insuffisantes ou table/base introuvable pour ce token. Verifie les droits data.records:read et data.records:write ainsi que l'acces a la base. Detail Airtable: ${compact}`;
   }
 
-  if (compact.includes('"error":"NOT_FOUND"') || compact.includes('"error": "NOT_FOUND"')) {
-    return `${fallbackError}: ${statusLabel}base ou table Airtable introuvable. Verifie le Base ID et le nom de table. Detail Airtable: ${compact}`;
+  if (compact.includes('"type":"INVALID_REQUEST"') || compact.includes('"type": "INVALID_REQUEST"')) {
+    return `${fallbackError}: ${statusLabel}requete Airtable invalide. Verifie surtout le Base ID, le nom exact de table et le token. Detail Airtable: ${compact}`;
+  }
+
+  if (compact.includes("INVALID_VALUE_FOR_COLUMN")) {
+    return `${fallbackError}: ${statusLabel}valeur invalide pour une colonne Airtable. Verifie la structure de la table cible et les types de colonnes attendus. Detail Airtable: ${compact}`;
   }
 
   return `${fallbackError}: ${statusLabel}${compact}`;
 }
 
-async function getBaseTables(airtableKey: string, baseId: string) {
-  const normalizedBaseId = baseId.trim();
-  return airtableFetch<AirtableMetaTablesResponse>(
-    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables`,
-    {
-      method: "GET",
-      headers: getAirtableHeaders(airtableKey),
-    },
-    "Impossible de lire le schema Airtable"
-  );
-}
-
-async function createTable(
-  airtableKey: string,
-  baseId: string,
-  tableName: string,
-  steps: LeadMagnetStep[]
-) {
-  const normalizedBaseId = baseId.trim();
-  const questionSchemas = getQuestionSchemas(steps);
-  const fields = [
-    { name: "Lead", type: "singleLineText" },
-    { name: "Email", type: "email" },
-    { name: "Date de soumission", type: "singleLineText" },
-    { name: "Email envoye", type: "checkbox" },
-    { name: "Lead Magnet", type: "singleLineText" },
-    { name: "Lead Magnet ID", type: "singleLineText" },
-    ...questionSchemas.map((schema) => ({
-      name: schema.airtableName,
-      type: schema.airtableType,
-    })),
-  ];
-
-  return airtableFetch<AirtableTableSchema>(
-    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables`,
-    {
-      method: "POST",
-      headers: getAirtableHeaders(airtableKey),
-      body: JSON.stringify({
-        name: tableName,
-        fields,
-      }),
-    },
-    "Impossible de creer la table Airtable"
-  );
-}
-
-async function createField(
-  airtableKey: string,
-  baseId: string,
-  tableId: string,
-  name: string,
-  type: string
-) {
-  const normalizedBaseId = baseId.trim();
-  return airtableFetch<AirtableFieldSchema>(
-    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables/${tableId}/fields`,
-    {
-      method: "POST",
-      headers: getAirtableHeaders(airtableKey),
-      body: JSON.stringify({ name, type }),
-    },
-    "Impossible de creer un champ Airtable"
+export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">) {
+  return sanitizeAirtableName(
+    magnet.airtable_table_name?.trim() || `LM - ${magnet.title}`,
+    "Lead Magnet"
   );
 }
 
@@ -303,77 +184,15 @@ async function checkTableAccess(
   );
 }
 
-async function ensureLeadMagnetTable(
-  settings: LeadMagnetAirtableSettings,
-  magnet: LeadMagnetSyncConfig
-) {
-  const tableName = getLeadMagnetAirtableTableName(magnet);
-  let schema: AirtableMetaTablesResponse;
-
-  try {
-    schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Validation du schema Airtable impossible.";
-    if (message.includes("schema Airtable invalide")) {
-      try {
-        await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
-        return {
-          tableName,
-          createdTable: false,
-          addedFields: 0,
-        };
-      } catch (tableAccessError) {
-        const tableMessage = tableAccessError instanceof Error
-          ? tableAccessError.message
-          : "Impossible d'acceder a la table Airtable.";
-
-        throw new Error(
-          `${message} Fallback table direct: ${tableMessage} Si la table n'existe pas encore, l'API de schema Airtable doit fonctionner pour la creer automatiquement.`
-        );
-      }
-    }
-
-    throw error;
-  }
-
-  let table = (schema.tables ?? []).find((item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase());
-
-  let createdTable = false;
-  if (!table) {
-    table = await createTable(settings.airtableKey, settings.airtableBaseId, tableName, magnet.steps);
-    createdTable = true;
-  }
-
-  const existingFieldNames = new Set((table.fields ?? []).map((field) => field.name.trim().toLowerCase()));
-  const missingFields = getQuestionSchemas(magnet.steps).filter(
-    (schemaItem) => !existingFieldNames.has(schemaItem.airtableName.trim().toLowerCase())
-  );
-
-  let addedFields = 0;
-  for (const field of missingFields) {
-    await createField(
-      settings.airtableKey,
-      settings.airtableBaseId,
-      table.id,
-      field.airtableName,
-      field.airtableType
-    );
-    addedFields += 1;
-  }
-
-  return {
-    tableName,
-    createdTable,
-    addedFields,
-  };
-}
-
 export async function validateLeadMagnetAirtableConfig(input: {
   settings: LeadMagnetAirtableSettings;
+  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
 }): Promise<LeadMagnetAirtableValidationResult> {
   const settings = normalizeSettings(input.settings);
+  const tableName = getLeadMagnetAirtableTableName(input.magnet);
   const logs = [
     describeInputValue("Base ID utilise", settings.airtableBaseId),
+    describeInputValue("Nom de table utilise", tableName),
     `Token Airtable utilise: ${maskToken(settings.airtableKey)}`,
   ];
 
@@ -386,44 +205,53 @@ export async function validateLeadMagnetAirtableConfig(input: {
     };
   }
 
+  if (!input.magnet.airtable_table_name?.trim()) {
+    return {
+      ok: false,
+      reason: "missing_settings",
+      message: "Validation Airtable impossible: renseignez le nom exact de la table Airtable existante.",
+      logs,
+    };
+  }
+
+  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
   const headers = getAirtableHeaders(settings.airtableKey);
-  const schemaUrl = `https://api.airtable.com/v0/meta/bases/${settings.airtableBaseId}/tables`;
 
   try {
-    logs.push(`Appel 1 - schema GET ${schemaUrl}`);
-    const schemaRes = await airtableFetchRaw(schemaUrl, {
+    logs.push(`Appel 1 - records GET ${recordsUrl}`);
+    const recordsRes = await airtableFetchRaw(recordsUrl, {
       method: "GET",
       headers,
     });
-    logs.push(`Resultat schema: HTTP ${schemaRes.status} | ${schemaRes.body || "<vide>"}`);
+    logs.push(`Resultat records: HTTP ${recordsRes.status} | ${recordsRes.body || "<vide>"}`);
 
-    if (schemaRes.ok) {
+    if (recordsRes.ok) {
       try {
-        const parsed = JSON.parse(schemaRes.body) as AirtableMetaTablesResponse;
-        logs.push(`Lecture schema OK: ${parsed.tables?.length ?? 0} table(s) detectee(s).`);
+        const parsed = JSON.parse(recordsRes.body) as AirtableRecordsResponse;
+        logs.push(`Lecture records OK: ${parsed.records?.length ?? 0} ligne(s) retournee(s) sur le test.`);
       } catch {
-        logs.push("Lecture schema OK mais le JSON n'a pas pu etre parse proprement.");
+        logs.push("Lecture records OK mais le JSON n'a pas pu etre parse proprement.");
       }
 
       return {
         ok: true,
-        message: "Validation Airtable OK: la base est accessible. Le nom de table sera utilise uniquement au moment de la synchronisation.",
+        message: `Validation Airtable OK: la table "${tableName}" est accessible via l'API records.`,
         logs,
       };
     }
 
-    const schemaMessage = formatLeadMagnetAirtableError(
-      "Impossible de lire le schema Airtable",
-      schemaRes.body,
-      schemaUrl,
-      schemaRes.status
+    const recordsMessage = formatLeadMagnetAirtableError(
+      "Impossible d'acceder a la table Airtable",
+      recordsRes.body,
+      recordsUrl,
+      recordsRes.status
     );
-    logs.push(`Erreur schema interpretee: ${schemaMessage}`);
+    logs.push(`Erreur records interpretee: ${recordsMessage}`);
 
     return {
       ok: false,
       reason: "validation_failed",
-      message: `${schemaMessage} Conclusion: la base elle-meme n'est pas validable via l'API schema Airtable. Le nom de table n'est pas en cause a cette etape.`,
+      message: `${recordsMessage} Conclusion: la table Airtable attendue n'est pas accessible via l'API records. Verifie le nom exact de la table, le Base ID et les droits data.records:read/data.records:write du token.`,
       logs,
     };
   } catch (error) {
@@ -436,13 +264,6 @@ export async function validateLeadMagnetAirtableConfig(input: {
       logs,
     };
   }
-}
-
-export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">) {
-  return sanitizeAirtableName(
-    magnet.airtable_table_name?.trim() || `LM - ${magnet.title}`,
-    "Lead Magnet"
-  );
 }
 
 export async function readLeadMagnetAirtableSettingsByUserId(userId?: string | null) {
@@ -477,67 +298,60 @@ export async function syncLeadMagnetLeadsToAirtable(input: {
     return { synced: false, reason: "missing_settings" as const };
   }
 
-  const { tableName, createdTable, addedFields } = await ensureLeadMagnetTable(settings, magnet);
-  const questionSchemas = getQuestionSchemas(magnet.steps);
+  if (!magnet.airtable_table_name?.trim()) {
+    throw new Error("Synchronisation Airtable impossible: renseignez le nom exact de la table Airtable existante.");
+  }
+
+  const tableName = getLeadMagnetAirtableTableName(magnet);
+  await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
 
   if (leads.length === 0) {
     return {
       synced: true,
       tableName,
-      createdTable,
-      addedFields,
+      createdTable: false,
+      addedFields: 0,
       recordsCreated: 0,
-      message: [
-        createdTable ? "1 table creee" : "table deja presente",
-        addedFields > 0 ? `${addedFields} champ${addedFields > 1 ? "s" : ""} ajoute${addedFields > 1 ? "s" : ""}` : "0 champ ajoute",
-        "0 ligne ajoutee",
-      ].join(" · "),
+      message: "Table Airtable accessible · 0 ligne ajoutee",
     };
   }
 
-  const records = leads.map((lead) => {
-    const fields: Record<string, unknown> = {
+  const records = leads.map((lead) => ({
+    fields: {
+      lead_id: `${magnet.id}:${lead.created_at}:${lead.email || "sans-email"}`,
       Lead:
         lead.email
-        || questionSchemas.map((schema) => getLeadValue(lead.data, schema.field.key)).find(Boolean)
+        || magnet.steps.flatMap((step) => step.fields).map((field) => getLeadValue(lead.data, field.key)).find(Boolean)
         || `Lead ${new Date(lead.created_at).toLocaleString("fr-FR")}`,
       Email: lead.email || "",
       "Date de soumission": lead.created_at,
       "Email envoye": lead.email_sent,
       "Lead Magnet": magnet.title,
       "Lead Magnet ID": magnet.id,
-    };
-
-    for (const schema of questionSchemas) {
-      fields[schema.airtableName] = getLeadValue(lead.data, schema.field.key);
-    }
-
-    return { fields };
-  });
+      Payload: JSON.stringify(lead.data ?? {}),
+    },
+  }));
 
   await airtableFetch(
     `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}`,
     {
-      method: "POST",
+      method: "PATCH",
       headers: getAirtableHeaders(settings.airtableKey),
       body: JSON.stringify({
         records,
+        performUpsert: { fieldsToMergeOn: ["lead_id"] },
       }),
     },
-    "Impossible de creer le lead Airtable"
+    "Impossible de synchroniser les leads Airtable"
   );
 
   return {
     synced: true,
     tableName,
-    createdTable,
-    addedFields,
+    createdTable: false,
+    addedFields: 0,
     recordsCreated: records.length,
-    message: [
-      createdTable ? "1 table creee" : "table deja presente",
-      addedFields > 0 ? `${addedFields} champ${addedFields > 1 ? "s" : ""} ajoute${addedFields > 1 ? "s" : ""}` : "0 champ ajoute",
-      `${records.length} ligne${records.length > 1 ? "s" : ""} ajoutee${records.length > 1 ? "s" : ""}`,
-    ].join(" · "),
+    message: `${records.length} ligne${records.length > 1 ? "s" : ""} synchronisee${records.length > 1 ? "s" : ""} dans la table existante "${tableName}"`,
   };
 }
 

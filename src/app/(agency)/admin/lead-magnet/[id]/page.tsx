@@ -983,9 +983,9 @@ export default function LeadMagnetEditPage() {
           <div className="max-w-2xl mx-auto p-6 space-y-6">
             <Section title="Base Airtable commune">
               <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
-                Tous les lead magnets utilisent la meme base Airtable, puis chacun cree sa propre table dediee.
+                Tous les lead magnets utilisent la meme base Airtable, avec une table existante que vous choisissez ici.
                 <span className="text-xs text-blue-500 mt-1 block">
-                  La structure est creee automatiquement au premier lead : table si absente, puis champs manquants selon les questions du formulaire.
+                  Cette integration fonctionne comme la prospection : aucune creation automatique de table, on synchronise les lignes dans une table Airtable deja creee.
                 </span>
               </div>
 
@@ -1039,13 +1039,13 @@ export default function LeadMagnetEditPage() {
 
               <Field
                 label="Nom de table Airtable"
-                hint={`Si vide, le nom genere sera : ${generatedAirtableTableName}`}
+                hint="Entrez le nom exact d'une table Airtable deja existante dans cette base."
               >
                 <input
                   type="text"
                   value={magnet.airtable_table_name || ""}
                   onChange={(e) => update("airtable_table_name", e.target.value || null)}
-                  placeholder={`LM - ${magnet.title}`}
+                  placeholder="Exemple : Leads Lead Magnet"
                   className="input"
                 />
               </Field>
@@ -1054,7 +1054,7 @@ export default function LeadMagnetEditPage() {
                 <p className="font-medium text-gray-800">Table cible actuelle</p>
                 <p className="mt-1">{generatedAirtableTableName}</p>
                 <p className="mt-2 text-xs text-gray-500">
-                  Les nouvelles questions ajoutees plus tard seront egalement creees automatiquement comme nouvelles colonnes.
+                  La table doit deja exister dans Airtable et contenir au minimum les colonnes compatibles avec la synchronisation.
                 </p>
               </div>
 
