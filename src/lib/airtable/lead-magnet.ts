@@ -78,7 +78,8 @@ function normalizeSettings(
 ): LeadMagnetAirtableSettings {
   return {
     ...DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS,
-    ...(settings ?? {}),
+    airtableKey: typeof settings?.airtableKey === "string" ? settings.airtableKey.trim() : "",
+    airtableBaseId: typeof settings?.airtableBaseId === "string" ? settings.airtableBaseId.trim() : "",
   };
 }
 
@@ -147,14 +148,40 @@ async function airtableFetch<T>(url: string, init: RequestInit, fallbackError: s
   const res = await fetch(url, init);
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`${fallbackError}: ${errText}`);
+    throw new Error(formatLeadMagnetAirtableError(fallbackError, errText, url));
   }
   return res.json() as Promise<T>;
 }
 
+function formatLeadMagnetAirtableError(fallbackError: string, errText: string, url: string) {
+  const compact = errText.replace(/\s+/g, " ").trim();
+
+  if (compact.includes('"type":"INVALID_REQUEST"') || compact.includes('"type": "INVALID_REQUEST"')) {
+    if (url.includes("/meta/bases/")) {
+      return `${fallbackError}: requete de schema Airtable invalide. Cause la plus probable: Base ID incorrect, Base ID copie avec un espace/retour ligne, ou token sans acces schema sur cette base. Verifie un Base ID qui commence par "app" depuis la doc API de la base et un token avec schema.bases:read et schema.bases:write. Detail Airtable: ${compact}`;
+    }
+
+    return `${fallbackError}: requete Airtable invalide. Detail Airtable: ${compact}`;
+  }
+
+  if (
+    compact.includes("INVALID_PERMISSIONS")
+    || compact.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND")
+  ) {
+    return `${fallbackError}: permissions Airtable insuffisantes ou base introuvable pour ce token. Verifie que le token a acces a cette base et les scopes schema.bases:read, schema.bases:write, data.records:read et data.records:write. Detail Airtable: ${compact}`;
+  }
+
+  if (compact.includes('"error":"NOT_FOUND"') || compact.includes('"error": "NOT_FOUND"')) {
+    return `${fallbackError}: base ou table Airtable introuvable. Verifie le Base ID et le nom de table. Detail Airtable: ${compact}`;
+  }
+
+  return `${fallbackError}: ${compact}`;
+}
+
 async function getBaseTables(airtableKey: string, baseId: string) {
+  const normalizedBaseId = baseId.trim();
   return airtableFetch<AirtableMetaTablesResponse>(
-    `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables`,
     {
       method: "GET",
       headers: getAirtableHeaders(airtableKey),
@@ -169,6 +196,7 @@ async function createTable(
   tableName: string,
   steps: LeadMagnetStep[]
 ) {
+  const normalizedBaseId = baseId.trim();
   const questionSchemas = getQuestionSchemas(steps);
   const fields = [
     { name: "Lead", type: "singleLineText" },
@@ -184,7 +212,7 @@ async function createTable(
   ];
 
   return airtableFetch<AirtableTableSchema>(
-    `https://api.airtable.com/v0/meta/bases/${baseId}/tables`,
+    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables`,
     {
       method: "POST",
       headers: getAirtableHeaders(airtableKey),
@@ -204,8 +232,9 @@ async function createField(
   name: string,
   type: string
 ) {
+  const normalizedBaseId = baseId.trim();
   return airtableFetch<AirtableFieldSchema>(
-    `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`,
+    `https://api.airtable.com/v0/meta/bases/${normalizedBaseId}/tables/${tableId}/fields`,
     {
       method: "POST",
       headers: getAirtableHeaders(airtableKey),
@@ -294,6 +323,21 @@ export async function syncLeadMagnetLeadsToAirtable(input: {
 
   const { tableName, createdTable, addedFields } = await ensureLeadMagnetTable(settings, magnet);
   const questionSchemas = getQuestionSchemas(magnet.steps);
+
+  if (leads.length === 0) {
+    return {
+      synced: true,
+      tableName,
+      createdTable,
+      addedFields,
+      recordsCreated: 0,
+      message: [
+        createdTable ? "1 table creee" : "table deja presente",
+        addedFields > 0 ? `${addedFields} champ${addedFields > 1 ? "s" : ""} ajoute${addedFields > 1 ? "s" : ""}` : "0 champ ajoute",
+        "0 ligne ajoutee",
+      ].join(" · "),
+    };
+  }
 
   const records = leads.map((lead) => {
     const fields: Record<string, unknown> = {
