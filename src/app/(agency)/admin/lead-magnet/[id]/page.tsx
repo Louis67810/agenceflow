@@ -125,6 +125,7 @@ export default function LeadMagnetEditPage() {
     tone: "neutral",
     message: "Aucune synchronisation Airtable declenchee pour le moment.",
   });
+  const [validationLogs, setValidationLogs] = useState<string[]>([]);
   const [syncingAirtable, setSyncingAirtable] = useState(false);
   const airtableBootstrappedRef = useRef(false);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,6 +218,7 @@ export default function LeadMagnetEditPage() {
   const validateAirtableConfig = useCallback(
     async (nextSettings: LeadMagnetAirtableSettings, nextMagnet: LeadMagnet) => {
       if (!nextMagnet.airtable_auto_sync) {
+        setValidationLogs([]);
         setValidationStatus({
           tone: "neutral",
           message: "Validation Airtable en pause : l'auto sync est desactivee pour ce lead magnet.",
@@ -225,6 +227,7 @@ export default function LeadMagnetEditPage() {
       }
 
       if (!nextSettings.airtableKey.trim() || !nextSettings.airtableBaseId.trim()) {
+        setValidationLogs([]);
         setValidationStatus({
           tone: "neutral",
           message: "Validation Airtable en attente : renseignez le token et le Base ID pour tester la base.",
@@ -241,6 +244,7 @@ export default function LeadMagnetEditPage() {
         method: "POST",
       });
       const validationData = await validationRes.json();
+      setValidationLogs(Array.isArray(validationData.logs) ? validationData.logs : []);
 
       if (!validationRes.ok) {
         throw new Error(validationData.error || validationData.message || "Validation Airtable impossible.");
@@ -1066,6 +1070,15 @@ export default function LeadMagnetEditPage() {
                 </p>
                 <p className="mt-1 text-xs">{validationStatus.message}</p>
               </div>
+
+              {validationLogs.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+                  <p className="font-medium text-slate-900">Logs de validation Airtable</p>
+                  <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
+                    {validationLogs.join("\n")}
+                  </pre>
+                </div>
+              )}
 
               <div className={`rounded-xl border px-4 py-3 text-sm ${getStatusClasses(syncStatus.tone)}`}>
                 <p className="font-medium">3. Synchronisation Airtable</p>

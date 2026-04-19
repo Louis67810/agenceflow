@@ -42,11 +42,13 @@ export type LeadMagnetAirtableValidationResult =
       tableName: string;
       tableExists: boolean;
       message: string;
+      logs: string[];
     }
   | {
       ok: false;
       reason: "missing_settings" | "validation_failed";
       message: string;
+      logs: string[];
     };
 
 type AirtableFieldSchema = {
@@ -165,34 +167,59 @@ async function airtableFetch<T>(url: string, init: RequestInit, fallbackError: s
   const res = await fetch(url, init);
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(formatLeadMagnetAirtableError(fallbackError, errText, url));
+    throw new Error(formatLeadMagnetAirtableError(fallbackError, errText, url, res.status));
   }
   return res.json() as Promise<T>;
 }
 
-function formatLeadMagnetAirtableError(fallbackError: string, errText: string, url: string) {
+async function airtableFetchRaw(url: string, init: RequestInit) {
+  const res = await fetch(url, init);
+  const body = (await res.text()).replace(/\s+/g, " ").trim();
+  return {
+    ok: res.ok,
+    status: res.status,
+    body,
+  };
+}
+
+function describeInputValue(label: string, value: string) {
+  const invisibleChars = Array.from(value)
+    .filter((char) => /[\u200B-\u200D\uFEFF]/u.test(char))
+    .map((char) => `U+${char.codePointAt(0)?.toString(16).toUpperCase()}`);
+
+  return `${label}: "${value}" (len=${value.length}${invisibleChars.length ? `, hidden=${invisibleChars.join(",")}` : ""})`;
+}
+
+function maskToken(token: string) {
+  if (!token) return "vide";
+  if (token.length <= 8) return `${token.slice(0, 2)}***`;
+  return `${token.slice(0, 4)}***${token.slice(-4)} (len=${token.length})`;
+}
+
+function formatLeadMagnetAirtableError(fallbackError: string, errText: string, url: string, status?: number) {
   const compact = errText.replace(/\s+/g, " ").trim();
+  const statusLabel = typeof status === "number" ? `HTTP ${status}. ` : "";
 
   if (compact.includes('"type":"INVALID_REQUEST"') || compact.includes('"type": "INVALID_REQUEST"')) {
     if (url.includes("/meta/bases/")) {
-      return `${fallbackError}: requete de schema Airtable invalide. Cause la plus probable: Base ID incorrect, Base ID copie avec un espace/retour ligne, ou token sans acces schema sur cette base. Verifie un Base ID qui commence par "app" depuis la doc API de la base et un token avec schema.bases:read et schema.bases:write. Detail Airtable: ${compact}`;
+      return `${fallbackError}: ${statusLabel}requete de schema Airtable invalide. Cause la plus probable: Base ID incorrect, Base ID copie avec un espace/retour ligne, ou token sans acces schema sur cette base. Verifie un Base ID qui commence par "app" depuis la doc API de la base et un token avec schema.bases:read et schema.bases:write. Detail Airtable: ${compact}`;
     }
 
-    return `${fallbackError}: requete Airtable invalide. Detail Airtable: ${compact}`;
+    return `${fallbackError}: ${statusLabel}requete Airtable invalide. Detail Airtable: ${compact}`;
   }
 
   if (
     compact.includes("INVALID_PERMISSIONS")
     || compact.includes("INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND")
   ) {
-    return `${fallbackError}: permissions Airtable insuffisantes ou base introuvable pour ce token. Verifie que le token a acces a cette base et les scopes schema.bases:read, schema.bases:write, data.records:read et data.records:write. Detail Airtable: ${compact}`;
+    return `${fallbackError}: ${statusLabel}permissions Airtable insuffisantes ou base introuvable pour ce token. Verifie que le token a acces a cette base et les scopes schema.bases:read, schema.bases:write, data.records:read et data.records:write. Detail Airtable: ${compact}`;
   }
 
   if (compact.includes('"error":"NOT_FOUND"') || compact.includes('"error": "NOT_FOUND"')) {
-    return `${fallbackError}: base ou table Airtable introuvable. Verifie le Base ID et le nom de table. Detail Airtable: ${compact}`;
+    return `${fallbackError}: ${statusLabel}base ou table Airtable introuvable. Verifie le Base ID et le nom de table. Detail Airtable: ${compact}`;
   }
 
-  return `${fallbackError}: ${compact}`;
+  return `${fallbackError}: ${statusLabel}${compact}`;
 }
 
 async function getBaseTables(airtableKey: string, baseId: string) {
@@ -349,50 +376,121 @@ export async function validateLeadMagnetAirtableConfig(input: {
 }): Promise<LeadMagnetAirtableValidationResult> {
   const settings = normalizeSettings(input.settings);
   const tableName = getLeadMagnetAirtableTableName(input.magnet);
+  const logs = [
+    describeInputValue("Base ID utilise", settings.airtableBaseId),
+    describeInputValue("Nom de table utilise", tableName),
+    `Token Airtable utilise: ${maskToken(settings.airtableKey)}`,
+  ];
 
   if (!settings.airtableKey || !settings.airtableBaseId) {
     return {
       ok: false,
       reason: "missing_settings",
       message: "Validation Airtable impossible: renseignez d'abord le token Airtable et le Base ID.",
+      logs,
     };
   }
 
+  const headers = getAirtableHeaders(settings.airtableKey);
+  const schemaUrl = `https://api.airtable.com/v0/meta/bases/${settings.airtableBaseId}/tables`;
+  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
+
   try {
-    const schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
-    const tableExists = (schema.tables ?? []).some(
-      (item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase()
+    logs.push(`Appel 1 - schema GET ${schemaUrl}`);
+    const schemaRes = await airtableFetchRaw(schemaUrl, {
+      method: "GET",
+      headers,
+    });
+    logs.push(`Resultat schema: HTTP ${schemaRes.status} | ${schemaRes.body || "<vide>"}`);
+
+    if (schemaRes.ok) {
+      let tableExists = false;
+      try {
+        const parsed = JSON.parse(schemaRes.body) as AirtableMetaTablesResponse;
+        tableExists = (parsed.tables ?? []).some(
+          (item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase()
+        );
+        logs.push(`Lecture schema OK: ${parsed.tables?.length ?? 0} table(s) detectee(s). Table cible presente=${tableExists ? "oui" : "non"}.`);
+      } catch {
+        logs.push("Lecture schema OK mais le JSON n'a pas pu etre parse proprement.");
+      }
+
+      return {
+        ok: true,
+        tableName,
+        tableExists,
+        message: tableExists
+          ? `Validation Airtable OK: la base est accessible et la table "${tableName}" existe deja.`
+          : `Validation Airtable OK: la base est accessible. La table "${tableName}" n'existe pas encore et sera creee au moment de la synchronisation.`,
+        logs,
+      };
+    }
+
+    const schemaMessage = formatLeadMagnetAirtableError(
+      "Impossible de lire le schema Airtable",
+      schemaRes.body,
+      schemaUrl,
+      schemaRes.status
     );
+    logs.push(`Erreur schema interpretee: ${schemaMessage}`);
+
+    logs.push(`Appel 2 - records GET ${recordsUrl}`);
+    const recordsRes = await airtableFetchRaw(recordsUrl, {
+      method: "GET",
+      headers,
+    });
+    logs.push(`Resultat records: HTTP ${recordsRes.status} | ${recordsRes.body || "<vide>"}`);
+
+    if (recordsRes.ok) {
+      logs.push(`Acces direct a la table "${tableName}" confirme via l'API records.`);
+      return {
+        ok: true,
+        tableName,
+        tableExists: true,
+        message: `Validation Airtable partielle OK: l'API schema Airtable est indisponible, mais la table "${tableName}" est accessible via l'API records. La synchronisation des lignes peut continuer.`,
+        logs,
+      };
+    }
+
+    const recordsMessage = formatLeadMagnetAirtableError(
+      "Impossible d'acceder a la table Airtable",
+      recordsRes.body,
+      recordsUrl,
+      recordsRes.status
+    );
+    logs.push(`Erreur records interpretee: ${recordsMessage}`);
 
     return {
-      ok: true,
-      tableName,
-      tableExists,
-      message: tableExists
-        ? `Validation Airtable OK: la base est accessible et la table "${tableName}" existe deja.`
-        : `Validation Airtable OK: la base est accessible. La table "${tableName}" n'existe pas encore et sera creee au moment de la synchronisation.`,
+      ok: false,
+      reason: "validation_failed",
+      message: `${schemaMessage} Verification directe de la table "${tableName}" echouee aussi: ${recordsMessage} Conclusion: la base n'est pas validable automatiquement et la table ne semble pas accessible en direct.`,
+      logs,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Validation Airtable impossible.";
-
+    logs.push(`Exception inattendue pendant la validation: ${message}`);
     if (message.includes("schema Airtable invalide")) {
       try {
         await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
+        logs.push(`Fallback reussi: la table "${tableName}" est accessible via l'API records.`);
         return {
           ok: true,
           tableName,
           tableExists: true,
           message: `Validation Airtable partielle OK: l'API schema Airtable est indisponible, mais la table "${tableName}" est accessible via l'API records. La synchronisation des lignes peut continuer.`,
+          logs,
         };
       } catch (tableAccessError) {
         const tableMessage = tableAccessError instanceof Error
           ? tableAccessError.message
           : "Impossible d'acceder a la table Airtable.";
+        logs.push(`Fallback en exception echoue aussi: ${tableMessage}`);
 
         return {
           ok: false,
           reason: "validation_failed",
           message: `${message} Verification directe de la table "${tableName}" echouee aussi: ${tableMessage} Conclusion: la base n'est pas validable automatiquement et la table ne semble pas accessible en direct.`,
+          logs,
         };
       }
     }
@@ -401,6 +499,7 @@ export async function validateLeadMagnetAirtableConfig(input: {
       ok: false,
       reason: "validation_failed",
       message,
+      logs,
     };
   }
 }

@@ -46,6 +46,12 @@ export async function POST(
       settings,
       magnet,
     });
+    result.logs = [
+      `Utilisateur authentifie: ${user.id}`,
+      `Owner du lead magnet: ${ownerUserId}`,
+      `Owner identique a l'utilisateur courant: ${ownerUserId === user.id ? "oui" : "non"}`,
+      ...result.logs,
+    ];
 
     if (!result.ok && result.reason === "missing_settings") {
       return NextResponse.json(result, { status: 400 });
