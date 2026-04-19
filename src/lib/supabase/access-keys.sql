@@ -6,12 +6,18 @@ CREATE TABLE IF NOT EXISTS access_keys (
   name        TEXT        NOT NULL,
   role        TEXT        NOT NULL DEFAULT 'client',
   form_fields JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  form_pages  JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  service_type_id UUID,
   created_by  UUID,
   used_at     TIMESTAMPTZ,
   form_data   JSONB,
   banner_url  TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS form_pages JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS service_type_id UUID;
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS banner_url TEXT;
 
 ALTER TABLE access_keys ENABLE ROW LEVEL SECURITY;
 

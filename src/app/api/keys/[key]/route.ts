@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 
 function admin() {
   return createClient(
@@ -9,20 +10,70 @@ function admin() {
   );
 }
 
+async function selectAccessKeyByKey(key: string, columns: string[]) {
+  let currentColumns = [...columns];
+
+  while (true) {
+    const { data, error } = await admin()
+      .from("access_keys")
+      .select(currentColumns.join(", "))
+      .eq("key", key)
+      .single();
+
+    if (!error) return { data, error: null, columns: currentColumns };
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !currentColumns.includes(missingColumn)) {
+      return { data: null, error, columns: currentColumns };
+    }
+
+    currentColumns = currentColumns.filter((column) => column !== missingColumn);
+  }
+}
+
+async function insertProjectWithOptionalBanner(payload: Record<string, unknown>) {
+  const insertPayload = { ...payload };
+
+  while (true) {
+    const { data, error } = await admin()
+      .from("projects")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+
+    if (!error) return { data, error: null };
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !(missingColumn in insertPayload)) {
+      return { data: null, error };
+    }
+
+    delete insertPayload[missingColumn];
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ key: string }> }
 ) {
   try {
     const { key } = await context.params;
-    const { data, error } = await admin()
-      .from("access_keys")
-      .select("name, role, form_fields, form_pages, used_at, service_type_id")
-      .eq("key", key)
-      .single();
+    const { data, error } = await selectAccessKeyByKey(key, [
+      "name",
+      "role",
+      "form_fields",
+      "form_pages",
+      "used_at",
+      "service_type_id",
+    ]);
 
     if (error || !data) return NextResponse.json({ error: "Lien invalide" }, { status: 404 });
-    return NextResponse.json(data);
+    const keyData = data as unknown as Record<string, unknown>;
+    return NextResponse.json({
+      ...keyData,
+      form_pages: "form_pages" in keyData ? keyData.form_pages : [],
+      service_type_id: "service_type_id" in keyData ? keyData.service_type_id : null,
+    });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
@@ -54,11 +105,12 @@ export async function POST(
     }
 
     // Get service type stages and role
-    const { data: keyRow } = await admin()
-      .from("access_keys")
-      .select("service_type_id, name, role, banner_url")
-      .eq("key", key)
-      .single();
+    const { data: keyRow } = await selectAccessKeyByKey(key, [
+      "service_type_id",
+      "name",
+      "role",
+      "banner_url",
+    ]);
 
     // ── Prestataire role (designer or developer): create designer record ────────
     if (keyRow?.role === "designer" || keyRow?.role === "developer") {
@@ -103,23 +155,19 @@ export async function POST(
     const projectName = projectNameFromForm
       || (serviceTypeName ? `${serviceTypeName} — ${_client_name ?? "Client"}` : `Projet de ${_client_name ?? "Client"}`);
 
-    const { data: newProject, error: projError } = await admin()
-      .from("projects")
-      .insert({
-        name: projectName,
-        client_name: _client_name ?? null,
-        client_email: _client_email ?? null,
-        client_user_id: _user_id,
-        status: stages.length > 0 ? "in_progress" : "pending",
-        form_data: formData,
-        service_type_id: keyRow?.service_type_id ?? null,
-        banner_url: keyRow?.banner_url ?? null,
-        stages,
-        current_stage_index: 0,
-        start_date: new Date().toISOString().split("T")[0],
-      })
-      .select("id")
-      .single();
+    const { data: newProject, error: projError } = await insertProjectWithOptionalBanner({
+      name: projectName,
+      client_name: _client_name ?? null,
+      client_email: _client_email ?? null,
+      client_user_id: _user_id,
+      status: stages.length > 0 ? "in_progress" : "pending",
+      form_data: formData,
+      service_type_id: keyRow?.service_type_id ?? null,
+      banner_url: keyRow && "banner_url" in keyRow ? keyRow.banner_url : null,
+      stages,
+      current_stage_index: 0,
+      start_date: new Date().toISOString().split("T")[0],
+    });
 
     if (projError) {
       return NextResponse.json({

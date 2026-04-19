@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 
 function admin() {
   return createClient(
@@ -9,11 +10,69 @@ function admin() {
   );
 }
 
+const BASE_KEY_COLUMNS = ["id", "key", "name", "role", "form_fields", "used_at", "form_data", "created_at"] as const;
+const OPTIONAL_KEY_COLUMNS = ["service_type_id", "banner_url"] as const;
+
+async function listAccessKeys() {
+  let columns = [...BASE_KEY_COLUMNS, ...OPTIONAL_KEY_COLUMNS];
+
+  while (true) {
+    const { data, error } = await admin()
+      .from("access_keys")
+      .select(columns.join(", "))
+      .order("created_at", { ascending: false });
+
+    if (!error) {
+      return {
+        data: (data ?? []).map((row) => ({
+          ...row,
+          service_type_id: "service_type_id" in row ? row.service_type_id : null,
+          banner_url: "banner_url" in row ? row.banner_url : null,
+        })),
+        error: null,
+      };
+    }
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !columns.includes(missingColumn as (typeof OPTIONAL_KEY_COLUMNS)[number])) {
+      return { data: null, error };
+    }
+
+    columns = columns.filter((column) => column !== missingColumn);
+  }
+}
+
+async function insertAccessKey(payload: Record<string, unknown>) {
+  const insertPayload = { ...payload };
+
+  while (true) {
+    const { data, error } = await admin()
+      .from("access_keys")
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (!error) {
+      return {
+        data: {
+          ...data,
+          banner_url: "banner_url" in data ? data.banner_url : null,
+        },
+        error: null,
+      };
+    }
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !(missingColumn in insertPayload)) {
+      return { data: null, error };
+    }
+
+    delete insertPayload[missingColumn];
+  }
+}
+
 export async function GET() {
-  const { data, error } = await admin()
-    .from("access_keys")
-    .select("id, key, name, role, form_fields, used_at, form_data, service_type_id, banner_url, created_at")
-    .order("created_at", { ascending: false });
+  const { data, error } = await listAccessKeys();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ keys: data ?? [] });
@@ -30,19 +89,15 @@ export async function POST(request: NextRequest) {
       ? (formPages as { fields: object[] }[]).flatMap((p) => p.fields)
       : (formFields ?? []);
 
-    const { data, error } = await admin()
-      .from("access_keys")
-      .insert({
-        key,
-        name,
-        role,
-        form_fields: flatFields,
-        form_pages: formPages ?? [],
-        service_type_id: serviceTypeId ?? null,
-        banner_url: bannerUrl ?? null,
-      })
-      .select()
-      .single();
+    const { data, error } = await insertAccessKey({
+      key,
+      name,
+      role,
+      form_fields: flatFields,
+      form_pages: formPages ?? [],
+      service_type_id: serviceTypeId ?? null,
+      banner_url: bannerUrl ?? null,
+    });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ key: data });
