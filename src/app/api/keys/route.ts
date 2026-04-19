@@ -2,6 +2,11 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 
+type AccessKeyListRow = Record<string, unknown> & {
+  service_type_id?: string | null;
+  banner_url?: string | null;
+};
+
 function admin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,11 +29,14 @@ async function listAccessKeys() {
 
     if (!error) {
       return {
-        data: (data ?? []).map((row) => ({
-          ...row,
-          service_type_id: "service_type_id" in row ? row.service_type_id : null,
-          banner_url: "banner_url" in row ? row.banner_url : null,
-        })),
+        data: (data ?? []).map((row) => {
+          const keyRow = row as unknown as AccessKeyListRow;
+          return {
+            ...keyRow,
+            service_type_id: keyRow.service_type_id ?? null,
+            banner_url: keyRow.banner_url ?? null,
+          };
+        }),
         error: null,
       };
     }
@@ -53,10 +61,11 @@ async function insertAccessKey(payload: Record<string, unknown>) {
       .single();
 
     if (!error) {
+      const createdKey = data as unknown as AccessKeyListRow;
       return {
         data: {
-          ...data,
-          banner_url: "banner_url" in data ? data.banner_url : null,
+          ...createdKey,
+          banner_url: createdKey.banner_url ?? null,
         },
         error: null,
       };
