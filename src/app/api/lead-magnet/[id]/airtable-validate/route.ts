@@ -44,7 +44,6 @@ export async function POST(
     const settings = await readLeadMagnetAirtableSettingsByUserId(ownerUserId);
     const result = await validateLeadMagnetAirtableConfig({
       settings,
-      magnet,
     });
     result.logs = [
       `Utilisateur authentifie: ${user.id}`,

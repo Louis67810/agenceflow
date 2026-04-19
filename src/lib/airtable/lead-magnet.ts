@@ -39,8 +39,6 @@ export type LeadMagnetLeadSyncRecord = {
 export type LeadMagnetAirtableValidationResult =
   | {
       ok: true;
-      tableName: string;
-      tableExists: boolean;
       message: string;
       logs: string[];
     }
@@ -372,13 +370,10 @@ async function ensureLeadMagnetTable(
 
 export async function validateLeadMagnetAirtableConfig(input: {
   settings: LeadMagnetAirtableSettings;
-  magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">;
 }): Promise<LeadMagnetAirtableValidationResult> {
   const settings = normalizeSettings(input.settings);
-  const tableName = getLeadMagnetAirtableTableName(input.magnet);
   const logs = [
     describeInputValue("Base ID utilise", settings.airtableBaseId),
-    describeInputValue("Nom de table utilise", tableName),
     `Token Airtable utilise: ${maskToken(settings.airtableKey)}`,
   ];
 
@@ -393,7 +388,6 @@ export async function validateLeadMagnetAirtableConfig(input: {
 
   const headers = getAirtableHeaders(settings.airtableKey);
   const schemaUrl = `https://api.airtable.com/v0/meta/bases/${settings.airtableBaseId}/tables`;
-  const recordsUrl = `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}?maxRecords=1`;
 
   try {
     logs.push(`Appel 1 - schema GET ${schemaUrl}`);
@@ -404,24 +398,16 @@ export async function validateLeadMagnetAirtableConfig(input: {
     logs.push(`Resultat schema: HTTP ${schemaRes.status} | ${schemaRes.body || "<vide>"}`);
 
     if (schemaRes.ok) {
-      let tableExists = false;
       try {
         const parsed = JSON.parse(schemaRes.body) as AirtableMetaTablesResponse;
-        tableExists = (parsed.tables ?? []).some(
-          (item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase()
-        );
-        logs.push(`Lecture schema OK: ${parsed.tables?.length ?? 0} table(s) detectee(s). Table cible presente=${tableExists ? "oui" : "non"}.`);
+        logs.push(`Lecture schema OK: ${parsed.tables?.length ?? 0} table(s) detectee(s).`);
       } catch {
         logs.push("Lecture schema OK mais le JSON n'a pas pu etre parse proprement.");
       }
 
       return {
         ok: true,
-        tableName,
-        tableExists,
-        message: tableExists
-          ? `Validation Airtable OK: la base est accessible et la table "${tableName}" existe deja.`
-          : `Validation Airtable OK: la base est accessible. La table "${tableName}" n'existe pas encore et sera creee au moment de la synchronisation.`,
+        message: "Validation Airtable OK: la base est accessible. Le nom de table sera utilise uniquement au moment de la synchronisation.",
         logs,
       };
     }
@@ -434,67 +420,15 @@ export async function validateLeadMagnetAirtableConfig(input: {
     );
     logs.push(`Erreur schema interpretee: ${schemaMessage}`);
 
-    logs.push(`Appel 2 - records GET ${recordsUrl}`);
-    const recordsRes = await airtableFetchRaw(recordsUrl, {
-      method: "GET",
-      headers,
-    });
-    logs.push(`Resultat records: HTTP ${recordsRes.status} | ${recordsRes.body || "<vide>"}`);
-
-    if (recordsRes.ok) {
-      logs.push(`Acces direct a la table "${tableName}" confirme via l'API records.`);
-      return {
-        ok: true,
-        tableName,
-        tableExists: true,
-        message: `Validation Airtable partielle OK: l'API schema Airtable est indisponible, mais la table "${tableName}" est accessible via l'API records. La synchronisation des lignes peut continuer.`,
-        logs,
-      };
-    }
-
-    const recordsMessage = formatLeadMagnetAirtableError(
-      "Impossible d'acceder a la table Airtable",
-      recordsRes.body,
-      recordsUrl,
-      recordsRes.status
-    );
-    logs.push(`Erreur records interpretee: ${recordsMessage}`);
-
     return {
       ok: false,
       reason: "validation_failed",
-      message: `${schemaMessage} Verification directe de la table "${tableName}" echouee aussi: ${recordsMessage} Conclusion: la base n'est pas validable automatiquement et la table ne semble pas accessible en direct.`,
+      message: `${schemaMessage} Conclusion: la base elle-meme n'est pas validable via l'API schema Airtable. Le nom de table n'est pas en cause a cette etape.`,
       logs,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Validation Airtable impossible.";
     logs.push(`Exception inattendue pendant la validation: ${message}`);
-    if (message.includes("schema Airtable invalide")) {
-      try {
-        await checkTableAccess(settings.airtableKey, settings.airtableBaseId, tableName);
-        logs.push(`Fallback reussi: la table "${tableName}" est accessible via l'API records.`);
-        return {
-          ok: true,
-          tableName,
-          tableExists: true,
-          message: `Validation Airtable partielle OK: l'API schema Airtable est indisponible, mais la table "${tableName}" est accessible via l'API records. La synchronisation des lignes peut continuer.`,
-          logs,
-        };
-      } catch (tableAccessError) {
-        const tableMessage = tableAccessError instanceof Error
-          ? tableAccessError.message
-          : "Impossible d'acceder a la table Airtable.";
-        logs.push(`Fallback en exception echoue aussi: ${tableMessage}`);
-
-        return {
-          ok: false,
-          reason: "validation_failed",
-          message: `${message} Verification directe de la table "${tableName}" echouee aussi: ${tableMessage} Conclusion: la base n'est pas validable automatiquement et la table ne semble pas accessible en direct.`,
-          logs,
-        };
-      }
-    }
-
     return {
       ok: false,
       reason: "validation_failed",
