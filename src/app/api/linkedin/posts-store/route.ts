@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import type { LinkedInPost } from "@/types/linkedin";
 import { formatSupabaseError } from "@/lib/supabase/format-error";
+import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 
 interface StoredLinkedInPostRow {
   client_post_id: string;
@@ -76,27 +76,8 @@ function postToRow(userId: string, post: LinkedInPost) {
   };
 }
 
-async function getAuthenticatedUser() {
-  return getAuthenticatedUserFromRequest();
-}
-
 async function getAuthenticatedUserFromRequest(req?: NextRequest) {
-  const supabase = await createClient();
-  const token = req?.headers.get("Authorization")?.replace("Bearer ", "");
-
-  const { data: cookieAuth, error: cookieError } = await supabase.auth.getUser();
-  if (!cookieError && cookieAuth.user) {
-    return { supabase, user: cookieAuth.user };
-  }
-
-  if (token) {
-    const { data: tokenAuth, error: tokenError } = await supabase.auth.getUser(token);
-    if (!tokenError && tokenAuth.user) {
-      return { supabase, user: tokenAuth.user };
-    }
-  }
-
-  return { supabase, user: null };
+  return getRouteAuthenticatedUser(req);
 }
 
 export async function GET(req: NextRequest) {
