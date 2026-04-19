@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Save, ExternalLink, Plus, Trash2, GripVertical,
   Check, ChevronUp, ChevronDown, Eye, Copy, Download,
 } from "lucide-react";
+import { leadMagnetFetch } from "@/lib/lead-magnet/fetchWithAuth";
+import {
+  DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS,
+  fetchRemoteLeadMagnetAirtableSettings,
+  flushPendingRemoteLeadMagnetAirtableSettings,
+  loadLeadMagnetAirtableSettings,
+  persistRemoteLeadMagnetAirtableSettings,
+  queueRemoteLeadMagnetAirtableSettingsSync,
+} from "@/lib/lead-magnet/settings";
 
 type FieldType = "text" | "email" | "phone";
 type TabId = "content" | "questions" | "email" | "airtable" | "leads";
@@ -42,10 +51,10 @@ interface LeadMagnet {
   status: "draft" | "active" | "paused";
 }
 
-interface LeadMagnetAirtableSettings {
+type LeadMagnetAirtableSettings = {
   airtableKey: string;
   airtableBaseId: string;
-}
+};
 
 interface Lead {
   id: string;
@@ -94,18 +103,36 @@ export default function LeadMagnetEditPage() {
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [imagePreviewError, setImagePreviewError] = useState(false);
-  const [airtableSettings, setAirtableSettings] = useState<LeadMagnetAirtableSettings>({
-    airtableKey: "",
-    airtableBaseId: "",
-  });
+  const [airtableSettings, setAirtableSettings] = useState<LeadMagnetAirtableSettings>(
+    DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS
+  );
+  const [saveError, setSaveError] = useState("");
+  const [syncInfo, setSyncInfo] = useState("");
+  const [syncingAirtable, setSyncingAirtable] = useState(false);
+  const airtableBootstrappedRef = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSettingsSnapshotRef = useRef(JSON.stringify(DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS));
+  const lastSavedMagnetSnapshotRef = useRef(JSON.stringify({ airtable_auto_sync: false, airtable_table_name: null }));
 
   const siteUrl =
     typeof window !== "undefined"
       ? window.location.origin
       : "";
 
+  const describeAirtableState = useCallback(
+    (nextSettings: LeadMagnetAirtableSettings, nextMagnet?: Pick<LeadMagnet, "airtable_auto_sync" | "airtable_table_name" | "title"> | null) => {
+      const baseLabel = nextSettings.airtableBaseId.trim() ? "Airtable configure" : "Airtable non configure";
+      const magnetLabel = nextMagnet?.airtable_auto_sync ? `auto sync active · ${nextMagnet.airtable_table_name?.trim() || `LM - ${nextMagnet.title}`}` : "auto sync desactive";
+      return `Supabase actif · ${baseLabel} · ${magnetLabel}`;
+    },
+    []
+  );
+
   useEffect(() => {
     void Promise.all([fetchMagnet(), fetchAirtableSettings()]);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -117,24 +144,33 @@ export default function LeadMagnetEditPage() {
     try {
       const res = await fetch(`/api/lead-magnet/${id}`);
       const data = await res.json();
-      if (data.magnet) setMagnet(data.magnet);
+      if (data.magnet) {
+        setMagnet(data.magnet);
+        lastSavedMagnetSnapshotRef.current = JSON.stringify({
+          airtable_auto_sync: Boolean(data.magnet.airtable_auto_sync),
+          airtable_table_name: data.magnet.airtable_table_name ?? null,
+        });
+      }
     } catch {}
     setLoading(false);
   }
 
   async function fetchAirtableSettings() {
     try {
-      const res = await fetch("/api/lead-magnet/settings-store", {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (data.settings) {
-        setAirtableSettings({
-          airtableKey: data.settings.airtableKey ?? "",
-          airtableBaseId: data.settings.airtableBaseId ?? "",
-        });
-      }
-    } catch {}
+      const localSettings = loadLeadMagnetAirtableSettings();
+      setAirtableSettings(localSettings);
+      lastSavedSettingsSnapshotRef.current = JSON.stringify(localSettings);
+
+      await flushPendingRemoteLeadMagnetAirtableSettings();
+
+      const remoteSettings = await fetchRemoteLeadMagnetAirtableSettings();
+      setAirtableSettings(remoteSettings);
+      lastSavedSettingsSnapshotRef.current = JSON.stringify(remoteSettings);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Chargement Airtable impossible.");
+    } finally {
+      airtableBootstrappedRef.current = true;
+    }
   }
 
   async function fetchLeads() {
@@ -147,12 +183,67 @@ export default function LeadMagnetEditPage() {
     setLeadsLoading(false);
   }
 
+  const persistAirtableConfig = useCallback(
+    async (nextSettings: LeadMagnetAirtableSettings, nextMagnet: LeadMagnet) => {
+      setSaveError("");
+      setSyncingAirtable(true);
+
+      try {
+        const savedSettings = await persistRemoteLeadMagnetAirtableSettings(nextSettings);
+        const magnetRes = await leadMagnetFetch(`/api/lead-magnet/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            airtable_auto_sync: nextMagnet.airtable_auto_sync,
+            airtable_table_name: nextMagnet.airtable_table_name,
+          }),
+        });
+        const magnetData = await magnetRes.json();
+
+        if (!magnetRes.ok) {
+          throw new Error(magnetData.error || "Impossible de sauvegarder la config Airtable du lead magnet.");
+        }
+
+        const settingsSnapshot = JSON.stringify(savedSettings);
+        const magnetSnapshot = JSON.stringify({
+          airtable_auto_sync: Boolean(nextMagnet.airtable_auto_sync),
+          airtable_table_name: nextMagnet.airtable_table_name ?? null,
+        });
+
+        lastSavedSettingsSnapshotRef.current = settingsSnapshot;
+        lastSavedMagnetSnapshotRef.current = magnetSnapshot;
+
+        if (nextMagnet.airtable_auto_sync && savedSettings.airtableKey.trim() && savedSettings.airtableBaseId.trim()) {
+          const syncRes = await leadMagnetFetch(`/api/lead-magnet/${id}/airtable-sync`, {
+            method: "POST",
+          });
+          const syncData = await syncRes.json();
+          if (!syncRes.ok) {
+            throw new Error(syncData.error || "Impossible de synchroniser Airtable.");
+          }
+          setSyncInfo(syncData.message || describeAirtableState(savedSettings, nextMagnet));
+        } else {
+          setSyncInfo(describeAirtableState(savedSettings, nextMagnet));
+        }
+
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Synchronisation Airtable impossible.");
+      } finally {
+        setSyncingAirtable(false);
+      }
+    },
+    [describeAirtableState, id]
+  );
+
   async function handleSave() {
     if (!magnet) return;
     setSaving(true);
+    setSaveError("");
     try {
       const [magnetRes, settingsRes] = await Promise.all([
-        fetch(`/api/lead-magnet/${id}`, {
+        leadMagnetFetch(`/api/lead-magnet/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -172,7 +263,7 @@ export default function LeadMagnetEditPage() {
             airtable_table_name: magnet.airtable_table_name,
           }),
         }),
-        fetch("/api/lead-magnet/settings-store", {
+        leadMagnetFetch("/api/lead-magnet/settings-store", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ settings: airtableSettings }),
@@ -185,13 +276,47 @@ export default function LeadMagnetEditPage() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {}
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Sauvegarde du lead magnet impossible.");
+    }
     setSaving(false);
   }
 
   function update<K extends keyof LeadMagnet>(key: K, value: LeadMagnet[K]) {
     setMagnet((prev) => prev ? { ...prev, [key]: value } : prev);
   }
+
+  useEffect(() => {
+    if (!airtableBootstrappedRef.current || !magnet) return;
+
+    const queuedSettings = queueRemoteLeadMagnetAirtableSettingsSync(airtableSettings);
+    const settingsSnapshot = JSON.stringify(queuedSettings);
+    const magnetSnapshot = JSON.stringify({
+      airtable_auto_sync: Boolean(magnet.airtable_auto_sync),
+      airtable_table_name: magnet.airtable_table_name ?? null,
+    });
+
+    if (
+      settingsSnapshot === lastSavedSettingsSnapshotRef.current
+      && magnetSnapshot === lastSavedMagnetSnapshotRef.current
+    ) {
+      return;
+    }
+
+    setSaveError("");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      void persistAirtableConfig(queuedSettings, magnet);
+    }, 350);
+  }, [airtableSettings, magnet?.airtable_auto_sync, magnet?.airtable_table_name, magnet, persistAirtableConfig]);
+
+  useEffect(() => {
+    if (!magnet || !airtableBootstrappedRef.current) return;
+    if (!syncInfo) {
+      setSyncInfo(describeAirtableState(airtableSettings, magnet));
+    }
+  }, [airtableSettings, describeAirtableState, magnet, syncInfo]);
 
   // ─── Steps / Fields helpers ────────────────────────────────────────────────
 
@@ -823,6 +948,19 @@ export default function LeadMagnetEditPage() {
                 <p className="mt-1">{generatedAirtableTableName}</p>
                 <p className="mt-2 text-xs text-gray-500">
                   Les nouvelles questions ajoutees plus tard seront egalement creees automatiquement comme nouvelles colonnes.
+                </p>
+              </div>
+
+              <div className={`rounded-xl border px-4 py-3 text-sm ${saveError ? "border-red-200 bg-red-50 text-red-700" : "border-blue-100 bg-blue-50 text-blue-700"}`}>
+                <p className="font-medium">
+                  {saveError
+                    ? "Erreur de synchronisation"
+                    : syncingAirtable
+                      ? "Synchronisation Airtable en cours..."
+                      : "Etat de la synchronisation"}
+                </p>
+                <p className="mt-1 text-xs">
+                  {saveError || syncInfo || "Les reglages Airtable seront verifies ici automatiquement."}
                 </p>
               </div>
             </Section>

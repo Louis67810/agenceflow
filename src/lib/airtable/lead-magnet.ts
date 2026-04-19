@@ -29,6 +29,13 @@ export type LeadMagnetSyncConfig = {
   airtable_table_name?: string | null;
 };
 
+export type LeadMagnetLeadSyncRecord = {
+  data: Record<string, unknown>;
+  email: string;
+  email_sent: boolean;
+  created_at: string;
+};
+
 type AirtableFieldSchema = {
   id: string;
   name: string;
@@ -216,8 +223,10 @@ async function ensureLeadMagnetTable(
   const schema = await getBaseTables(settings.airtableKey, settings.airtableBaseId);
   let table = (schema.tables ?? []).find((item) => item.name.trim().toLowerCase() === tableName.trim().toLowerCase());
 
+  let createdTable = false;
   if (!table) {
     table = await createTable(settings.airtableKey, settings.airtableBaseId, tableName, magnet.steps);
+    createdTable = true;
   }
 
   const existingFieldNames = new Set((table.fields ?? []).map((field) => field.name.trim().toLowerCase()));
@@ -225,6 +234,7 @@ async function ensureLeadMagnetTable(
     (schemaItem) => !existingFieldNames.has(schemaItem.airtableName.trim().toLowerCase())
   );
 
+  let addedFields = 0;
   for (const field of missingFields) {
     await createField(
       settings.airtableKey,
@@ -233,9 +243,14 @@ async function ensureLeadMagnetTable(
       field.airtableName,
       field.airtableType
     );
+    addedFields += 1;
   }
 
-  return tableName;
+  return {
+    tableName,
+    createdTable,
+    addedFields,
+  };
 }
 
 export function getLeadMagnetAirtableTableName(magnet: Pick<LeadMagnetSyncConfig, "title" | "airtable_table_name">) {
@@ -263,15 +278,11 @@ export async function readLeadMagnetAirtableSettingsByUserId(userId?: string | n
   return normalizeSettings((data?.settings as Partial<LeadMagnetAirtableSettings> | null) ?? null);
 }
 
-export async function syncLeadMagnetLeadToAirtable(input: {
+export async function syncLeadMagnetLeadsToAirtable(input: {
   magnet: LeadMagnetSyncConfig;
-  data: Record<string, unknown>;
-  email: string;
-  emailSent: boolean;
-  createdAt: string;
+  leads: LeadMagnetLeadSyncRecord[];
 }) {
-  const { magnet, data, email, emailSent, createdAt } = input;
-
+  const { magnet, leads } = input;
   if (!magnet.airtable_auto_sync) {
     return { synced: false, reason: "auto_sync_disabled" as const };
   }
@@ -281,24 +292,28 @@ export async function syncLeadMagnetLeadToAirtable(input: {
     return { synced: false, reason: "missing_settings" as const };
   }
 
-  const tableName = await ensureLeadMagnetTable(settings, magnet);
+  const { tableName, createdTable, addedFields } = await ensureLeadMagnetTable(settings, magnet);
   const questionSchemas = getQuestionSchemas(magnet.steps);
 
-  const fields: Record<string, unknown> = {
-    Lead:
-      email
-      || questionSchemas.map((schema) => getLeadValue(data, schema.field.key)).find(Boolean)
-      || `Lead ${new Date(createdAt).toLocaleString("fr-FR")}`,
-    Email: email || "",
-    "Date de soumission": createdAt,
-    "Email envoye": emailSent,
-    "Lead Magnet": magnet.title,
-    "Lead Magnet ID": magnet.id,
-  };
+  const records = leads.map((lead) => {
+    const fields: Record<string, unknown> = {
+      Lead:
+        lead.email
+        || questionSchemas.map((schema) => getLeadValue(lead.data, schema.field.key)).find(Boolean)
+        || `Lead ${new Date(lead.created_at).toLocaleString("fr-FR")}`,
+      Email: lead.email || "",
+      "Date de soumission": lead.created_at,
+      "Email envoye": lead.email_sent,
+      "Lead Magnet": magnet.title,
+      "Lead Magnet ID": magnet.id,
+    };
 
-  for (const schema of questionSchemas) {
-    fields[schema.airtableName] = getLeadValue(data, schema.field.key);
-  }
+    for (const schema of questionSchemas) {
+      fields[schema.airtableName] = getLeadValue(lead.data, schema.field.key);
+    }
+
+    return { fields };
+  });
 
   await airtableFetch(
     `https://api.airtable.com/v0/${settings.airtableBaseId}/${encodeURIComponent(tableName)}`,
@@ -306,11 +321,42 @@ export async function syncLeadMagnetLeadToAirtable(input: {
       method: "POST",
       headers: getAirtableHeaders(settings.airtableKey),
       body: JSON.stringify({
-        records: [{ fields }],
+        records,
       }),
     },
     "Impossible de creer le lead Airtable"
   );
 
-  return { synced: true, tableName };
+  return {
+    synced: true,
+    tableName,
+    createdTable,
+    addedFields,
+    recordsCreated: records.length,
+    message: [
+      createdTable ? "1 table creee" : "table deja presente",
+      addedFields > 0 ? `${addedFields} champ${addedFields > 1 ? "s" : ""} ajoute${addedFields > 1 ? "s" : ""}` : "0 champ ajoute",
+      `${records.length} ligne${records.length > 1 ? "s" : ""} ajoutee${records.length > 1 ? "s" : ""}`,
+    ].join(" · "),
+  };
+}
+
+export async function syncLeadMagnetLeadToAirtable(input: {
+  magnet: LeadMagnetSyncConfig;
+  data: Record<string, unknown>;
+  email: string;
+  emailSent: boolean;
+  createdAt: string;
+}) {
+  return syncLeadMagnetLeadsToAirtable({
+    magnet: input.magnet,
+    leads: [
+      {
+        data: input.data,
+        email: input.email,
+        email_sent: input.emailSent,
+        created_at: input.createdAt,
+      },
+    ],
+  });
 }
