@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { syncLeadMagnetLeadToAirtable } from "@/lib/airtable/lead-magnet";
 
 // Champs connus pour normalisation (insensible à la casse + variantes FR/EN)
 const EMAIL_KEYS = ["email", "mail", "e-mail", "courriel"];
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const { leadMagnetId, data: rawData } = await req.json();
     const data: Record<string, unknown> = rawData ?? {};
+    const submittedAt = new Date().toISOString();
 
     if (!leadMagnetId || !data) {
       return NextResponse.json({ error: "leadMagnetId et data requis" }, { status: 400 });
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
         lead_magnet_id: leadMagnetId,
         data,
         email: email || null,
+        created_at: submittedAt,
       });
 
     if (insertError) {
@@ -192,6 +195,18 @@ export async function POST(req: NextRequest) {
       } catch (emailErr) {
         console.error("Email send failed:", emailErr);
       }
+    }
+
+    try {
+      await syncLeadMagnetLeadToAirtable({
+        magnet,
+        data,
+        email,
+        emailSent,
+        createdAt: submittedAt,
+      });
+    } catch (airtableError) {
+      console.error("Lead Magnet Airtable sync failed:", airtableError);
     }
 
     return NextResponse.json({

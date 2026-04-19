@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 
 // GET /api/lead-magnet — list all with lead counts
 export async function GET() {
@@ -28,9 +29,11 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
+    const { user } = await getRouteAuthenticatedUser(req);
     const { data, error } = await supabase
       .from("lead_magnets")
       .insert({
+        owner_user_id: user?.id ?? null,
         title: title.trim(),
         slug: slug.trim(),
         resource_url: resourceUrl?.trim() || "",

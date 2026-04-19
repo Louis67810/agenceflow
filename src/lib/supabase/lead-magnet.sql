@@ -3,6 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS lead_magnets (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  owner_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   slug text UNIQUE NOT NULL,
   title text NOT NULL DEFAULT 'Mon Lead Magnet',
   subtitle text DEFAULT 'Veuillez remplir les champs ci-dessous avant de recevoir votre ressource',
@@ -17,6 +18,8 @@ CREATE TABLE IF NOT EXISTS lead_magnets (
   email_subject text DEFAULT '🎁 Votre ressource est prête',
   email_body text DEFAULT '<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:40px 20px;background:#ffffff"><h2 style="font-size:24px;color:#0f172a;margin:0 0 8px">Bonjour {{firstname}} 👋</h2><p style="color:#475569;line-height:1.6;margin:0 0 32px">Merci ! Votre ressource est prête à être consultée.</p><div style="text-align:center;margin:0 0 32px"><a href="{{resource_link}}" style="display:inline-block;background:linear-gradient(161deg,#4e7dfa,#0147ff);color:white;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:500;font-size:16px">Accéder à la ressource →</a></div><p style="color:#94a3b8;font-size:12px;margin:0">Si le bouton ne fonctionne pas : <a href="{{resource_link}}" style="color:#6b7280">{{resource_link}}</a></p></div>',
   from_name text DEFAULT 'AgenceFlow',
+  airtable_auto_sync boolean NOT NULL DEFAULT false,
+  airtable_table_name text,
   status text DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused')),
   created_at timestamptz DEFAULT now() NOT NULL
 );
@@ -31,8 +34,13 @@ CREATE TABLE IF NOT EXISTS lead_magnet_leads (
   created_at timestamptz DEFAULT now() NOT NULL
 );
 
+ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS owner_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_auto_sync boolean NOT NULL DEFAULT false;
+ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_table_name text;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_lead_magnets_slug ON lead_magnets(slug);
 CREATE INDEX IF NOT EXISTS idx_lead_magnet_leads_magnet_id ON lead_magnet_leads(lead_magnet_id);
 CREATE INDEX IF NOT EXISTS idx_lead_magnet_leads_email ON lead_magnet_leads(email);
 CREATE INDEX IF NOT EXISTS idx_lead_magnets_status ON lead_magnets(status);
+CREATE INDEX IF NOT EXISTS idx_lead_magnets_owner_user_id ON lead_magnets(owner_user_id);

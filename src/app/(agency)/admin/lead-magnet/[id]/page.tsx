@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 type FieldType = "text" | "email" | "phone";
-type TabId = "content" | "questions" | "email" | "leads";
+type TabId = "content" | "questions" | "email" | "airtable" | "leads";
 
 interface Field {
   id: string;
@@ -37,7 +37,14 @@ interface LeadMagnet {
   email_subject: string;
   email_body: string;
   from_name: string;
+  airtable_auto_sync: boolean;
+  airtable_table_name: string | null;
   status: "draft" | "active" | "paused";
+}
+
+interface LeadMagnetAirtableSettings {
+  airtableKey: string;
+  airtableBaseId: string;
 }
 
 interface Lead {
@@ -87,6 +94,10 @@ export default function LeadMagnetEditPage() {
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [imagePreviewError, setImagePreviewError] = useState(false);
+  const [airtableSettings, setAirtableSettings] = useState<LeadMagnetAirtableSettings>({
+    airtableKey: "",
+    airtableBaseId: "",
+  });
 
   const siteUrl =
     typeof window !== "undefined"
@@ -94,7 +105,7 @@ export default function LeadMagnetEditPage() {
       : "";
 
   useEffect(() => {
-    fetchMagnet();
+    void Promise.all([fetchMagnet(), fetchAirtableSettings()]);
   }, [id]);
 
   useEffect(() => {
@@ -111,6 +122,21 @@ export default function LeadMagnetEditPage() {
     setLoading(false);
   }
 
+  async function fetchAirtableSettings() {
+    try {
+      const res = await fetch("/api/lead-magnet/settings-store", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (data.settings) {
+        setAirtableSettings({
+          airtableKey: data.settings.airtableKey ?? "",
+          airtableBaseId: data.settings.airtableBaseId ?? "",
+        });
+      }
+    } catch {}
+  }
+
   async function fetchLeads() {
     setLeadsLoading(true);
     try {
@@ -125,24 +151,38 @@ export default function LeadMagnetEditPage() {
     if (!magnet) return;
     setSaving(true);
     try {
-      await fetch(`/api/lead-magnet/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: magnet.title,
-          subtitle: magnet.subtitle,
-          image_url: magnet.image_url,
-          resource_url: magnet.resource_url,
-          timer_minutes: magnet.timer_minutes,
-          steps: magnet.steps,
-          cta_text: magnet.cta_text,
-          email_subject: magnet.email_subject,
-          email_body: magnet.email_body,
-          from_name: magnet.from_name,
-          status: magnet.status,
-          slug: magnet.slug,
+      const [magnetRes, settingsRes] = await Promise.all([
+        fetch(`/api/lead-magnet/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: magnet.title,
+            subtitle: magnet.subtitle,
+            image_url: magnet.image_url,
+            resource_url: magnet.resource_url,
+            timer_minutes: magnet.timer_minutes,
+            steps: magnet.steps,
+            cta_text: magnet.cta_text,
+            email_subject: magnet.email_subject,
+            email_body: magnet.email_body,
+            from_name: magnet.from_name,
+            status: magnet.status,
+            slug: magnet.slug,
+            airtable_auto_sync: magnet.airtable_auto_sync,
+            airtable_table_name: magnet.airtable_table_name,
+          }),
         }),
-      });
+        fetch("/api/lead-magnet/settings-store", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ settings: airtableSettings }),
+        }),
+      ]);
+
+      if (!magnetRes.ok || !settingsRes.ok) {
+        throw new Error("Impossible de sauvegarder la configuration Lead Magnet.");
+      }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch {}
@@ -283,6 +323,7 @@ export default function LeadMagnetEditPage() {
 
   const publicUrl = `${siteUrl}/lm/${magnet.slug}`;
   const flatFieldCount = magnet.steps.reduce((s, st) => s + st.fields.length, 0);
+  const generatedAirtableTableName = (magnet.airtable_table_name?.trim() || `LM - ${magnet.title}`).slice(0, 100);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
@@ -365,6 +406,7 @@ export default function LeadMagnetEditPage() {
               { id: "content", label: "Contenu" },
               { id: "questions", label: `Questions (${flatFieldCount})` },
               { id: "email", label: "Email" },
+              { id: "airtable", label: "Airtable" },
               { id: "leads", label: "Leads" },
             ] as { id: TabId; label: string }[]
           ).map((tab) => (
@@ -705,6 +747,88 @@ export default function LeadMagnetEditPage() {
         )}
 
         {/* ── LEADS TAB ── */}
+        {activeTab === "airtable" && (
+          <div className="max-w-2xl mx-auto p-6 space-y-6">
+            <Section title="Base Airtable commune">
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
+                Tous les lead magnets utilisent la meme base Airtable, puis chacun cree sa propre table dediee.
+                <span className="text-xs text-blue-500 mt-1 block">
+                  La structure est creee automatiquement au premier lead : table si absente, puis champs manquants selon les questions du formulaire.
+                </span>
+              </div>
+
+              <Field
+                label="Token Airtable"
+                hint="Scopes recommandes : data.records:read, data.records:write, schema.bases:read et schema.bases:write"
+              >
+                <input
+                  type="password"
+                  value={airtableSettings.airtableKey}
+                  onChange={(e) =>
+                    setAirtableSettings((current) => ({
+                      ...current,
+                      airtableKey: e.target.value,
+                    }))
+                  }
+                  placeholder="pat..."
+                  className="input"
+                />
+              </Field>
+
+              <Field label="Base ID commune" hint="Exemple : appXXXXXXXXXXXXXX">
+                <input
+                  type="text"
+                  value={airtableSettings.airtableBaseId}
+                  onChange={(e) =>
+                    setAirtableSettings((current) => ({
+                      ...current,
+                      airtableBaseId: e.target.value,
+                    }))
+                  }
+                  placeholder="app..."
+                  className="input"
+                />
+              </Field>
+            </Section>
+
+            <Section title="Sync de ce lead magnet">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="airtable-sync-toggle"
+                  checked={magnet.airtable_auto_sync}
+                  onChange={(e) => update("airtable_auto_sync", e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <label htmlFor="airtable-sync-toggle" className="text-sm text-gray-700">
+                  Activer l&apos;auto sync Airtable pour ce lead magnet
+                </label>
+              </div>
+
+              <Field
+                label="Nom de table Airtable"
+                hint={`Si vide, le nom genere sera : ${generatedAirtableTableName}`}
+              >
+                <input
+                  type="text"
+                  value={magnet.airtable_table_name || ""}
+                  onChange={(e) => update("airtable_table_name", e.target.value || null)}
+                  placeholder={`LM - ${magnet.title}`}
+                  className="input"
+                />
+              </Field>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <p className="font-medium text-gray-800">Table cible actuelle</p>
+                <p className="mt-1">{generatedAirtableTableName}</p>
+                <p className="mt-2 text-xs text-gray-500">
+                  Les nouvelles questions ajoutees plus tard seront egalement creees automatiquement comme nouvelles colonnes.
+                </p>
+              </div>
+            </Section>
+          </div>
+        )}
+
         {activeTab === "leads" && (
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 
 // GET /api/lead-magnet/[id]
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,11 +26,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const body = await req.json();
+    const { user } = await getRouteAuthenticatedUser(req);
     const supabase = await createClient();
+    const payload = { ...body } as Record<string, unknown>;
+    if (body?.owner_user_id !== undefined) {
+      payload.owner_user_id = body.owner_user_id;
+    } else if (user?.id) {
+      payload.owner_user_id = user.id;
+    }
 
     const { data, error } = await supabase
       .from("lead_magnets")
-      .update(body)
+      .update(payload)
       .eq("id", id)
       .select()
       .single();
