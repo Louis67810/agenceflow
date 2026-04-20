@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       const rawSubject: string = magnet.email_subject || "Votre ressource";
       const subject = rawSubject.replace(/\{\{firstname\}\}/g, name || "vous");
 
-      const fromEmail = magnet.from_email || process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
       const fromName = magnet.from_name || "AgenceFlow";
 
       try {
@@ -251,8 +251,8 @@ export async function POST(req: NextRequest) {
       success: true,
       emailSent,
       resourceUrl: magnet.resource_url,
-      senderEmail: (magnet.from_email || process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev") && email
-        ? (magnet.from_email || process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev")
+      senderEmail: (process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev") && email
+        ? (process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev")
         : null,
     });
   } catch (e) {

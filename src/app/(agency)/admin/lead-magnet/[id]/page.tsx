@@ -55,7 +55,6 @@ interface LeadMagnet {
   email_subject: string;
   email_body: string;
   from_name: string;
-  from_email: string | null;
   airtable_auto_sync: boolean;
   airtable_table_name: string | null;
   status: "draft" | "active" | "paused";
@@ -343,7 +342,6 @@ export default function LeadMagnetEditPage() {
             email_subject: magnet.email_subject,
             email_body: magnet.email_body,
             from_name: magnet.from_name,
-            from_email: magnet.from_email,
             status: magnet.status,
             slug: magnet.slug,
             airtable_auto_sync: magnet.airtable_auto_sync,
@@ -1191,15 +1189,6 @@ export default function LeadMagnetEditPage() {
                   value={magnet.from_name}
                   onChange={(e) => update("from_name", e.target.value)}
                   placeholder="AgenceFlow"
-                  className="input"
-                />
-              </Field>
-              <Field label="Adresse d'envoi" hint="Optionnel. Si vide, l'application utilise RESEND_FROM_EMAIL configure sur Vercel. L'adresse doit etre verifiee chez Resend.">
-                <input
-                  type="email"
-                  value={magnet.from_email || ""}
-                  onChange={(e) => update("from_email", e.target.value || null)}
-                  placeholder="contact@tondomaine.com"
                   className="input"
                 />
               </Field>
