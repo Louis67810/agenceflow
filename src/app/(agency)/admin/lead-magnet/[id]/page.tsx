@@ -16,8 +16,15 @@ import {
   queueRemoteLeadMagnetAirtableSettingsSync,
 } from "@/lib/lead-magnet/settings";
 
-type FieldType = "text" | "email" | "phone";
+type FieldType = "text" | "email" | "phone" | "number" | "url" | "select";
 type TabId = "content" | "questions" | "email" | "airtable" | "leads";
+
+interface FieldOption {
+  id: string;
+  label: string;
+  value: string;
+  hiddenStepIds?: string[];
+}
 
 interface Field {
   id: string;
@@ -26,6 +33,7 @@ interface Field {
   placeholder: string;
   required: boolean;
   key: string;
+  options?: FieldOption[];
 }
 
 interface Step {
@@ -77,11 +85,39 @@ function autoKey(label: string): string {
     .replace(/[^a-z0-9_]/g, "");
 }
 
-const FIELD_TYPE_LABELS: Record<FieldType, string> = {
+function getDefaultPlaceholder(type: FieldType) {
+  if (type === "email") return "Votre adresse email";
+  if (type === "phone") return "Votre numero de telephone";
+  if (type === "number") return "Entrez un nombre";
+  if (type === "url") return "https://...";
+  if (type === "select") return "Choisissez une option";
+  return "Votre reponse...";
+}
+
+function createDefaultOption(index = 1): FieldOption {
+  const label = `Option ${index}`;
+  return {
+    id: uid(),
+    label,
+    value: autoKey(label) || `option_${index}`,
+    hiddenStepIds: [],
+  };
+}
+
+const FIELD_TYPE_LABELS: Partial<Record<FieldType, string>> = {
   text: "Texte",
   email: "Email",
   phone: "Téléphone",
 };
+
+const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
+  { value: "text", label: "Texte" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Telephone" },
+  { value: "number", label: "Nombre" },
+  { value: "url", label: "URL" },
+  { value: "select", label: "Choix" },
+];
 
 const STATUS_STYLES = {
   active: "bg-green-100 text-green-700",
@@ -375,9 +411,10 @@ export default function LeadMagnetEditPage() {
           id: uid(),
           type: "text",
           label: "Nouvelle question",
-          placeholder: "Votre réponse...",
+          placeholder: getDefaultPlaceholder("text"),
           required: false,
           key: "question_" + (magnet.steps.length + 1),
+          options: [],
         },
       ],
     };
@@ -417,15 +454,120 @@ export default function LeadMagnetEditPage() {
     );
   }
 
+  function addOption(stepId: string, fieldId: string) {
+    if (!magnet) return;
+    update(
+      "steps",
+      magnet.steps.map((step) =>
+        step.id !== stepId
+          ? step
+          : {
+              ...step,
+              fields: step.fields.map((field) =>
+                field.id !== fieldId
+                  ? field
+                  : {
+                      ...field,
+                      options: [...(field.options ?? []), createDefaultOption((field.options?.length ?? 0) + 1)],
+                    }
+              ),
+            }
+      )
+    );
+  }
+
+  function updateOption(stepId: string, fieldId: string, optionId: string, patch: Partial<FieldOption>) {
+    if (!magnet) return;
+    update(
+      "steps",
+      magnet.steps.map((step) =>
+        step.id !== stepId
+          ? step
+          : {
+              ...step,
+              fields: step.fields.map((field) =>
+                field.id !== fieldId
+                  ? field
+                  : {
+                      ...field,
+                      options: (field.options ?? []).map((option) => {
+                        if (option.id !== optionId) return option;
+                        const next = { ...option, ...patch };
+                        if (patch.label !== undefined && patch.value === undefined) {
+                          next.value = autoKey(patch.label) || next.value;
+                        }
+                        return next;
+                      }),
+                    }
+              ),
+            }
+      )
+    );
+  }
+
+  function removeOption(stepId: string, fieldId: string, optionId: string) {
+    if (!magnet) return;
+    update(
+      "steps",
+      magnet.steps.map((step) =>
+        step.id !== stepId
+          ? step
+          : {
+              ...step,
+              fields: step.fields.map((field) =>
+                field.id !== fieldId
+                  ? field
+                  : {
+                      ...field,
+                      options: (field.options ?? []).filter((option) => option.id !== optionId),
+                    }
+              ),
+            }
+      )
+    );
+  }
+
+  function toggleOptionHiddenStep(stepId: string, fieldId: string, optionId: string, hiddenStepId: string) {
+    if (!magnet) return;
+    update(
+      "steps",
+      magnet.steps.map((step) =>
+        step.id !== stepId
+          ? step
+          : {
+              ...step,
+              fields: step.fields.map((field) =>
+                field.id !== fieldId
+                  ? field
+                  : {
+                      ...field,
+                      options: (field.options ?? []).map((option) => {
+                        if (option.id !== optionId) return option;
+                        const current = option.hiddenStepIds ?? [];
+                        return {
+                          ...option,
+                          hiddenStepIds: current.includes(hiddenStepId)
+                            ? current.filter((id) => id !== hiddenStepId)
+                            : [...current, hiddenStepId],
+                        };
+                      }),
+                    }
+              ),
+            }
+      )
+    );
+  }
+
   function addField(stepId: string) {
     if (!magnet) return;
     const newField: Field = {
       id: uid(),
       type: "text",
       label: "Nouveau champ",
-      placeholder: "Votre réponse...",
+      placeholder: getDefaultPlaceholder("text"),
       required: false,
       key: "champ_" + uid().slice(3, 7),
+      options: [],
     };
     update(
       "steps",
@@ -776,19 +918,18 @@ export default function LeadMagnetEditPage() {
                             onChange={(e) =>
                               updateField(step.id, field.id, {
                                 type: e.target.value as FieldType,
-                                placeholder:
-                                  e.target.value === "email"
-                                    ? "Votre adresse email"
-                                    : e.target.value === "phone"
-                                    ? "Votre numéro de téléphone"
-                                    : field.placeholder,
+                                placeholder: getDefaultPlaceholder(e.target.value as FieldType),
+                                options:
+                                  e.target.value === "select"
+                                    ? (field.options && field.options.length > 0 ? field.options : [createDefaultOption(1)])
+                                    : [],
                               })
                             }
                             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
                           >
-                            {Object.entries(FIELD_TYPE_LABELS).map(([v, l]) => (
-                              <option key={v} value={v}>
-                                {l}
+                            {FIELD_TYPE_OPTIONS.map(({ value: optionValue, label }) => (
+                              <option key={optionValue} value={optionValue}>
+                                {label}
                               </option>
                             ))}
                           </select>
@@ -835,6 +976,97 @@ export default function LeadMagnetEditPage() {
                           </span>
                         </div>
                       </div>
+                      {field.type === "select" ? (
+                        <div className="mt-3 w-full rounded-lg border border-gray-200 bg-white p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-gray-700">Options de reponse</p>
+                            <button
+                              type="button"
+                              onClick={() => addOption(step.id, field.id)}
+                              className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              Ajouter une option
+                            </button>
+                          </div>
+
+                          <div className="mt-3 space-y-3">
+                            {(field.options ?? []).map((option, optionIndex) => (
+                              <div key={option.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-xs text-gray-500 mb-1 block">Libelle</label>
+                                    <input
+                                      type="text"
+                                      value={option.label}
+                                      onChange={(e) =>
+                                        updateOption(step.id, field.id, option.id, {
+                                          label: e.target.value,
+                                        })
+                                      }
+                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 mb-1 block">Valeur</label>
+                                    <input
+                                      type="text"
+                                      value={option.value}
+                                      onChange={(e) =>
+                                        updateOption(step.id, field.id, option.id, {
+                                          value: e.target.value,
+                                        })
+                                      }
+                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="mt-3">
+                                  <p className="text-xs text-gray-500">Si cette option est choisie, masquer ces etapes :</p>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {magnet.steps
+                                      .filter((candidateStep) => candidateStep.id !== step.id)
+                                      .map((candidateStep, candidateIndex) => {
+                                        const checked = (option.hiddenStepIds ?? []).includes(candidateStep.id);
+                                        return (
+                                          <label
+                                            key={candidateStep.id}
+                                            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                                              checked
+                                                ? "border-blue-200 bg-blue-50 text-blue-700"
+                                                : "border-gray-200 bg-white text-gray-600"
+                                            }`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() =>
+                                                toggleOptionHiddenStep(step.id, field.id, option.id, candidateStep.id)
+                                              }
+                                              className="w-3.5 h-3.5"
+                                            />
+                                            Etape {candidateIndex + 1}
+                                          </label>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeOption(step.id, field.id, option.id)}
+                                    className="text-xs text-red-500 hover:text-red-600"
+                                    disabled={(field.options ?? []).length <= 1}
+                                  >
+                                    Supprimer l'option
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       {step.fields.length > 1 && (
                         <button
                           onClick={() => removeField(step.id, field.id)}
@@ -1180,3 +1412,6 @@ function Field({
     </div>
   );
 }
+
+
+
