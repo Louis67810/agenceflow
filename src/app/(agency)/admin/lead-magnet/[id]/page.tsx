@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Save, ExternalLink, Plus, Trash2, GripVertical,
-  Check, ChevronUp, ChevronDown, Eye, Copy, Download,
+  Check, ChevronUp, ChevronDown, Eye, Copy, Download, X,
 } from "lucide-react";
 import { leadMagnetFetch } from "@/lib/lead-magnet/fetchWithAuth";
 import {
@@ -139,6 +139,7 @@ export default function LeadMagnetEditPage() {
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [imagePreviewError, setImagePreviewError] = useState(false);
+  const [editingSelectFieldId, setEditingSelectFieldId] = useState<string | null>(null);
   const [airtableSettings, setAirtableSettings] = useState<LeadMagnetAirtableSettings>(
     DEFAULT_LEAD_MAGNET_AIRTABLE_SETTINGS
   );
@@ -978,93 +979,152 @@ export default function LeadMagnetEditPage() {
                       </div>
                       {field.type === "select" ? (
                         <div className="mt-3 w-full rounded-lg border border-gray-200 bg-white p-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-medium text-gray-700">Options de reponse</p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-medium text-gray-700">Choix affiches sur l'interface</p>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Le visiteur verra des boutons cliquables, puis il pourra continuer manuellement.
+                              </p>
+                            </div>
                             <button
                               type="button"
-                              onClick={() => addOption(step.id, field.id)}
-                              className="text-xs text-gray-500 hover:text-gray-700"
+                              onClick={() =>
+                                setEditingSelectFieldId((current) => (current === field.id ? null : field.id))
+                              }
+                              className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 hover:border-gray-300 hover:text-gray-800"
                             >
-                              Ajouter une option
+                              {editingSelectFieldId === field.id ? "Masquer" : "Configurer les choix"}
                             </button>
                           </div>
 
-                          <div className="mt-3 space-y-3">
-                            {(field.options ?? []).map((option, optionIndex) => (
-                              <div key={option.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">Libelle</label>
-                                    <input
-                                      type="text"
-                                      value={option.label}
-                                      onChange={(e) =>
-                                        updateOption(step.id, field.id, option.id, {
-                                          label: e.target.value,
-                                        })
-                                      }
-                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">Valeur</label>
-                                    <input
-                                      type="text"
-                                      value={option.value}
-                                      onChange={(e) =>
-                                        updateOption(step.id, field.id, option.id, {
-                                          value: e.target.value,
-                                        })
-                                      }
-                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="mt-3">
-                                  <p className="text-xs text-gray-500">Si cette option est choisie, masquer ces etapes :</p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {magnet.steps
-                                      .filter((candidateStep) => candidateStep.id !== step.id)
-                                      .map((candidateStep, candidateIndex) => {
-                                        const checked = (option.hiddenStepIds ?? []).includes(candidateStep.id);
-                                        return (
-                                          <label
-                                            key={candidateStep.id}
-                                            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                                              checked
-                                                ? "border-blue-200 bg-blue-50 text-blue-700"
-                                                : "border-gray-200 bg-white text-gray-600"
-                                            }`}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={checked}
-                                              onChange={() =>
-                                                toggleOptionHiddenStep(step.id, field.id, option.id, candidateStep.id)
-                                              }
-                                              className="w-3.5 h-3.5"
-                                            />
-                                            Etape {candidateIndex + 1}
-                                          </label>
-                                        );
-                                      })}
-                                  </div>
-                                </div>
-
-                                <div className="mt-3 flex justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={() => removeOption(step.id, field.id, option.id)}
-                                    className="text-xs text-red-500 hover:text-red-600"
-                                    disabled={(field.options ?? []).length <= 1}
-                                  >
-                                    Supprimer l'option
-                                  </button>
-                                </div>
-                              </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(field.options ?? []).map((option) => (
+                              <span
+                                key={option.id}
+                                className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700"
+                              >
+                                {option.label || option.value || "Option"}
+                              </span>
                             ))}
+                            {(field.options ?? []).length === 0 ? (
+                              <span className="text-xs text-gray-400">Aucune option definie pour l'instant.</span>
+                            ) : null}
                           </div>
+
+                          {editingSelectFieldId === field.id ? (
+                            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-900">{field.label || "Question a choix"}</p>
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    Definis ici les reponses visibles et les etapes a masquer pour chaque choix.
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSelectFieldId(null)}
+                                  className="rounded-full border border-gray-200 bg-white p-1.5 text-gray-500 hover:text-gray-700"
+                                  aria-label="Fermer le panneau des choix"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+
+                              <div className="mt-4 space-y-3">
+                                {(field.options ?? []).map((option, optionIndex) => (
+                                  <div key={option.id} className="rounded-xl border border-white bg-white p-3 shadow-sm">
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="text-xs text-gray-500 mb-1 block">Libelle visible</label>
+                                        <input
+                                          type="text"
+                                          value={option.label}
+                                          onChange={(e) =>
+                                            updateOption(step.id, field.id, option.id, {
+                                              label: e.target.value,
+                                            })
+                                          }
+                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-xs text-gray-500 mb-1 block">Valeur technique</label>
+                                        <input
+                                          type="text"
+                                          value={option.value}
+                                          onChange={(e) =>
+                                            updateOption(step.id, field.id, option.id, {
+                                              value: e.target.value,
+                                            })
+                                          }
+                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3">
+                                      <p className="text-xs text-gray-500">Si "{option.label || `Option ${optionIndex + 1}`}" est choisi, masquer :</p>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {magnet.steps
+                                          .filter((candidateStep) => candidateStep.id !== step.id)
+                                          .map((candidateStep, candidateIndex) => {
+                                            const checked = (option.hiddenStepIds ?? []).includes(candidateStep.id);
+                                            return (
+                                              <label
+                                                key={candidateStep.id}
+                                                className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                                                  checked
+                                                    ? "border-blue-200 bg-blue-100 text-blue-700"
+                                                    : "border-gray-200 bg-white text-gray-600"
+                                                }`}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  checked={checked}
+                                                  onChange={() =>
+                                                    toggleOptionHiddenStep(step.id, field.id, option.id, candidateStep.id)
+                                                  }
+                                                  className="w-3.5 h-3.5"
+                                                />
+                                                Etape {candidateIndex + 1}
+                                              </label>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeOption(step.id, field.id, option.id)}
+                                        className="text-xs text-red-500 hover:text-red-600"
+                                        disabled={(field.options ?? []).length <= 1}
+                                      >
+                                        Supprimer l'option
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-4 flex justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => addOption(step.id, field.id)}
+                                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-800"
+                                >
+                                  Ajouter une option
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSelectFieldId(null)}
+                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white"
+                                >
+                                  Fermer
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                       {step.fields.length > 1 && (

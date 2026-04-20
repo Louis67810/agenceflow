@@ -159,7 +159,6 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const [stepIndex, setStepIndex] = useState(0);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [submittedData, setSubmittedData] = useState<Record<string, string>>({});
-  const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -167,29 +166,18 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   const [resourceUrl, setResourceUrl] = useState(magnet.resource_url);
   const [senderEmail, setSenderEmail] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement>(null);
-  const setInputElement = (element: HTMLInputElement | HTMLSelectElement | null) => {
-    inputRef.current = element;
-  };
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const visibleSteps = useMemo(() => {
     const hiddenStepIds = getHiddenStepIds(magnet.steps, formData);
     return magnet.steps.filter((step) => !hiddenStepIds.has(step.id));
   }, [formData, magnet.steps]);
-  const visibleFields = useMemo(() => visibleSteps.flatMap((step) => step.fields), [visibleSteps]);
-  const currentField = visibleFields[stepIndex] ?? null;
-  const currentData = useMemo(
-    () =>
-      currentField
-        ? { ...formData, [currentField.key]: value }
-        : formData,
-    [currentField, formData, value]
-  );
-  const remaining = Math.max(0, visibleFields.length - stepIndex - 1);
-  const completion = visibleFields.length > 0 ? stepIndex / visibleFields.length : 0;
+  const currentStep = visibleSteps[stepIndex] ?? null;
+  const currentFields = currentStep?.fields ?? [];
+  const remaining = Math.max(0, visibleSteps.length - stepIndex - 1);
+  const completion = visibleSteps.length > 0 ? stepIndex / visibleSteps.length : 0;
   const blurPx = submitted ? 0 : Math.max(12, 28 - completion * 14);
-  const FieldIcon = getFieldIcon(currentField);
 
   useEffect(() => {
     if (!magnet.timer_minutes) return;
@@ -222,40 +210,60 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
     }
   }, [stepIndex, submitted]);
 
-  function validateField() {
-    if (!currentField) return true;
-
-    const trimmed = value.trim();
-
-    if (currentField.required && !trimmed) {
-      setError("Ce champ est requis.");
-      return false;
+  useEffect(() => {
+    if (!currentStep && visibleSteps.length > 0) {
+      setStepIndex(0);
+      return;
     }
 
-    if (currentField.type === "email" && trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError("Adresse email invalide.");
-      return false;
+    if (stepIndex > visibleSteps.length - 1) {
+      setStepIndex(Math.max(0, visibleSteps.length - 1));
     }
+  }, [currentStep, stepIndex, visibleSteps.length]);
 
-    if (currentField.type === "phone" && trimmed && !/^[\d\s()+-]{6,}$/.test(trimmed)) {
-      setError("Numéro invalide.");
-      return false;
-    }
+  function getFieldValue(field: Field) {
+    return formData[field.key] ?? "";
+  }
 
-    if (currentField.type === "number" && trimmed && Number.isNaN(Number(trimmed))) {
-      setError("Nombre invalide.");
-      return false;
-    }
+  function updateFieldValue(field: Field, nextValue: string) {
+    setFormData((current) => ({ ...current, [field.key]: nextValue }));
+    setError("");
+  }
 
-    if (currentField.type === "url" && trimmed) {
-      try {
-        const parsed = new URL(trimmed);
-        if (!["http:", "https:"].includes(parsed.protocol)) {
-          throw new Error("invalid");
-        }
-      } catch {
-        setError("URL invalide.");
+  function validateCurrentStep() {
+    for (const field of currentFields) {
+      const trimmed = getFieldValue(field).trim();
+
+      if (field.required && !trimmed) {
+        setError(`Le champ "${field.label}" est requis.`);
         return false;
+      }
+
+      if (field.type === "email" && trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        setError(`Adresse email invalide pour "${field.label}".`);
+        return false;
+      }
+
+      if (field.type === "phone" && trimmed && !/^[\d\s()+-]{6,}$/.test(trimmed)) {
+        setError(`Numero invalide pour "${field.label}".`);
+        return false;
+      }
+
+      if (field.type === "number" && trimmed && Number.isNaN(Number(trimmed))) {
+        setError(`Nombre invalide pour "${field.label}".`);
+        return false;
+      }
+
+      if (field.type === "url" && trimmed) {
+        try {
+          const parsed = new URL(trimmed);
+          if (!["http:", "https:"].includes(parsed.protocol)) {
+            throw new Error("invalid");
+          }
+        } catch {
+          setError(`URL invalide pour "${field.label}".`);
+          return false;
+        }
       }
     }
 
@@ -286,18 +294,15 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   }
 
   async function goNext() {
-    if (!validateField()) return;
+    if (!validateCurrentStep()) return;
     setError("");
 
-    const nextData = currentField ? { ...formData, [currentField.key]: value } : formData;
-    setFormData(nextData);
+    const nextData = { ...formData };
     const nextVisibleSteps = magnet.steps.filter((step) => !getHiddenStepIds(magnet.steps, nextData).has(step.id));
-    const nextVisibleFields = nextVisibleSteps.flatMap((step) => step.fields);
 
-    if (stepIndex < nextVisibleFields.length - 1) {
+    if (stepIndex < nextVisibleSteps.length - 1) {
       setStepIndex((index) => index + 1);
-      setValue("");
-      setIsInputFocused(false);
+      setFocusedFieldKey(null);
       return;
     }
 
@@ -311,8 +316,9 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
     }
   }
 
-  const email = (submitted ? submittedData : currentData).email || (submitted ? submittedData : currentData).mail || "";
-  const firstName = (submitted ? submittedData : currentData).firstname || (submitted ? submittedData : currentData).prenom || "";
+  const currentData = submitted ? submittedData : formData;
+  const email = currentData.email || currentData.mail || "";
+  const firstName = currentData.firstname || currentData.prenom || "";
   const isGmailAddress = /@gmail\.com$/i.test(email.trim());
   const successHref =
     isGmailAddress && senderEmail
@@ -336,10 +342,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
             </h1>
             <p style={{ ...subtitleStyle, maxWidth: 500, marginBottom: 36 }}>
               {isGmailAddress
-                ? "Votre ressource vient d'être envoyée. Ouvrez directement Gmail pour la récupérer."
+                ? "Votre ressource vient d'etre envoyee. Ouvrez directement Gmail pour la recuperer."
                 : emailSent && email
-                ? `Votre ressource a été envoyée à ${email}.`
-                : "Votre ressource est prête, vous pouvez y accéder maintenant."}
+                ? `Votre ressource a ete envoyee a ${email}.`
+                : "Votre ressource est prete, vous pouvez y acceder maintenant."}
             </p>
 
             {successHref ? <PrimaryButtonLink href={successHref} label="Ouvrir Gmail" /> : null}
@@ -360,10 +366,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
       <div style={centerWrapStyle}>
         <div style={{ textAlign: "center" }}>
-            {magnet.timer_minutes && timeLeft !== null && (
-              <div style={{ marginBottom: 22 }}>
-                <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
-              </div>
+          {magnet.timer_minutes && timeLeft !== null && (
+            <div style={{ marginBottom: 22 }}>
+              <TimerBadge label={`Temps restant : ${formatTimer(timeLeft)}`} />
+            </div>
           )}
 
           <h1 style={titleStyle}>{magnet.title}</h1>
@@ -372,84 +378,106 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
           </p>
 
           <div style={{ width: "100%", maxWidth: 340, margin: "0 auto" }}>
-            {currentField ? (
-              <div style={{ position: "relative" }}>
-                <FieldIcon
-                  size={16}
-                  style={{
-                    position: "absolute",
-                    left: 20,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "rgba(0,0,0,0.38)",
-                    pointerEvents: "none",
-                  }}
-                />
-                {currentField.type === "select" ? (
-                  <select
-                    ref={setInputElement}
-                    key={currentField.id}
-                    value={value}
-                    onChange={(event) => {
-                      setValue(event.target.value);
-                      setError("");
-                    }}
-                    onFocus={() => setIsInputFocused(true)}
-                    onBlur={() => setIsInputFocused(false)}
-                    style={{
-                      ...pillInputStyle,
-                      appearance: "none",
-                      borderColor: error
-                        ? "rgba(220,38,38,0.5)"
-                        : isInputFocused
-                        ? "#0147ff"
-                        : "rgba(0,0,0,0.16)",
-                    }}
-                  >
-                    <option value="">{currentField.placeholder || currentField.label || "Choisissez une option"}</option>
-                    {(currentField.options ?? []).map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    ref={setInputElement}
-                    key={currentField.id}
-                    className="lm-input"
-                    type={
-                      currentField.type === "email"
-                        ? "email"
-                        : currentField.type === "phone"
-                        ? "tel"
-                        : currentField.type === "number"
-                        ? "number"
-                        : currentField.type === "url"
-                        ? "url"
-                        : "text"
-                    }
-                    value={value}
-                    onChange={(event) => {
-                      setValue(event.target.value);
-                      setError("");
-                    }}
-                    onFocus={() => setIsInputFocused(true)}
-                    onBlur={() => setIsInputFocused(false)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={currentField.placeholder || currentField.label || "Entrez votre adresse mail"}
-                    style={{
-                      ...pillInputStyle,
-                      borderColor: error
-                        ? "rgba(220,38,38,0.5)"
-                        : isInputFocused
-                        ? "#0147ff"
-                        : "rgba(0,0,0,0.16)",
-                    }}
-                  />
-                )}
-              </div>
-            ) : null}
+            <div style={{ display: "grid", gap: 14 }}>
+              {currentFields.map((field, fieldIndex) => {
+                const FieldIcon = getFieldIcon(field);
+                const isFocused = focusedFieldKey === field.key;
+                const fieldValue = getFieldValue(field);
+
+                return (
+                  <div key={field.id}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: 8,
+                        fontSize: 14,
+                        lineHeight: 1.3,
+                        fontWeight: 600,
+                        color: "rgba(0,0,0,0.82)",
+                        textAlign: "left",
+                      }}
+                    >
+                      {field.label}
+                      {field.required ? " *" : ""}
+                    </label>
+
+                    {field.type === "select" ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {(field.options ?? []).map((option) => {
+                          const selected = fieldValue === option.value;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => updateFieldValue(field, option.value)}
+                              style={{
+                                width: "100%",
+                                borderRadius: 18,
+                                border: selected ? "1px solid #0147ff" : "1px solid rgba(0,0,0,0.14)",
+                                background: selected ? "rgba(1,71,255,0.08)" : "#fff",
+                                color: "rgba(0,0,0,0.82)",
+                                padding: "14px 16px",
+                                textAlign: "left",
+                                fontSize: 15,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                                boxShadow: selected ? "0 0 0 1px rgba(1,71,255,0.08)" : "0 1px 3px rgba(0,0,0,0.04)",
+                                transition: "all 0.18s ease",
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ position: "relative" }}>
+                        <FieldIcon
+                          size={16}
+                          style={{
+                            position: "absolute",
+                            left: 20,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            color: "rgba(0,0,0,0.38)",
+                            pointerEvents: "none",
+                          }}
+                        />
+                        <input
+                          ref={fieldIndex === 0 ? inputRef : undefined}
+                          className="lm-input"
+                          type={
+                            field.type === "email"
+                              ? "email"
+                              : field.type === "phone"
+                              ? "tel"
+                              : field.type === "number"
+                              ? "number"
+                              : field.type === "url"
+                              ? "url"
+                              : "text"
+                          }
+                          value={fieldValue}
+                          onChange={(event) => updateFieldValue(field, event.target.value)}
+                          onFocus={() => setFocusedFieldKey(field.key)}
+                          onBlur={() => setFocusedFieldKey((current) => (current === field.key ? null : current))}
+                          onKeyDown={handleKeyDown}
+                          placeholder={field.placeholder || field.label || "Entrez votre reponse"}
+                          style={{
+                            ...pillInputStyle,
+                            borderColor: error
+                              ? "rgba(220,38,38,0.5)"
+                              : isFocused
+                              ? "#0147ff"
+                              : "rgba(0,0,0,0.16)",
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
             <div style={{ marginTop: 12 }}>
               <PrimaryButton
@@ -458,8 +486,8 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
                 label={
                   submitting
                     ? "Envoi en cours..."
-                    : stepIndex === visibleFields.length - 1
-                    ? "Accéder à la ressource"
+                    : stepIndex === visibleSteps.length - 1
+                    ? "Acceder a la ressource"
                     : "Continuer"
                 }
               />
@@ -473,10 +501,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
             <p style={{ ...mutedTextStyle, margin: "14px 0 0" }}>
               {remaining === 0
-                ? "C'est tout, accédez à la ressource tout de suite"
+                ? "C'est tout, accedez a la ressource tout de suite"
                 : remaining === 1
-                ? "Plus qu'une étape restante"
-                : `Plus que ${remaining} étapes restantes`}
+                ? "Plus qu'une etape restante"
+                : `Plus que ${remaining} etapes restantes`}
             </p>
           </div>
         </div>
