@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS lead_magnets (
   email_subject text DEFAULT '🎁 Votre ressource est prête',
   email_body text DEFAULT '<div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:40px 20px;background:#ffffff"><h2 style="font-size:24px;color:#0f172a;margin:0 0 8px">Bonjour {{firstname}} 👋</h2><p style="color:#475569;line-height:1.6;margin:0 0 32px">Merci ! Votre ressource est prête à être consultée.</p><div style="text-align:center;margin:0 0 32px"><a href="{{resource_link}}" style="display:inline-block;background:linear-gradient(161deg,#4e7dfa,#0147ff);color:white;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:500;font-size:16px">Accéder à la ressource →</a></div><p style="color:#94a3b8;font-size:12px;margin:0">Si le bouton ne fonctionne pas : <a href="{{resource_link}}" style="color:#6b7280">{{resource_link}}</a></p></div>',
   from_name text DEFAULT 'AgenceFlow',
+  from_email text,
   airtable_auto_sync boolean NOT NULL DEFAULT false,
   airtable_table_name text,
   airtable_table_id text,
@@ -39,6 +40,7 @@ ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS owner_user_id uuid REFERENCES 
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_auto_sync boolean NOT NULL DEFAULT false;
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_table_name text;
 ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS airtable_table_id text;
+ALTER TABLE lead_magnets ADD COLUMN IF NOT EXISTS from_email text;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_lead_magnets_slug ON lead_magnets(slug);
