@@ -29,6 +29,7 @@ interface Field {
   placeholder: string;
   required: boolean;
   key: string;
+  showLabel?: boolean;
   options?: FieldOption[];
 }
 
@@ -125,7 +126,7 @@ function formatTimer(ms: number) {
 function getFieldIcon(field?: Field | null) {
   if (!field) return Type;
 
-  const haystack = `${field.type} ${field.key} ${field.label}`.toLowerCase();
+  const haystack = `${field.type} ${field.key} ${field.label} ${field.placeholder}`.toLowerCase();
 
   if (field.type === "number") return Hash;
   if (field.type === "url") return Link2;
@@ -233,24 +234,25 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
   function validateCurrentStep() {
     for (const field of currentFields) {
       const trimmed = getFieldValue(field).trim();
+      const fieldName = field.label || field.placeholder || field.key || "ce champ";
 
       if (field.required && !trimmed) {
-        setError(`Le champ "${field.label}" est requis.`);
+        setError(`Le champ "${fieldName}" est requis.`);
         return false;
       }
 
       if (field.type === "email" && trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-        setError(`Adresse email invalide pour "${field.label}".`);
+        setError(`Adresse email invalide pour "${fieldName}".`);
         return false;
       }
 
       if (field.type === "phone" && trimmed && !/^[\d\s()+-]{6,}$/.test(trimmed)) {
-        setError(`Numero invalide pour "${field.label}".`);
+        setError(`Numero invalide pour "${fieldName}".`);
         return false;
       }
 
       if (field.type === "number" && trimmed && Number.isNaN(Number(trimmed))) {
-        setError(`Nombre invalide pour "${field.label}".`);
+        setError(`Nombre invalide pour "${fieldName}".`);
         return false;
       }
 
@@ -261,7 +263,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
             throw new Error("invalid");
           }
         } catch {
-          setError(`URL invalide pour "${field.label}".`);
+          setError(`URL invalide pour "${fieldName}".`);
           return false;
         }
       }
@@ -386,20 +388,22 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
 
                 return (
                   <div key={field.id}>
-                    <label
-                      style={{
-                        display: "block",
-                        marginBottom: 8,
-                        fontSize: 14,
-                        lineHeight: 1.3,
-                        fontWeight: 600,
-                        color: "rgba(0,0,0,0.82)",
-                        textAlign: "left",
-                      }}
-                    >
-                      {field.label}
-                      {field.required ? " *" : ""}
-                    </label>
+                    {field.showLabel !== false ? (
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: 8,
+                          fontSize: 14,
+                          lineHeight: 1.3,
+                          fontWeight: 600,
+                          color: "rgba(0,0,0,0.82)",
+                          textAlign: "left",
+                        }}
+                      >
+                        {field.label}
+                        {field.required ? " *" : ""}
+                      </label>
+                    ) : null}
 
                     {field.type === "select" ? (
                       <div style={{ display: "grid", gap: 10 }}>

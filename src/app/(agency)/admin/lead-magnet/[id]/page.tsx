@@ -33,6 +33,7 @@ interface Field {
   placeholder: string;
   required: boolean;
   key: string;
+  showLabel?: boolean;
   options?: FieldOption[];
 }
 
@@ -278,12 +279,6 @@ export default function LeadMagnetEditPage() {
     }
   }, [airtableSettings.airtableBaseId, airtableSettings.airtableKey, id, magnet]);
 
-  useEffect(() => {
-    if (!airtableBootstrappedRef.current || !magnet) return;
-    if (!airtableSettings.airtableKey || !airtableSettings.airtableBaseId || !magnet.airtable_table_name) return;
-    void handleAirtablePull();
-  }, [airtableSettings.airtableBaseId, airtableSettings.airtableKey, magnet, handleAirtablePull]);
-
   const persistAirtableConfig = useCallback(
     async (nextSettings: LeadMagnetAirtableSettings, nextMagnet: LeadMagnet) => {
       setSyncingAirtable(true);
@@ -415,6 +410,7 @@ export default function LeadMagnetEditPage() {
           placeholder: getDefaultPlaceholder("text"),
           required: false,
           key: "question_" + (magnet.steps.length + 1),
+          showLabel: true,
           options: [],
         },
       ],
@@ -568,6 +564,7 @@ export default function LeadMagnetEditPage() {
       placeholder: getDefaultPlaceholder("text"),
       required: false,
       key: "champ_" + uid().slice(3, 7),
+      showLabel: true,
       options: [],
     };
     update(
@@ -956,7 +953,10 @@ export default function LeadMagnetEditPage() {
                               type="text"
                               value={field.placeholder}
                               onChange={(e) =>
-                                updateField(step.id, field.id, { placeholder: e.target.value })
+                                updateField(step.id, field.id, {
+                                  placeholder: e.target.value,
+                                  key: autoKey(e.target.value) || field.key,
+                                })
                               }
                               className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
                             />
@@ -976,6 +976,25 @@ export default function LeadMagnetEditPage() {
                             <span className="text-xs text-gray-300 ml-auto">
                               key: {field.key}
                             </span>
+                          </div>
+                          <div className="col-span-2 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <div>
+                              <p className="text-xs font-medium text-gray-700">Afficher la question au-dessus</p>
+                              <p className="text-[11px] text-gray-500">
+                                Si desactive, seule la placeholder sera visible sur le formulaire public.
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={field.showLabel !== false}
+                                onChange={(e) =>
+                                  updateField(step.id, field.id, { showLabel: e.target.checked })
+                                }
+                                className="w-3.5 h-3.5"
+                              />
+                              Afficher
+                            </label>
                           </div>
                         </div>
                         {step.fields.length > 1 && (
@@ -1277,7 +1296,10 @@ export default function LeadMagnetEditPage() {
                 <input
                   type="text"
                   value={magnet.airtable_table_name || ""}
-                  onChange={(e) => update("airtable_table_name", e.target.value || null)}
+                  onChange={(e) => {
+                    update("airtable_table_name", e.target.value || null);
+                    setAirtableSyncMsg(null);
+                  }}
                   placeholder="Exemple : Leads Lead Magnet"
                   className="input"
                 />

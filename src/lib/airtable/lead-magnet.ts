@@ -3,11 +3,12 @@ import { formatSupabaseError } from "@/lib/supabase/format-error";
 
 type LeadMagnetField = {
   id: string;
-  type: "text" | "email" | "phone";
+  type: "text" | "email" | "phone" | "number" | "url" | "select";
   label: string;
   placeholder: string;
   required: boolean;
   key: string;
+  showLabel?: boolean;
 };
 
 type LeadMagnetStep = {
