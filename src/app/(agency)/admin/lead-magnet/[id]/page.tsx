@@ -909,73 +909,83 @@ export default function LeadMagnetEditPage() {
                   {step.fields.map((field) => (
                     <div
                       key={field.id}
-                      className="flex items-start gap-3 bg-gray-50 rounded-lg p-3 border border-gray-100"
+                      className="bg-gray-50 rounded-lg p-3 border border-gray-100"
                     >
-                      <div className="flex-1 grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Type</label>
-                          <select
-                            value={field.type}
-                            onChange={(e) =>
-                              updateField(step.id, field.id, {
-                                type: e.target.value as FieldType,
-                                placeholder: getDefaultPlaceholder(e.target.value as FieldType),
-                                options:
-                                  e.target.value === "select"
-                                    ? (field.options && field.options.length > 0 ? field.options : [createDefaultOption(1)])
-                                    : [],
-                              })
-                            }
-                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
-                          >
-                            {FIELD_TYPE_OPTIONS.map(({ value: optionValue, label }) => (
-                              <option key={optionValue} value={optionValue}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Label</label>
-                          <input
-                            type="text"
-                            value={field.label}
-                            onChange={(e) =>
-                              updateField(step.id, field.id, {
-                                label: e.target.value,
-                                key: autoKey(e.target.value) || field.key,
-                              })
-                            }
-                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">Placeholder</label>
-                          <input
-                            type="text"
-                            value={field.placeholder}
-                            onChange={(e) =>
-                              updateField(step.id, field.id, { placeholder: e.target.value })
-                            }
-                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
-                          />
-                        </div>
-                        <div className="flex items-end gap-2 pb-0.5">
-                          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={field.required}
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Type</label>
+                            <select
+                              value={field.type}
                               onChange={(e) =>
-                                updateField(step.id, field.id, { required: e.target.checked })
+                                updateField(step.id, field.id, {
+                                  type: e.target.value as FieldType,
+                                  placeholder: getDefaultPlaceholder(e.target.value as FieldType),
+                                  options:
+                                    e.target.value === "select"
+                                      ? (field.options && field.options.length > 0 ? field.options : [createDefaultOption(1)])
+                                      : [],
+                                })
                               }
-                              className="w-3.5 h-3.5"
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
+                            >
+                              {FIELD_TYPE_OPTIONS.map(({ value: optionValue, label }) => (
+                                <option key={optionValue} value={optionValue}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Label</label>
+                            <input
+                              type="text"
+                              value={field.label}
+                              onChange={(e) =>
+                                updateField(step.id, field.id, {
+                                  label: e.target.value,
+                                  key: autoKey(e.target.value) || field.key,
+                                })
+                              }
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
                             />
-                            Obligatoire
-                          </label>
-                          <span className="text-xs text-gray-300 ml-auto">
-                            key: {field.key}
-                          </span>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">Placeholder</label>
+                            <input
+                              type="text"
+                              value={field.placeholder}
+                              onChange={(e) =>
+                                updateField(step.id, field.id, { placeholder: e.target.value })
+                              }
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex items-end gap-2 pb-0.5">
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) =>
+                                  updateField(step.id, field.id, { required: e.target.checked })
+                                }
+                                className="w-3.5 h-3.5"
+                              />
+                              Obligatoire
+                            </label>
+                            <span className="text-xs text-gray-300 ml-auto">
+                              key: {field.key}
+                            </span>
+                          </div>
                         </div>
+                        {step.fields.length > 1 && (
+                          <button
+                            onClick={() => removeField(step.id, field.id)}
+                            className="mt-6 text-gray-300 hover:text-red-500 shrink-0"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                       {field.type === "select" ? (
                         <div className="mt-3 w-full rounded-lg border border-gray-200 bg-white p-3">
@@ -1127,14 +1137,6 @@ export default function LeadMagnetEditPage() {
                           ) : null}
                         </div>
                       ) : null}
-                      {step.fields.length > 1 && (
-                        <button
-                          onClick={() => removeField(step.id, field.id)}
-                          className="mt-6 text-gray-300 hover:text-red-500 shrink-0"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
                     </div>
                   ))}
                   <button
