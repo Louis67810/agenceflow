@@ -82,7 +82,7 @@ const titleStyle: CSSProperties = {
 
 const subtitleStyle: CSSProperties = {
   color: "rgba(0,0,0,0.7)",
-  fontSize: 18,
+  fontSize: 16,
   lineHeight: 1.46,
   letterSpacing: "-0.03em",
   textAlign: "center",
@@ -344,10 +344,10 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
             </h1>
             <p style={{ ...subtitleStyle, maxWidth: 500, marginBottom: 36 }}>
               {isGmailAddress
-                ? "Votre ressource vient d'etre envoyee. Ouvrez directement Gmail pour la recuperer."
+                ? "Votre ressource vient d'etre envoyee. Ouvrez directement Gmail pour la recuperer et pensez a verifier l'onglet Spams si vous ne la voyez pas tout de suite."
                 : emailSent && email
-                ? `Votre ressource a ete envoyee a ${email}.`
-                : "Votre ressource est prete, vous pouvez y acceder maintenant."}
+                ? `Votre ressource a ete envoyee a ${email}. Pensez a verifier vos spams si vous ne la voyez pas immediatement.`
+                : "Votre ressource est prete. Pensez aussi a verifier vos spams si le mail n'apparait pas tout de suite."}
             </p>
 
             {successHref ? <PrimaryButtonLink href={successHref} label="Ouvrir Gmail" /> : null}
@@ -393,7 +393,7 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
                         style={{
                           display: "block",
                           marginBottom: 8,
-                          fontSize: 14,
+                          fontSize: 18,
                           lineHeight: 1.3,
                           fontWeight: 600,
                           color: "rgba(0,0,0,0.82)",
@@ -401,7 +401,9 @@ export default function LeadMagnetClient({ magnet }: { magnet: LeadMagnetData })
                         }}
                       >
                         {field.label}
-                        {field.required ? " *" : ""}
+                        {field.required ? (
+                          <span style={{ color: "#dc2626" }}> *</span>
+                        ) : null}
                       </label>
                     ) : null}
 
