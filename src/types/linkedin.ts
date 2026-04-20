@@ -3,6 +3,14 @@ export interface LinkedInPostAnalytics {
   publishedDate?: string;
   publishedTime?: string;
   linkUrl?: string;
+  format?: "text" | "image" | "carousel" | "video" | "poll" | "document" | "other";
+  topic?: string;
+  mediaPreviewUrl?: string;
+  mediaPreviewKind?: "image" | "pdf" | "none";
+  mediaFileName?: string;
+  mediaStorageBytes?: number;
+  autoRecycleSourcePostId?: string;
+  autoRecycleCreatedAt?: string;
   impressions: number;
   reach: number;
   profileViews: number;
@@ -68,6 +76,8 @@ export interface LinkedInWorkspacePreferences {
   ideasLanguage: "fr" | "en";
   ideasLastGenerated: string | null;
   prospectionLanguage: "fr" | "en";
+  autoRecycleEnabled: boolean;
+  autoRecycleDelayDays: number;
 }
 
 export interface LinkedInWorkspaceData {

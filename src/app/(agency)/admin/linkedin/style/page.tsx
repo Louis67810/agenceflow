@@ -427,7 +427,7 @@ function StyleCard({
             ) : (
               <>
                 {examples && examples.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 256, overflowY: "auto", paddingRight: 4 }}>
                     {examples.map((ex) => (
                       <div key={ex.id} style={{ position: "relative", background: "#f6f6f6", borderRadius: 9, padding: 12, border: "1px solid rgba(0,0,0,0.06)" }}>
                         <p style={{ fontSize: 12, color: "rgba(18,26,46,0.6)", whiteSpace: "pre-line", margin: 0, paddingRight: 24, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{ex.content}</p>

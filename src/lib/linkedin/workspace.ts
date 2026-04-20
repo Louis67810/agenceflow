@@ -23,6 +23,8 @@ export const DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES: LinkedInWorkspacePreference
   ideasLanguage: "fr",
   ideasLastGenerated: null,
   prospectionLanguage: "fr",
+  autoRecycleEnabled: true,
+  autoRecycleDelayDays: 120,
 };
 
 export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
@@ -128,6 +130,8 @@ function readLegacyWorkspace(): Partial<LinkedInWorkspaceData> {
       ideasLanguage: ideasLanguage === "en" ? "en" : "fr",
       ideasLastGenerated: ideasLastGenerated ?? null,
       prospectionLanguage: prospectionLanguage === "en" ? "en" : "fr",
+      autoRecycleEnabled: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled,
+      autoRecycleDelayDays: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays,
     },
   };
 }
@@ -203,7 +207,9 @@ export function hasMeaningfulLinkedInWorkspaceData(data: LinkedInWorkspaceData):
     data.styles.some((style, index) => DEFAULT_STYLES[index]?.id !== style.id) ||
     data.preferences.ideasLanguage !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.ideasLanguage ||
     data.preferences.prospectionLanguage !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.prospectionLanguage ||
-    Boolean(data.preferences.ideasLastGenerated)
+    Boolean(data.preferences.ideasLastGenerated) ||
+    data.preferences.autoRecycleEnabled !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled ||
+    data.preferences.autoRecycleDelayDays !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays
   );
 }
 

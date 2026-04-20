@@ -199,7 +199,9 @@ export default function PostsPage() {
     let styleExamples: { content: string }[] = [];
     if (selectedStyleId) {
       try {
-        const exRes = await fetch(`/api/linkedin/style-examples?styleId=${encodeURIComponent(selectedStyleId)}`);
+        const exRes = await fetch(
+          `/api/linkedin/style-examples?styleId=${encodeURIComponent(selectedStyleId)}&query=${encodeURIComponent(sourceContent.slice(0, 3000))}`
+        );
         const exData = await exRes.json();
         styleExamples = (exData.examples ?? []).slice(0, 3);
       } catch {}

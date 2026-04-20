@@ -315,11 +315,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
           </div>
           <button
             onClick={() => setShowSettings(true)}
-            className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              hasApiKey
-                ? "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                : "text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200"
-            }`}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
           >
             <Settings size={14} />
             {hasApiKey ? "Parametres IA" : "Configurer l'IA"}

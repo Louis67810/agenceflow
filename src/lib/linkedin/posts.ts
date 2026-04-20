@@ -5,6 +5,14 @@ import type { LinkedInPost, LinkedInPostAnalytics } from "@/types/linkedin";
 export const LINKEDIN_POSTS_STORAGE_KEY = "linkedin_posts";
 
 export const EMPTY_ANALYTICS: LinkedInPostAnalytics = {
+  format: "text",
+  topic: "",
+  mediaPreviewUrl: undefined,
+  mediaPreviewKind: "none",
+  mediaFileName: undefined,
+  mediaStorageBytes: 0,
+  autoRecycleSourcePostId: undefined,
+  autoRecycleCreatedAt: undefined,
   impressions: 0,
   reach: 0,
   profileViews: 0,
@@ -109,6 +117,67 @@ export function computeLinkedInPostScore(post: LinkedInPost): number {
     analytics.profileViews * 1.5 +
     analytics.followersGained * 4
   );
+}
+
+export function getTopQuartilePublishedPosts(posts: LinkedInPost[]): LinkedInPost[] {
+  const published = normalizePosts(posts).filter((post) => post.status === "published");
+  if (published.length === 0) return [];
+  const ranked = [...published].sort(
+    (a, b) => computeLinkedInPostScore(b) - computeLinkedInPostScore(a)
+  );
+  const count = Math.max(1, Math.ceil(ranked.length * 0.25));
+  return ranked.slice(0, count);
+}
+
+export function ensureAutoRecyclePosts(
+  posts: LinkedInPost[],
+  options: {
+    enabled: boolean;
+    delayDays: number;
+    now?: Date;
+  }
+): LinkedInPost[] {
+  const normalizedPosts = normalizePosts(posts);
+  if (!options.enabled) return normalizedPosts;
+
+  const delayDays = Number.isFinite(options.delayDays) && options.delayDays > 0 ? options.delayDays : 120;
+  const now = options.now ?? new Date();
+  const topPosts = getTopQuartilePublishedPosts(normalizedPosts);
+  const existingSourceIds = new Set(
+    normalizedPosts
+      .map((post) => post.analytics?.autoRecycleSourcePostId)
+      .filter((value): value is string => Boolean(value))
+  );
+
+  const createdPosts: LinkedInPost[] = [];
+
+  for (const post of topPosts) {
+    if (existingSourceIds.has(post.id)) continue;
+    const baseDate = post.publishedAt ? new Date(post.publishedAt) : new Date(post.createdAt);
+    const scheduledDate = new Date(baseDate);
+    scheduledDate.setDate(scheduledDate.getDate() + delayDays);
+    if (scheduledDate <= now) continue;
+
+    createdPosts.push(
+      normalizePost({
+        ...post,
+        id: crypto.randomUUID(),
+        status: "scheduled",
+        scheduledAt: scheduledDate.toISOString(),
+        publishedAt: undefined,
+        createdAt: now.toISOString(),
+        analytics: normalizeAnalytics({
+          ...post.analytics,
+          autoRecycleSourcePostId: post.id,
+          autoRecycleCreatedAt: now.toISOString(),
+        }),
+        tags: Array.from(new Set([...(post.tags ?? []), "auto-recycle"])),
+      })
+    );
+  }
+
+  if (createdPosts.length === 0) return normalizedPosts;
+  return normalizePosts([...createdPosts, ...normalizedPosts]);
 }
 
 export function mergePostAnalytics(post: LinkedInPost, analyticsPatch: Partial<LinkedInPostAnalytics>): LinkedInPost {
