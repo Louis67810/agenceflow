@@ -413,7 +413,8 @@ export default function PostsPage() {
   }
 
   const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
-  const editorVisible = hasGenerated || manualEditorStarted || Boolean(editingPostId);
+  const editorVisible = hasGenerated && !manualEditorStarted && !editingPostId;
+  const rightEditorVisible = manualEditorStarted || Boolean(editingPostId);
   const stats = {
     drafts: posts.filter(p => p.status === "draft").length,
     scheduled: posts.filter(p => p.status === "scheduled").length,
@@ -546,11 +547,11 @@ export default function PostsPage() {
           </div>
 
           {/* Generate button */}
-          <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
-          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%", fontSize: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 16 }}>
             {generating ? "Génération..." : "Générer avec l'IA"}
           </ClientBlueButton>
-            <button type="button" onClick={startManualPost} style={{ minWidth: 142, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
+            <button type="button" onClick={startManualPost} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
               Démarrer manuellement
             </button>
           </div>
@@ -681,7 +682,7 @@ export default function PostsPage() {
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed" }}>
               {([
                 ["draft", "Brouillons", stats.drafts],
-                ["scheduled", "PlanifiÃ©s", stats.scheduled],
+                ["scheduled", "Planifiés", stats.scheduled],
               ] as const).map(([view, label, count]) => (
                 <button
                   key={view}
@@ -707,6 +708,63 @@ export default function PostsPage() {
             </div>
           </div>
 
+          {rightEditorVisible ? (
+            <div style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 920 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{editingPostId ? "Modifier le brouillon" : "Nouveau brouillon manuel"}</h3>
+                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(18,26,46,0.48)" }}>Écris librement, puis sélectionne un passage pour le transformer avec l’IA.</p>
+                </div>
+                <button type="button" onClick={resetEditor} style={{ border: "1px solid rgba(18,26,46,0.12)", borderRadius: 999, background: "#fff", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <SmartSelectionTextarea
+                rows={18}
+                value={generatedContent}
+                onChange={setGeneratedContent}
+                placeholder="Écris ton post ici..."
+                contextLabel="post LinkedIn"
+                showGlobalAction={false}
+                apiKey={settings?.openrouterApiKey || undefined}
+                model={settings?.model}
+                style={{ ...inp, minHeight: 360, background: "#fff", lineHeight: 1.7, fontSize: 15, padding: 16 }}
+              />
+
+              <label style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 14, background: "#f7f7f7", minHeight: draftMedia ? 92 : 64, padding: 12, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
+                {draftMedia ? (
+                  <>
+                    <span style={{ width: 72, height: 76, borderRadius: 10, background: `url(${draftMedia.url}) center / cover`, flexShrink: 0, boxShadow: "0 10px 22px rgba(18,26,46,0.12)" }} />
+                    <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#121a2e" }}>Image du brouillon</span>
+                      <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draftMedia.fileName}</span>
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(18,26,46,0.58)" }}>Ajouter une image ou un PDF</span>
+                )}
+                <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleDraftMedia(file);
+                  event.currentTarget.value = "";
+                }} />
+              </label>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "center" }}>
+                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, minHeight: 46, fontSize: 14 }} />
+                <button type="button" onClick={() => handleSave("draft")} disabled={saving || !generatedContent.trim()} style={{ minHeight: 46, padding: "0 18px", borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  Sauvegarder
+                </button>
+                <ClientBlueButton compact type="button" onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate || !generatedContent.trim()}>
+                  Programmer
+                </ClientBlueButton>
+              </div>
+            </div>
+          ) : null}
+
+          {!rightEditorVisible && (
+          <>
           {filteredPosts.length === 0 ? (
             <div style={{ textAlign: "center", paddingTop: 64 }}>
               <Edit3 size={32} style={{ color: "rgba(18,26,46,0.1)", margin: "0 auto 12px" }} />
@@ -742,6 +800,25 @@ export default function PostsPage() {
                         <button onClick={(event) => { event.stopPropagation(); copyPost(post); }} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
                           {copiedId === post.id ? <Check size={13} style={{ color: "#168b64" }} /> : <Copy size={13} />}
                         </button>
+                        {post.status === "draft" && (
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openPostForEdit(post);
+                              if (!post.scheduledAt) {
+                                const tomorrow = new Date();
+                                tomorrow.setDate(tomorrow.getDate() + 1);
+                                tomorrow.setHours(9, 0, 0, 0);
+                                setScheduleDate(isoToLocalInput(tomorrow.toISOString()));
+                              }
+                            }}
+                            title="Planifier"
+                            style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", cursor: "pointer", color: "rgba(18,26,46,0.55)", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                          >
+                            <Calendar size={12} />
+                            Planifier
+                          </button>
+                        )}
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
@@ -803,6 +880,8 @@ export default function PostsPage() {
                 );
               })}
             </div>
+          )}
+          </>
           )}
         </div>
       </div>

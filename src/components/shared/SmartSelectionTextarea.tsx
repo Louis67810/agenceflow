@@ -16,6 +16,7 @@ interface SmartSelectionTextareaProps {
   prompt?: string;
   contextLabel: string;
   globalLabel?: string;
+  showGlobalAction?: boolean;
 }
 
 interface SelectionState {
@@ -52,6 +53,7 @@ export default function SmartSelectionTextarea({
   prompt,
   contextLabel,
   globalLabel = "Faire un changement global",
+  showGlobalAction = true,
 }: SmartSelectionTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
@@ -200,6 +202,34 @@ export default function SmartSelectionTextarea({
               Personnaliser
             </button>
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, maxHeight: 150, overflowY: "auto" }}>
+            {[
+              ["Hook", "Transforme ce passage en hook LinkedIn accrocheur."],
+              ["Open loop", "Transforme ce passage en open loop qui donne envie de lire la suite."],
+              ["Micro open loop", "Transforme ce passage en micro open loop court et subtil."],
+              ["Pattern interrupt", "Transforme ce passage en pattern interrupt surprenant mais crédible."],
+              ["Curiosity gap", "Transforme ce passage en curiosity gap sans clickbait."],
+              ["Accroche contrarienne", "Transforme ce passage en accroche contrarienne forte mais défendable."],
+              ["Liste rythmée", "Transforme ce passage en liste courte et rythmée."],
+              ["Structure escalier", "Transforme ce passage en structure escalier avec des lignes de longueur variée."],
+              ["Symbole visuel", "Ajoute quelques symboles visuels utiles sans surcharger."],
+              ["Cadence courte", "Transforme ce passage avec une cadence plus courte et percutante."],
+              ["Question ouverte", "Transforme ce passage en question ouverte qui invite à répondre."],
+              ["Polarisation", "Transforme ce passage en prise de position polarisante mais professionnelle."],
+              ["Citation mémorable", "Transforme ce passage en phrase courte, mémorable et citable."],
+              ["Insight personnel", "Transforme ce passage en insight personnel crédible et spécifique."],
+              ["Lead magnet", "Transforme ce passage en invitation subtile à demander une ressource."],
+              ["Erreur volontaire", "Ajoute une aspérité volontaire qui peut provoquer des réactions, sans nuire à la crédibilité."],
+              ["Répétition dynamique", "Ajoute une répétition dynamique pour renforcer le rythme."],
+              ["Vulnérabilité", "Transforme ce passage avec plus de vulnérabilité, sans dramatiser."],
+              ["Contraste émotionnel", "Ajoute un contraste émotionnel clair entre tension et résolution."],
+            ].map(([label, instruction]) => (
+              <button key={label} type="button" onClick={() => runTransform(instruction, false)} disabled={loadingMode !== null} style={{ ...toolbarButton, justifyContent: "flex-start", fontSize: 11 }}>
+                <Wand2 size={12} />
+                {label}
+              </button>
+            ))}
+          </div>
           {showCustomPrompt && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <input
@@ -253,7 +283,7 @@ export default function SmartSelectionTextarea({
         style={textareaStyle}
       />
 
-      {hasText && (
+      {showGlobalAction && hasText && (
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
