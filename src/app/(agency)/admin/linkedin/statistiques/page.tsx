@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
-import { DEFAULT_STYLES, type LinkedInPost, type LinkedInPostAnalytics, type LinkedInStyle } from "@/types/linkedin";
+import {
+  DEFAULT_STYLES,
+  STYLE_CATEGORY_COLORS,
+  type LinkedInPost,
+  type LinkedInPostAnalytics,
+  type LinkedInStyle,
+} from "@/types/linkedin";
 import {
   computeLinkedInPostScore,
   createImportedAnalyticsPost,
@@ -28,16 +34,26 @@ const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
 
 type EditableAnalytics = Omit<LinkedInPostAnalytics, "importedAt" | "sourceFileName">;
 type PostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
+type SortKey = "date" | "impressions" | "reactions" | "comments" | "linkClicks" | "score";
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: "score", label: "Meilleure performance" },
+  { key: "date", label: "Plus récent" },
+  { key: "impressions", label: "Plus d'impressions" },
+  { key: "reactions", label: "Plus de réactions" },
+  { key: "comments", label: "Plus de commentaires" },
+  { key: "linkClicks", label: "Plus de clics lien" },
+];
 
 const figmaInputStyle: CSSProperties = {
   width: "100%",
-  minHeight: 52,
+  minHeight: 42,
   border: "1px solid rgba(18,26,46,0.13)",
   borderRadius: 10,
   background: "#fff",
-  padding: "0 14px",
+  padding: "0 12px",
   fontFamily: '"Inter", sans-serif',
-  fontSize: 15,
+  fontSize: 13,
   fontWeight: 500,
   color: "#121a2e",
   outline: "none",
@@ -46,22 +62,22 @@ const figmaInputStyle: CSSProperties = {
 
 const figmaLabelStyle: CSSProperties = {
   display: "block",
-  marginBottom: 10,
+  marginBottom: 8,
   fontFamily: '"Inter", sans-serif',
-  fontSize: 15,
+  fontSize: 13,
   fontWeight: 500,
   color: "rgba(18,26,46,0.68)",
 };
 
 const loginButtonStyle: CSSProperties = {
   width: "100%",
-  minHeight: 52,
-  padding: "14px 20px",
+  minHeight: 46,
+  padding: "12px 18px",
   background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
   color: "#fff",
   border: "1px solid #2f4d9d",
   borderRadius: 10,
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 600,
   letterSpacing: "-0.45px",
   cursor: "pointer",
@@ -219,8 +235,8 @@ function ReactionDots() {
         <span
           key={color}
           style={{
-            width: 17,
-            height: 17,
+            width: 14,
+            height: 14,
             borderRadius: 999,
             background: color,
             border: "2px solid #f0f0f0",
@@ -237,16 +253,60 @@ function MediaSquare({ analytics }: { analytics: LinkedInPostAnalytics }) {
   return (
     <div
       style={{
-        width: 96,
-        height: 104,
+        width: 76,
+        height: 84,
         borderRadius: 5.4,
         border: "2px solid #fff",
         background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc",
-        boxShadow: "0px 21.722px 27.153px rgba(0,0,0,0.12)",
+        boxShadow: "0px 16px 22px rgba(0,0,0,0.11)",
         transform: "rotate(-1.83deg)",
         flexShrink: 0,
       }}
     />
+  );
+}
+
+function styleChipColors(style: LinkedInStyle) {
+  const category = STYLE_CATEGORY_COLORS[style.category] ?? STYLE_CATEGORY_COLORS.custom;
+  if (category.includes("purple")) return { bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" };
+  if (category.includes("blue")) return { bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe" };
+  if (category.includes("teal")) return { bg: "#ccfbf1", color: "#0f766e", border: "#99f6e4" };
+  if (category.includes("red")) return { bg: "#fee2e2", color: "#b91c1c", border: "#fecaca" };
+  if (category.includes("orange")) return { bg: "#ffedd5", color: "#c2410c", border: "#fed7aa" };
+  if (category.includes("indigo")) return { bg: "#e0e7ff", color: "#4338ca", border: "#c7d2fe" };
+  return { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" };
+}
+
+function StyleChip({
+  style,
+  active,
+  onClick,
+}: {
+  style: LinkedInStyle;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const colors = styleChipColors(style);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: `1px solid ${active ? colors.color : colors.border}`,
+        background: active ? colors.bg : "#fff",
+        color: colors.color,
+        borderRadius: 999,
+        padding: "7px 10px",
+        fontFamily: '"Inter", sans-serif',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        lineHeight: 1,
+        boxShadow: active ? "0 6px 14px rgba(18,26,46,0.08)" : "none",
+      }}
+    >
+      {style.name}
+    </button>
   );
 }
 
@@ -259,7 +319,10 @@ export default function LinkedInStatsPage() {
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [sortBy, setSortBy] = useState<"score" | "date">("score");
+  const [sortBy, setSortBy] = useState<SortKey>("score");
+  const [sortOpen, setSortOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
   const [importDragActive, setImportDragActive] = useState(false);
   const [mediaDragActive, setMediaDragActive] = useState(false);
 
@@ -301,6 +364,13 @@ export default function LinkedInStatsPage() {
         return new Date(bDate).getTime() - new Date(aDate).getTime();
       });
     }
+    if (sortBy !== "score") {
+      return sorted.sort((a, b) => {
+        const aValue = normalizeAnalytics(a.analytics)[sortBy] ?? 0;
+        const bValue = normalizeAnalytics(b.analytics)[sortBy] ?? 0;
+        return bValue - aValue;
+      });
+    }
     return sorted.sort((a, b) => computeLinkedInPostScore(b) - computeLinkedInPostScore(a));
   }, [publishedPosts, sortBy]);
 
@@ -321,7 +391,7 @@ export default function LinkedInStatsPage() {
   function selectPost(post: LinkedInPost) {
     const analytics = normalizeAnalytics(post.analytics);
     setSelectedPostId(post.id);
-    setSelectedStyleId(post.styleId ?? "");
+    setSelectedStyleId(post.styleId ?? styles[0]?.id ?? "");
     setPostContent(getPostContentFallback(post));
     setEditor({
       postUrl: analytics.postUrl ?? post.postUrl ?? "",
@@ -389,7 +459,7 @@ export default function LinkedInStatsPage() {
     });
 
     persist(updated);
-    clearEditorSelection("Post sauvegardé. La fiche est refermée, tu peux réimporter un nouveau fichier.");
+    clearEditorSelection();
   }
 
   async function handleImport(file: File) {
@@ -417,7 +487,7 @@ export default function LinkedInStatsPage() {
 
       persist(updatedPosts);
       selectPost(targetPost);
-      setImportMessage(match ? "Statistiques fusionnées avec le post existant." : "Nouveau post créé. Complète le format, le style et le contenu avant de sauvegarder.");
+      setImportMessage("");
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "Import impossible.");
     } finally {
@@ -436,7 +506,7 @@ export default function LinkedInStatsPage() {
         mediaStorageBytes: preview.bytes,
         format: prev.format === "text" && preview.previewKind === "pdf" ? "document" : prev.format,
       }));
-      setImportMessage(`Aperçu média prêt (${Math.round(preview.bytes / 1024)} ko environ).`);
+      setImportMessage("");
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "Média impossible à charger.");
     }
@@ -459,33 +529,39 @@ export default function LinkedInStatsPage() {
   const uploadIsMedia = Boolean(selectedPost);
   const uploadDragActive = uploadIsMedia ? mediaDragActive : importDragActive;
 
+  const sidebarWidth = isSidebarCollapsed ? 88 : 358;
+
   return (
-    <div style={{ display: "flex", minHeight: "100%", background: "#fbfbfb", overflow: "hidden", ...jk }}>
+    <div style={{ display: "flex", height: "100vh", background: "#fbfbfb", overflow: "hidden", ...jk }}>
       <aside
         style={{
-          width: 458,
-          minWidth: 458,
-          minHeight: "100vh",
+          width: sidebarWidth,
+          minWidth: sidebarWidth,
+          height: "100vh",
           background: "#fff",
           borderRight: "1px solid rgba(18,26,46,0.18)",
-          boxShadow: "13px 0px 29.1px rgba(0,0,0,0.10)",
+          boxShadow: "11px 0px 25px rgba(0,0,0,0.08)",
           display: "flex",
           flexDirection: "column",
+          minHeight: 0,
+          transition: "width 0.22s ease, min-width 0.22s ease",
         }}
       >
-        <div style={{ padding: "40px 36px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", padding: 4, borderRadius: 999, background: "#f0f0f0" }}>
+        <div style={{ padding: isSidebarCollapsed ? "28px 16px 0" : "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          {!isSidebarCollapsed && (
+          <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
             <button
               style={{
                 border: "1px solid rgba(0,0,0,0.12)",
                 borderRadius: 999,
                 background: "#fff",
-                minHeight: 38,
-                padding: "0 24px",
+                minHeight: 32,
+                padding: "0 18px",
                 color: "rgba(18,26,46,0.7)",
                 fontFamily: '"Inter", sans-serif',
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: 500,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
               }}
             >
               Posts
@@ -496,45 +572,49 @@ export default function LinkedInStatsPage() {
                 border: 0,
                 borderRadius: 999,
                 background: "transparent",
-                minHeight: 38,
-                padding: "0 20px",
+                minHeight: 32,
+                padding: "0 16px",
                 color: "rgba(18,26,46,0.45)",
                 fontFamily: '"Inter", sans-serif',
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: 500,
               }}
             >
               Données
             </button>
           </div>
+          )}
           <button
             type="button"
-            onClick={() => clearEditorSelection()}
+            onClick={() => setIsSidebarCollapsed((current) => !current)}
             style={{
               border: "1px solid rgba(18,26,46,0.14)",
               background: "#fff",
-              borderRadius: 11,
-              boxShadow: "0px 8px 18px rgba(0,0,0,0.08)",
-              minHeight: 42,
-              padding: "0 17px",
+              borderRadius: 10,
+              boxShadow: "0px 6px 14px rgba(0,0,0,0.08)",
+              minHeight: 34,
+              padding: isSidebarCollapsed ? "0 12px" : "0 14px",
               fontFamily: '"Inter", sans-serif',
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: 500,
               color: "rgba(18,26,46,0.72)",
               cursor: "pointer",
+              marginLeft: isSidebarCollapsed ? 0 : "auto",
             }}
           >
-            ← Réduire
+            {isSidebarCollapsed ? "→" : "← Réduire"}
           </button>
         </div>
 
-        <div style={{ padding: "27px 36px 0" }}>
-          <h1 style={{ margin: 0, fontSize: 28, lineHeight: "30px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.65px" }}>
+        {isSidebarCollapsed ? null : (
+        <>
+        <div style={{ padding: "22px 26px 0" }}>
+          <h1 style={{ margin: 0, fontSize: 22, lineHeight: "25px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
             Posts LinkedIn
           </h1>
         </div>
 
-        <div style={{ padding: "34px 36px 0" }}>
+        <div style={{ padding: "28px 26px 0" }}>
           <label
             onDragOver={(event) => {
               event.preventDefault();
@@ -547,7 +627,7 @@ export default function LinkedInStatsPage() {
             }}
             onDrop={uploadIsMedia ? handleMediaDrop : handleImportDrop}
             style={{
-              height: 130,
+              height: 102,
               borderRadius: 9,
               border: uploadDragActive ? "1px dashed rgba(18,26,46,0.45)" : "1px dashed rgba(0,0,0,0.16)",
               background: uploadDragActive ? "#f1f3f5" : "#f6f6f6",
@@ -560,10 +640,10 @@ export default function LinkedInStatsPage() {
             }}
           >
             <span style={{ display: "flex", flexDirection: "column", gap: 13, alignItems: "center" }}>
-              <span style={{ fontSize: 20, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
                 {uploadIsMedia ? "Importer une photo ici :" : "Importer un post LinkedIn Ici"}
               </span>
-              <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
+              <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
                 {importing ? "Import en cours..." : "Clique ici ou glisse un fichier ici"}
               </span>
             </span>
@@ -590,7 +670,7 @@ export default function LinkedInStatsPage() {
         </div>
 
         {selectedPost ? (
-          <div style={{ flex: 1, overflowY: "auto", padding: "54px 36px 116px", display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Format du post *">
               <select value={editor.format ?? "text"} onChange={(event) => handleEditorChange("format", event.target.value as PostFormat)} style={figmaInputStyle}>
                 <option value="text">Texte</option>
@@ -601,12 +681,16 @@ export default function LinkedInStatsPage() {
             </Field>
 
             <Field label="Style du post *">
-              <select value={selectedStyleId} onChange={(event) => setSelectedStyleId(event.target.value)} style={figmaInputStyle}>
-                <option value="">Choisir un style</option>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 10, border: "1px solid rgba(18,26,46,0.13)", borderRadius: 10, background: "#fff" }}>
                 {styles.map((style) => (
-                  <option key={style.id} value={style.id}>{style.name}</option>
+                  <StyleChip
+                    key={style.id}
+                    style={style}
+                    active={selectedStyleId === style.id}
+                    onClick={() => setSelectedStyleId(style.id)}
+                  />
                 ))}
-              </select>
+              </div>
             </Field>
 
             <Field label="Contenu du post *">
@@ -615,7 +699,7 @@ export default function LinkedInStatsPage() {
                 onChange={(event) => setPostContent(event.target.value)}
                 placeholder="Colle ici le contenu complet du post LinkedIn."
                 rows={8}
-                style={{ ...figmaInputStyle, minHeight: 152, padding: 14, lineHeight: 1.55, resize: "vertical", whiteSpace: "pre-wrap" }}
+                style={{ ...figmaInputStyle, minHeight: 132, padding: 12, lineHeight: 1.5, resize: "vertical", whiteSpace: "pre-wrap" }}
               />
             </Field>
 
@@ -650,7 +734,7 @@ export default function LinkedInStatsPage() {
         )}
 
         {selectedPost ? (
-          <div style={{ position: "sticky", bottom: 0, padding: "18px 32px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
+          <div style={{ position: "sticky", bottom: 0, padding: "14px 24px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
             <button
               type="button"
               onClick={saveEditor}
@@ -661,45 +745,71 @@ export default function LinkedInStatsPage() {
             </button>
           </div>
         ) : null}
+        </>
+        )}
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, padding: "33px 34px 48px", overflowY: "auto" }}>
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(170px, 1fr))", gap: 17, marginBottom: 59 }}>
+      <main style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
           {[
-            { label: "Posts publiés", value: publishedPosts.length, delta: "-25%", trend: "down" },
-            { label: "Impressions", value: formatNumber(totalImpressions), delta: "-25%", trend: "down" },
-            { label: "Réactions", value: formatNumber(totalReactions), delta: "-25%", trend: "down" },
-            { label: "Clics lien", value: formatNumber(totalLinkClicks || totalComments), delta: "+25%", trend: "up" },
+            { label: "Posts publiés", value: publishedPosts.length },
+            { label: "Impressions", value: formatNumber(totalImpressions) },
+            { label: "Réactions", value: formatNumber(totalReactions) },
+            { label: "Clics lien", value: formatNumber(totalLinkClicks || totalComments) },
           ].map((card) => (
-            <article key={card.label} style={{ minHeight: 135, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: "0px 14px 26px rgba(0,0,0,0.08)", padding: "27px 29px", boxSizing: "border-box" }}>
-              <div style={{ width: 48, height: 48, borderRadius: 10, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 17 }}>
-                <span style={{ width: 21, height: 14, border: "2px solid rgba(18,26,46,0.22)", borderRadius: 999, display: "block", position: "relative" }}>
-                  <span style={{ position: "absolute", width: 5, height: 5, borderRadius: 999, background: "rgba(18,26,46,0.22)", left: 6, top: 2.5 }} />
+            <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: "0px 12px 22px rgba(0,0,0,0.07)", padding: "20px 22px", boxSizing: "border-box" }}>
+              <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13 }}>
+                <span style={{ width: 17, height: 11, border: "2px solid rgba(18,26,46,0.22)", borderRadius: 999, display: "block", position: "relative" }}>
+                  <span style={{ position: "absolute", width: 4, height: 4, borderRadius: 999, background: "rgba(18,26,46,0.22)", left: 4.5, top: 1.5 }} />
                 </span>
               </div>
-              <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 13 }}>
-                <strong style={{ fontSize: 24, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
-                <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: card.trend === "up" ? "#159447" : "#c71d1d" }}>
-                  {card.trend === "up" ? "↑" : "↓"} {card.delta.replace("-", "")}
-                </span>
-              </div>
+              <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
+              <strong style={{ display: "block", marginTop: 8, fontSize: 20, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
             </article>
           ))}
         </section>
 
         <section>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 26 }}>
-            <h2 style={{ margin: 0, fontSize: 28, lineHeight: "32px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.65px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 22, position: "relative" }}>
+            <h2 style={{ margin: 0, fontSize: 24, lineHeight: "28px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
               Tous les posts
             </h2>
             <button
               type="button"
-              onClick={() => setSortBy((current) => (current === "score" ? "date" : "score"))}
-              style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 15, minHeight: 43, padding: "0 19px", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer" }}
+              onClick={() => setSortOpen((current) => !current)}
+              style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 14, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: "0 5px 12px rgba(0,0,0,0.04)" }}
             >
-              Trier ⇅
+              Trier
             </button>
+            {sortOpen ? (
+              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "#fff", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6 }}>
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => {
+                      setSortBy(option.key);
+                      setSortOpen(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      border: 0,
+                      borderRadius: 10,
+                      background: sortBy === option.key ? "rgba(0,0,0,0.05)" : "transparent",
+                      padding: "10px 11px",
+                      textAlign: "left",
+                      fontFamily: '"Inter", sans-serif',
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "rgba(18,26,46,0.78)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)" }}>
@@ -716,34 +826,42 @@ export default function LinkedInStatsPage() {
                     key={post.id}
                     type="button"
                     onClick={() => selectPost(post)}
+                    onMouseEnter={() => setHoveredPostId(post.id)}
+                    onMouseLeave={() => setHoveredPostId((current) => (current === post.id ? null : current))}
                     style={{
                       width: "100%",
-                      minHeight: 139,
+                      minHeight: 118,
                       border: 0,
                       borderBottom: "1px solid rgba(18,26,46,0.06)",
-                      background: isActive ? "rgba(1,71,255,0.035)" : "transparent",
+                      background: "transparent",
                       display: "grid",
-                      gridTemplateColumns: "112px minmax(220px, 1fr) auto auto",
+                      gridTemplateColumns: "84px minmax(180px, 1fr) auto auto",
                       alignItems: "center",
-                      gap: 20,
-                      padding: "28px 0",
+                      gap: 16,
+                      padding: 16,
                       textAlign: "left",
                       cursor: "pointer",
+                      borderRadius: 13,
+                      margin: "0 0 6px",
+                      boxSizing: "border-box",
+                      boxShadow: "none",
+                      backgroundColor: isActive ? "rgba(0,0,0,0.05)" : hoveredPostId === post.id ? "rgba(0,0,0,0.03)" : "transparent",
+                      transition: "background-color 0.14s ease",
                     }}
                   >
                     <MediaSquare analytics={analytics} />
                     <div style={{ minWidth: 0 }}>
-                      <h3 style={{ margin: 0, fontSize: 24, lineHeight: "29px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <h3 style={{ margin: 0, fontSize: 18, lineHeight: "23px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.25px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {buildPostTitle(post)}
                       </h3>
-                      <p style={{ margin: "10px 0 0", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>
+                      <p style={{ margin: "7px 0 0", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>
                         {formatPreviewDate(post)}
                       </p>
                     </div>
-                    <div style={{ minHeight: 62, borderRadius: 13, background: "#f0f0f0", padding: "0 18px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "#f0f0f0", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.reactions)} réactions <ReactionDots />
                     </div>
-                    <div style={{ minHeight: 62, borderRadius: 13, background: "#f0f0f0", padding: "0 22px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "#f0f0f0", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
                   </button>
