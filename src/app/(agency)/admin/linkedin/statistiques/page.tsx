@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
+import { ChevronDown, Eye, SlidersHorizontal } from "lucide-react";
 import {
   DEFAULT_STYLES,
   STYLE_CATEGORY_COLORS,
@@ -31,6 +32,9 @@ import {
 } from "@/lib/linkedin/workspace";
 
 const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
+const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
+const previewShadow = "0px 30px 12px rgba(0,0,0,0.01), 0px 17px 10px rgba(0,0,0,0.03), 0px 7px 7px rgba(0,0,0,0.04), 0px 2px 4.4px rgba(0,0,0,0.05)";
+const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,0,0.03), 0px 0.47px 1.18px rgba(0,0,0,0.03)";
 
 type EditableAnalytics = Omit<LinkedInPostAnalytics, "importedAt" | "sourceFileName">;
 type PostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
@@ -71,20 +75,19 @@ const figmaLabelStyle: CSSProperties = {
 
 const loginButtonStyle: CSSProperties = {
   width: "100%",
-  minHeight: 46,
-  padding: "12px 18px",
-  background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+  minHeight: 48,
+  padding: "14px 24px",
+  background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
   color: "#fff",
   border: "1px solid #2f4d9d",
   borderRadius: 10,
-  fontSize: 14,
-  fontWeight: 600,
-  letterSpacing: "-0.45px",
+  fontSize: 16,
+  fontWeight: 500,
   cursor: "pointer",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "inset 0px -3px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.2)",
+  boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)",
   fontFamily: '"Plus Jakarta Sans", sans-serif',
 };
 
@@ -143,8 +146,8 @@ function formatPreviewDate(post: LinkedInPost) {
 function buildPostTitle(post: LinkedInPost) {
   const words = post.content.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (words.length === 0) return "Post LinkedIn importé";
-  const title = words.slice(0, 4).join(" ");
-  return words.length > 4 ? `${title}...` : title;
+  const title = words.slice(0, 6).join(" ");
+  return words.length > 6 ? `${title}...` : title;
 }
 
 function getPostContentFallback(post: LinkedInPost) {
@@ -258,7 +261,7 @@ function MediaSquare({ analytics }: { analytics: LinkedInPostAnalytics }) {
         borderRadius: 5.4,
         border: "2px solid #fff",
         background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc",
-        boxShadow: "0px 16px 22px rgba(0,0,0,0.11)",
+        boxShadow: previewShadow,
         transform: "rotate(-1.83deg)",
         flexShrink: 0,
       }}
@@ -266,47 +269,32 @@ function MediaSquare({ analytics }: { analytics: LinkedInPostAnalytics }) {
   );
 }
 
-function styleChipColors(style: LinkedInStyle) {
-  const category = STYLE_CATEGORY_COLORS[style.category] ?? STYLE_CATEGORY_COLORS.custom;
-  if (category.includes("purple")) return { bg: "#f3e8ff", color: "#7e22ce", border: "#e9d5ff" };
-  if (category.includes("blue")) return { bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe" };
-  if (category.includes("teal")) return { bg: "#ccfbf1", color: "#0f766e", border: "#99f6e4" };
-  if (category.includes("red")) return { bg: "#fee2e2", color: "#b91c1c", border: "#fecaca" };
-  if (category.includes("orange")) return { bg: "#ffedd5", color: "#c2410c", border: "#fed7aa" };
-  if (category.includes("indigo")) return { bg: "#e0e7ff", color: "#4338ca", border: "#c7d2fe" };
-  return { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" };
+function styleCategoryLabel(style: LinkedInStyle) {
+  const labels: Record<LinkedInStyle["category"], string> = {
+    storytelling: "Storytelling",
+    valeur: "Valeur / Liste",
+    educatif: "Éducatif",
+    viral: "Opinion forte",
+    engagement: "Engagement",
+    data: "Data / Chiffres",
+    custom: "Personnalisé",
+  };
+  return labels[style.category] ?? style.category;
 }
 
 function StyleChip({
   style,
   active,
-  onClick,
 }: {
   style: LinkedInStyle;
   active: boolean;
-  onClick: () => void;
 }) {
-  const colors = styleChipColors(style);
+  const colorClass = STYLE_CATEGORY_COLORS[style.category] || "bg-gray-100 text-gray-700";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: `1px solid ${active ? colors.color : colors.border}`,
-        background: active ? colors.bg : "#fff",
-        color: colors.color,
-        borderRadius: 999,
-        padding: "7px 10px",
-        fontFamily: '"Inter", sans-serif',
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: "pointer",
-        lineHeight: 1,
-        boxShadow: active ? "0 6px 14px rgba(18,26,46,0.08)" : "none",
-      }}
-    >
-      {style.name}
-    </button>
+    <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${colorClass}`}>
+      {styleCategoryLabel(style)}
+      {active ? " ✓" : ""}
+    </span>
   );
 }
 
@@ -321,8 +309,10 @@ export default function LinkedInStatsPage() {
   const [importMessage, setImportMessage] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("score");
   const [sortOpen, setSortOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
+  const [hoveredSortKey, setHoveredSortKey] = useState<SortKey | null>(null);
   const [importDragActive, setImportDragActive] = useState(false);
   const [mediaDragActive, setMediaDragActive] = useState(false);
 
@@ -528,15 +518,29 @@ export default function LinkedInStatsPage() {
 
   const uploadIsMedia = Boolean(selectedPost);
   const uploadDragActive = uploadIsMedia ? mediaDragActive : importDragActive;
-
-  const sidebarWidth = isSidebarCollapsed ? 88 : 358;
+  const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+  const formatLabels: Record<PostFormat, string> = {
+    text: "Texte",
+    image: "Image",
+    carousel: "Carrousel",
+    video: "Vidéo",
+    poll: "Sondage",
+    document: "Document",
+    other: "Autre",
+  };
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#fbfbfb", overflow: "hidden", ...jk }}>
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <aside
         style={{
-          width: sidebarWidth,
-          minWidth: sidebarWidth,
+          width: 358,
+          minWidth: 358,
           height: "100vh",
           background: "#fff",
           borderRight: "1px solid rgba(18,26,46,0.18)",
@@ -544,11 +548,9 @@ export default function LinkedInStatsPage() {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          transition: "width 0.22s ease, min-width 0.22s ease",
         }}
       >
-        <div style={{ padding: isSidebarCollapsed ? "28px 16px 0" : "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          {!isSidebarCollapsed && (
+        <div style={{ padding: "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
             <button
               style={{
@@ -583,31 +585,8 @@ export default function LinkedInStatsPage() {
               Données
             </button>
           </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsSidebarCollapsed((current) => !current)}
-            style={{
-              border: "1px solid rgba(18,26,46,0.14)",
-              background: "#fff",
-              borderRadius: 10,
-              boxShadow: "0px 6px 14px rgba(0,0,0,0.08)",
-              minHeight: 34,
-              padding: isSidebarCollapsed ? "0 12px" : "0 14px",
-              fontFamily: '"Inter", sans-serif',
-              fontSize: 13,
-              fontWeight: 500,
-              color: "rgba(18,26,46,0.72)",
-              cursor: "pointer",
-              marginLeft: isSidebarCollapsed ? 0 : "auto",
-            }}
-          >
-            {isSidebarCollapsed ? "→" : "← Réduire"}
-          </button>
         </div>
 
-        {isSidebarCollapsed ? null : (
-        <>
         <div style={{ padding: "22px 26px 0" }}>
           <h1 style={{ margin: 0, fontSize: 22, lineHeight: "25px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
             Posts LinkedIn
@@ -639,14 +618,26 @@ export default function LinkedInStatsPage() {
               transition: "background 0.18s ease, border 0.18s ease",
             }}
           >
-            <span style={{ display: "flex", flexDirection: "column", gap: 13, alignItems: "center" }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
-                {uploadIsMedia ? "Importer une photo ici :" : "Importer un post LinkedIn Ici"}
+            {uploadIsMedia && editor.mediaPreviewUrl ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, width: "100%" }}>
+                <span style={{ width: 58, height: 64, borderRadius: 6, background: `url(${editor.mediaPreviewUrl}) center / cover`, boxShadow: previewShadow, border: "2px solid #fff", transform: "rotate(-1.8deg)", flexShrink: 0 }} />
+                <span style={{ display: "flex", flexDirection: "column", gap: 5, textAlign: "left", minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(18,26,46,0.75)" }}>Média importé</span>
+                  <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 12, fontWeight: 500, color: "rgba(18,26,46,0.48)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    Clique ou glisse un fichier pour remplacer
+                  </span>
+                </span>
               </span>
-              <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
-                {importing ? "Import en cours..." : "Clique ici ou glisse un fichier ici"}
+            ) : (
+              <span style={{ display: "flex", flexDirection: "column", gap: 13, alignItems: "center" }}>
+                <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
+                  {uploadIsMedia ? "Importer une photo ici :" : "Importer un post LinkedIn Ici"}
+                </span>
+                <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
+                  {importing ? "Import en cours..." : "Clique ici ou glisse un fichier ici"}
+                </span>
               </span>
-            </span>
+            )}
             <input
               type="file"
               accept={uploadIsMedia ? "image/*,.pdf,application/pdf" : ".xlsx,.csv"}
@@ -672,24 +663,64 @@ export default function LinkedInStatsPage() {
         {selectedPost ? (
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Format du post *">
-              <select value={editor.format ?? "text"} onChange={(event) => handleEditorChange("format", event.target.value as PostFormat)} style={figmaInputStyle}>
-                <option value="text">Texte</option>
-                <option value="image">Image</option>
-                <option value="carousel">Carrousel</option>
-                <option value="video">Vidéo</option>
-              </select>
+              <div style={{ position: "relative" }}>
+                <button type="button" onClick={() => setFormatOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+                  <span>{formatLabels[(editor.format ?? "text") as PostFormat]}</span>
+                  <ChevronDown size={15} style={{ color: "rgba(18,26,46,0.42)" }} />
+                </button>
+                {formatOpen ? (
+                  <div style={{ position: "absolute", top: 48, left: 0, right: 0, zIndex: 10, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 12, background: "#fff", boxShadow: "0px 16px 34px rgba(18,26,46,0.12)", padding: 6 }}>
+                    {(["text", "image", "carousel", "video"] as PostFormat[]).map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        onClick={() => {
+                          handleEditorChange("format", format);
+                          setFormatOpen(false);
+                        }}
+                        style={{ width: "100%", border: 0, borderRadius: 9, background: editor.format === format ? "rgba(0,0,0,0.03)" : "transparent", padding: "9px 10px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: '"Inter", sans-serif' }}
+                      >
+                        {formatLabels[format]}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </Field>
 
             <Field label="Style du post *">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 10, border: "1px solid rgba(18,26,46,0.13)", borderRadius: 10, background: "#fff" }}>
-                {styles.map((style) => (
-                  <StyleChip
-                    key={style.id}
-                    style={style}
-                    active={selectedStyleId === style.id}
-                    onClick={() => setSelectedStyleId(style.id)}
-                  />
-                ))}
+              <div style={{ position: "relative" }}>
+                <button type="button" onClick={() => setStyleOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: 10 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    {selectedStyle ? (
+                      <>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedStyle.name}</span>
+                        <StyleChip style={selectedStyle} active={false} />
+                      </>
+                    ) : "Choisir un style"}
+                  </span>
+                  <ChevronDown size={15} style={{ color: "rgba(18,26,46,0.42)", flexShrink: 0 }} />
+                </button>
+                {styleOpen ? (
+                  <div style={{ position: "absolute", top: 48, left: 0, right: 0, zIndex: 11, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 12, background: "#fff", boxShadow: "0px 16px 34px rgba(18,26,46,0.12)", padding: 6, maxHeight: 260, overflowY: "auto" }}>
+                    {styles.map((style) => (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStyleId(style.id);
+                          setStyleOpen(false);
+                        }}
+                        style={{ width: "100%", border: 0, borderRadius: 9, background: selectedStyleId === style.id ? "rgba(0,0,0,0.03)" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: '"Inter", sans-serif' }}
+                      >
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{style.name}</span>
+                        </span>
+                        <StyleChip style={style} active={selectedStyleId === style.id} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </Field>
 
@@ -734,7 +765,8 @@ export default function LinkedInStatsPage() {
         )}
 
         {selectedPost ? (
-          <div style={{ position: "sticky", bottom: 0, padding: "14px 24px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
+          <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
+            <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15 }}>
             <button
               type="button"
               onClick={saveEditor}
@@ -743,10 +775,9 @@ export default function LinkedInStatsPage() {
             >
               Sauvegarder
             </button>
+            </div>
           </div>
         ) : null}
-        </>
-        )}
       </aside>
 
       <main style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}>
@@ -757,11 +788,9 @@ export default function LinkedInStatsPage() {
             { label: "Réactions", value: formatNumber(totalReactions) },
             { label: "Clics lien", value: formatNumber(totalLinkClicks || totalComments) },
           ].map((card) => (
-            <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: "0px 12px 22px rgba(0,0,0,0.07)", padding: "20px 22px", boxSizing: "border-box" }}>
+            <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box" }}>
               <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13 }}>
-                <span style={{ width: 17, height: 11, border: "2px solid rgba(18,26,46,0.22)", borderRadius: 999, display: "block", position: "relative" }}>
-                  <span style={{ position: "absolute", width: 4, height: 4, borderRadius: 999, background: "rgba(18,26,46,0.22)", left: 4.5, top: 1.5 }} />
-                </span>
+                <Eye size={17} style={{ color: "rgba(18,26,46,0.24)" }} />
               </div>
               <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
               <strong style={{ display: "block", marginTop: 8, fontSize: 20, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
@@ -777,16 +806,18 @@ export default function LinkedInStatsPage() {
             <button
               type="button"
               onClick={() => setSortOpen((current) => !current)}
-              style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 14, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: "0 5px 12px rgba(0,0,0,0.04)" }}
+              style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
             >
-              Trier
+              Trier <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
             </button>
             {sortOpen ? (
-              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "#fff", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6 }}>
+              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>
                 {SORT_OPTIONS.map((option) => (
                   <button
                     key={option.key}
                     type="button"
+                    onMouseEnter={() => setHoveredSortKey(option.key)}
+                    onMouseLeave={() => setHoveredSortKey((current) => (current === option.key ? null : current))}
                     onClick={() => {
                       setSortBy(option.key);
                       setSortOpen(false);
@@ -795,7 +826,7 @@ export default function LinkedInStatsPage() {
                       width: "100%",
                       border: 0,
                       borderRadius: 10,
-                      background: sortBy === option.key ? "rgba(0,0,0,0.05)" : "transparent",
+                      background: sortBy === option.key || hoveredSortKey === option.key ? "rgba(0,0,0,0.03)" : "transparent",
                       padding: "10px 11px",
                       textAlign: "left",
                       fontFamily: '"Inter", sans-serif',
@@ -845,7 +876,7 @@ export default function LinkedInStatsPage() {
                       margin: "0 0 6px",
                       boxSizing: "border-box",
                       boxShadow: "none",
-                      backgroundColor: isActive ? "rgba(0,0,0,0.05)" : hoveredPostId === post.id ? "rgba(0,0,0,0.03)" : "transparent",
+                      backgroundColor: isActive ? "rgba(0,0,0,0.03)" : hoveredPostId === post.id ? "rgba(0,0,0,0.02)" : "transparent",
                       transition: "background-color 0.14s ease",
                     }}
                   >
@@ -858,10 +889,10 @@ export default function LinkedInStatsPage() {
                         {formatPreviewDate(post)}
                       </p>
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "#f0f0f0", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.reactions)} réactions <ReactionDots />
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "#f0f0f0", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
                   </button>

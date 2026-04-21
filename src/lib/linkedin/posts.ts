@@ -186,6 +186,9 @@ export function mergePostAnalytics(post: LinkedInPost, analyticsPatch: Partial<L
     ...analyticsPatch,
     importedAt: analyticsPatch.importedAt ?? post.analytics?.importedAt ?? new Date().toISOString(),
   });
+  const analyticsPublishedAt = analytics.publishedDate
+    ? new Date(`${analytics.publishedDate}T${analytics.publishedTime || "12:00"}:00`).toISOString()
+    : undefined;
 
   return normalizePost({
     ...post,
@@ -195,11 +198,7 @@ export function mergePostAnalytics(post: LinkedInPost, analyticsPatch: Partial<L
     impressions: analytics.impressions,
     analytics,
     status: post.status === "draft" ? "published" : post.status,
-    publishedAt: post.publishedAt ?? (
-      analytics.publishedDate
-        ? new Date(`${analytics.publishedDate}T${analytics.publishedTime || "12:00"}:00`).toISOString()
-        : new Date().toISOString()
-    ),
+    publishedAt: analyticsPublishedAt ?? post.publishedAt ?? new Date().toISOString(),
   });
 }
 

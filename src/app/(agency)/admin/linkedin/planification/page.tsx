@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Calendar, Clock, Plus, Repeat2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Clock, Plus, Repeat2, Settings, X } from "lucide-react";
 import type { LinkedInPost } from "@/types/linkedin";
 import Link from "next/link";
 import {
@@ -42,6 +42,14 @@ function isoToDateKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
+function getPostCalendarDateKey(post: LinkedInPost): string | null {
+  if (post.status === "scheduled" && post.scheduledAt) return isoToDateKey(post.scheduledAt);
+  if (post.status !== "published") return null;
+  if (post.analytics?.publishedDate) return post.analytics.publishedDate;
+  if (post.publishedAt) return isoToDateKey(post.publishedAt);
+  return null;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -60,6 +68,7 @@ export default function LinkedInPlanificationPage() {
     month: new Date().getMonth(),
   });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoRecycleEnabled, setAutoRecycleEnabled] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled);
   const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
 
@@ -134,12 +143,7 @@ export default function LinkedInPlanificationPage() {
   const postsByDate = useMemo(() => {
     const map: Record<string, LinkedInPost[]> = {};
     for (const post of posts) {
-      const dateKey =
-        post.status === "scheduled" && post.scheduledAt
-          ? isoToDateKey(post.scheduledAt)
-          : post.status === "published" && post.publishedAt
-            ? isoToDateKey(post.publishedAt)
-            : null;
+      const dateKey = getPostCalendarDateKey(post);
       if (!dateKey) continue;
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(post);
@@ -157,8 +161,8 @@ export default function LinkedInPlanificationPage() {
 
   const monthKey = `${current.year}-${String(current.month + 1).padStart(2, "0")}`;
   const monthPosts = posts.filter((post) => {
-    const date = post.status === "scheduled" ? post.scheduledAt : post.status === "published" ? post.publishedAt : null;
-    return Boolean(date && date.startsWith(monthKey));
+    const dateKey = getPostCalendarDateKey(post);
+    return Boolean(dateKey && dateKey.startsWith(monthKey));
   });
   const scheduledThisMonth = monthPosts.filter((post) => post.status === "scheduled").length;
   const publishedThisMonth = monthPosts.filter((post) => post.status === "published").length;
@@ -226,66 +230,6 @@ export default function LinkedInPlanificationPage() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr 0.8fr", gap: 12, marginBottom: 14 }}>
-            <div style={{ borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)", background: "#fff", padding: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <Repeat2 size={15} style={{ color: "#7c3aed" }} />
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#121a2e" }}>Auto-republication</p>
-              </div>
-              <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>
-                Les posts du top 25% sont replanifies automatiquement dans le calendrier apres le delai choisi.
-              </p>
-            </div>
-
-            <div style={{ borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)", background: "#fff", padding: 14 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>Delai de relance</p>
-              <input
-                type="number"
-                min={30}
-                max={365}
-                value={autoRecycleDelayDays}
-                onChange={(event) => updateAutoRecyclePreferences({ delayDays: Number(event.target.value) || 120 })}
-                style={{
-                  width: "100%",
-                  background: "#f6f6f6",
-                  border: "1px solid rgba(0,0,0,0.09)",
-                  borderRadius: 10,
-                  padding: "9px 12px",
-                  fontSize: 13,
-                  color: "#121a2e",
-                  outline: "none",
-                  boxSizing: "border-box",
-                  fontFamily: '"Plus Jakarta Sans", sans-serif',
-                }}
-              />
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "rgba(18,26,46,0.4)" }}>Par exemple 90, 120 ou 150 jours</p>
-            </div>
-
-            <div style={{ borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)", background: "#fff", padding: 14 }}>
-              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>Etat</p>
-              <button
-                onClick={() => updateAutoRecyclePreferences({ enabled: !autoRecycleEnabled })}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: autoRecycleEnabled ? "1px solid #6d28d9" : "1px solid rgba(0,0,0,0.09)",
-                  background: autoRecycleEnabled ? "#f3e8ff" : "#f6f6f6",
-                  color: autoRecycleEnabled ? "#6d28d9" : "rgba(18,26,46,0.55)",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: '"Plus Jakarta Sans", sans-serif',
-                }}
-              >
-                {autoRecycleEnabled ? "Activee" : "Desactivee"}
-              </button>
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "rgba(18,26,46,0.4)" }}>
-                {topQuartilePosts.length} post(s) dans le top 25%
-              </p>
-            </div>
-          </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 8 }}>
             {DAYS.map((day) => (
               <div key={day} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", padding: "8px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -415,12 +359,149 @@ export default function LinkedInPlanificationPage() {
           </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+        style={{
+          position: "fixed",
+          right: 24,
+          bottom: 24,
+          zIndex: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minHeight: 40,
+          padding: "0 15px",
+          borderRadius: 18,
+          border: "1px solid rgba(18,26,46,0.12)",
+          background: "#fff",
+          boxShadow: "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,0,0.03), 0px 0.47px 1.18px rgba(0,0,0,0.03)",
+          color: "rgba(18,26,46,0.72)",
+          cursor: "pointer",
+          fontFamily: '"Inter", sans-serif',
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        <Settings size={15} style={{ color: "rgba(18,26,46,0.5)" }} />
+        Auto-republication
+      </button>
+
+      {settingsOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(18,26,46,0.18)",
+            backdropFilter: "blur(12px)",
+            animation: "planOverlayIn 0.18s ease-out",
+          }}
+        >
+          <style jsx global>{`
+            @keyframes planOverlayIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+          `}</style>
+          <div
+            style={{
+              width: 420,
+              borderRadius: 20,
+              border: "1px solid rgba(18,26,46,0.12)",
+              background: "rgba(255,255,255,0.94)",
+              boxShadow: "0 24px 70px rgba(18,26,46,0.18)",
+              padding: 22,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <Repeat2 size={16} style={{ color: "#7c3aed" }} />
+                  <h3 style={{ margin: 0, color: "#121a2e", fontSize: 17, fontWeight: 700, letterSpacing: "-0.3px" }}>
+                    Auto-republication
+                  </h3>
+                </div>
+                <p style={{ margin: 0, color: "rgba(18,26,46,0.52)", fontSize: 12, lineHeight: 1.5 }}>
+                  Replanifie automatiquement les posts du top 25% apres le delai choisi.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                style={{ width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                aria-label="Fermer les reglages"
+              >
+                <X size={15} style={{ color: "rgba(18,26,46,0.55)" }} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <button
+                type="button"
+                onClick={() => updateAutoRecyclePreferences({ enabled: !autoRecycleEnabled })}
+                style={{
+                  width: "100%",
+                  minHeight: 48,
+                  borderRadius: 13,
+                  border: autoRecycleEnabled ? "1px solid #7c3aed" : "1px solid rgba(18,26,46,0.1)",
+                  background: autoRecycleEnabled ? "#f3e8ff" : "rgba(0,0,0,0.03)",
+                  color: autoRecycleEnabled ? "#6d28d9" : "rgba(18,26,46,0.62)",
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {autoRecycleEnabled ? "Auto-republication activee" : "Auto-republication desactivee"}
+              </button>
+
+              <label style={{ display: "block" }}>
+                <span style={{ display: "block", marginBottom: 8, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.62)" }}>
+                  Delai avant relance
+                </span>
+                <input
+                  type="number"
+                  min={30}
+                  max={365}
+                  value={autoRecycleDelayDays}
+                  onChange={(event) => updateAutoRecyclePreferences({ delayDays: Number(event.target.value) || 120 })}
+                  style={{
+                    width: "100%",
+                    minHeight: 44,
+                    background: "#fff",
+                    border: "1px solid rgba(18,26,46,0.12)",
+                    borderRadius: 12,
+                    padding: "0 13px",
+                    fontSize: 14,
+                    color: "#121a2e",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  }}
+                />
+              </label>
+              <p style={{ margin: 0, color: "rgba(18,26,46,0.45)", fontSize: 12, lineHeight: 1.55 }}>
+                {topQuartilePosts.length} post(s) dans le top 25%. {autoRecyclePosts.length} relance(s) auto deja creee(s).
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function PostSideCard({ post }: { post: LinkedInPost }) {
-  const date = post.status === "scheduled" ? post.scheduledAt : post.publishedAt;
+  const date = post.status === "scheduled"
+    ? post.scheduledAt
+    : post.analytics?.publishedDate
+      ? new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`).toISOString()
+      : post.publishedAt;
   const style = STATUS_STYLES[post.status] || STATUS_STYLES.draft;
   const statusLabel = post.status === "scheduled" ? "Planifie" : post.status === "published" ? "Publie" : "Brouillon";
   const isAutoRecycle = Boolean(post.analytics?.autoRecycleSourcePostId);
