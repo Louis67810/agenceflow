@@ -13,6 +13,9 @@ export const EMPTY_ANALYTICS: LinkedInPostAnalytics = {
   mediaStorageBytes: 0,
   autoRecycleSourcePostId: undefined,
   autoRecycleCreatedAt: undefined,
+  videoViews: 0,
+  watchTime: "",
+  averageWatchTime: "",
   impressions: 0,
   reach: 0,
   profileViews: 0,
@@ -26,6 +29,7 @@ export const EMPTY_ANALYTICS: LinkedInPostAnalytics = {
   linkClicks: 0,
   customButtonClicks: 0,
   engagementRate: 0,
+  demographics: [],
 };
 
 function toNumber(value: unknown): number {
@@ -42,6 +46,9 @@ export function normalizeAnalytics(analytics?: Partial<LinkedInPostAnalytics>): 
   return {
     ...EMPTY_ANALYTICS,
     ...analytics,
+    videoViews: toNumber(analytics?.videoViews),
+    watchTime: analytics?.watchTime ?? "",
+    averageWatchTime: analytics?.averageWatchTime ?? "",
     impressions: toNumber(analytics?.impressions),
     reach: toNumber(analytics?.reach),
     profileViews: toNumber(analytics?.profileViews),
@@ -55,6 +62,7 @@ export function normalizeAnalytics(analytics?: Partial<LinkedInPostAnalytics>): 
     linkClicks: toNumber(analytics?.linkClicks),
     customButtonClicks: toNumber(analytics?.customButtonClicks),
     engagementRate: toNumber(analytics?.engagementRate),
+    demographics: Array.isArray(analytics?.demographics) ? analytics.demographics : [],
   };
 }
 
@@ -153,7 +161,10 @@ export function ensureAutoRecyclePosts(
 
   for (const post of topPosts) {
     if (existingSourceIds.has(post.id)) continue;
-    const baseDate = post.publishedAt ? new Date(post.publishedAt) : new Date(post.createdAt);
+    const publishedFromAnalytics = post.analytics?.publishedDate
+      ? new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`)
+      : null;
+    const baseDate = publishedFromAnalytics ?? (post.publishedAt ? new Date(post.publishedAt) : new Date(post.createdAt));
     const scheduledDate = new Date(baseDate);
     scheduledDate.setDate(scheduledDate.getDate() + delayDays);
     if (scheduledDate <= now) continue;

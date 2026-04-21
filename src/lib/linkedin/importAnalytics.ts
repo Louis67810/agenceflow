@@ -129,6 +129,10 @@ function rowsToAnalytics(rows: string[][], sourceFileName?: string): LinkedInPos
     linkClicks: 0,
     customButtonClicks: 0,
     engagementRate: 0,
+    videoViews: 0,
+    watchTime: "",
+    averageWatchTime: "",
+    demographics: [],
     importedAt: new Date().toISOString(),
     sourceFileName,
   };
@@ -153,6 +157,15 @@ function rowsToAnalytics(rows: string[][], sourceFileName?: string): LinkedInPos
         break;
       case "Membres touchés":
         analytics.reach = parseFrenchNumber(value);
+        break;
+      case "Vues de vidéos":
+        analytics.videoViews = parseFrenchNumber(value);
+        break;
+      case "Temps de visionnage":
+        analytics.watchTime = value;
+        break;
+      case "Durée moyenne de visionnage":
+        analytics.averageWatchTime = value;
         break;
       case "Vues du profil depuis ce post":
         analytics.profileViews = parseFrenchNumber(value);
@@ -185,6 +198,13 @@ function rowsToAnalytics(rows: string[][], sourceFileName?: string): LinkedInPos
         analytics.customButtonClicks = parseFrenchNumber(value);
         break;
       default:
+        if (["Lieu", "Niveau hiérarchique", "Secteur", "Taille de l’entreprise", "Taille de l'entreprise"].includes(key) && value) {
+          analytics.demographics.push({
+            category: key,
+            value,
+            percentage: thirdValue.trim(),
+          });
+        }
         if (key.startsWith("http")) {
           analytics.linkUrl = key;
           if (!analytics.linkClicks) analytics.linkClicks = parseFrenchNumber(value);

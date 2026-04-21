@@ -104,6 +104,9 @@ function emptyEditableAnalytics(): EditableAnalytics {
     mediaStorageBytes: 0,
     autoRecycleSourcePostId: "",
     autoRecycleCreatedAt: "",
+    videoViews: 0,
+    watchTime: "",
+    averageWatchTime: "",
     impressions: 0,
     reach: 0,
     profileViews: 0,
@@ -117,6 +120,7 @@ function emptyEditableAnalytics(): EditableAnalytics {
     linkClicks: 0,
     customButtonClicks: 0,
     engagementRate: 0,
+    demographics: [],
   };
 }
 
@@ -402,6 +406,9 @@ export default function LinkedInStatsPage() {
       mediaStorageBytes: analytics.mediaStorageBytes ?? 0,
       autoRecycleSourcePostId: analytics.autoRecycleSourcePostId ?? "",
       autoRecycleCreatedAt: analytics.autoRecycleCreatedAt ?? "",
+      videoViews: analytics.videoViews,
+      watchTime: analytics.watchTime,
+      averageWatchTime: analytics.averageWatchTime,
       impressions: analytics.impressions,
       reach: analytics.reach,
       profileViews: analytics.profileViews,
@@ -415,6 +422,7 @@ export default function LinkedInStatsPage() {
       linkClicks: analytics.linkClicks,
       customButtonClicks: analytics.customButtonClicks,
       engagementRate: analytics.engagementRate,
+      demographics: analytics.demographics,
     });
   }
 
@@ -700,7 +708,6 @@ export default function LinkedInStatsPage() {
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     {selectedStyle ? (
                       <>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedStyle.name}</span>
                         <StyleChip style={selectedStyle} />
                       </>
                     ) : "Choisir un style"}
@@ -719,9 +726,6 @@ export default function LinkedInStatsPage() {
                         }}
                         style={{ width: "100%", border: 0, borderRadius: 9, background: selectedStyleId === style.id ? "rgba(0,0,0,0.03)" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: '"Inter", sans-serif' }}
                       >
-                        <span style={{ minWidth: 0 }}>
-                          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{style.name}</span>
-                        </span>
                         <StyleChip style={style} />
                       </button>
                     ))}
@@ -765,6 +769,38 @@ export default function LinkedInStatsPage() {
             <Field label="Clics sur le lien">
               <input type="number" min={0} value={toInputValue(editor.linkClicks)} onChange={(event) => handleEditorChange("linkClicks", Number(event.target.value))} style={figmaInputStyle} />
             </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Vues vidéo">
+                <input type="number" min={0} value={toInputValue(editor.videoViews)} onChange={(event) => handleEditorChange("videoViews", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+              <Field label="Taux d'engagement %">
+                <input type="number" min={0} step="0.01" value={toInputValue(editor.engagementRate)} onChange={(event) => handleEditorChange("engagementRate", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Temps de visionnage">
+                <input value={toInputValue(editor.watchTime)} onChange={(event) => handleEditorChange("watchTime", event.target.value)} style={figmaInputStyle} />
+              </Field>
+              <Field label="Durée moyenne">
+                <input value={toInputValue(editor.averageWatchTime)} onChange={(event) => handleEditorChange("averageWatchTime", event.target.value)} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            {editor.demographics.length > 0 && (
+              <div style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 12, padding: 12, background: "#fff" }}>
+                <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#121a2e" }}>Démographies importées</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+                  {editor.demographics.map((item, index) => (
+                    <div key={`${item.category}-${item.value}-${index}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, fontSize: 12, color: "rgba(18,26,46,0.62)" }}>
+                      <span>{item.category} · {item.value}</span>
+                      <strong style={{ color: "#121a2e" }}>{item.percentage}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ flex: 1 }} />
@@ -773,7 +809,7 @@ export default function LinkedInStatsPage() {
         {selectedPost ? (
           <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
             <ClientBlueButton type="button" onClick={saveEditor} disabled={!canSave}>
-              Enregistrer
+              Sauvegarder
             </ClientBlueButton>
           </div>
         ) : null}
@@ -807,7 +843,7 @@ export default function LinkedInStatsPage() {
               onClick={() => setSortOpen((current) => !current)}
               style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
             >
-              Trier <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
+              {SORT_OPTIONS.find((option) => option.key === sortBy)?.label ?? "Plus récent"} <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
             </button>
             {sortOpen ? (
               <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>

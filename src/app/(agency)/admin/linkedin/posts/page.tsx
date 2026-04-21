@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Wand2, Loader2, X, Check, Copy, Trash2, Link2,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
-  ThumbsUp, MessageCircle, Eye, Calendar, Tag,
+  ThumbsUp, MessageCircle, Eye, Calendar,
   BarChart2, Clock, Layers, Info,
 } from "lucide-react";
 import type { LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
@@ -35,6 +35,7 @@ import {
 import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
+type PostsView = "draft" | "scheduled";
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
@@ -75,6 +76,8 @@ export default function PostsPage() {
   const [tags, setTags] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [postsView, setPostsView] = useState<PostsView>("draft");
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({
@@ -141,7 +144,12 @@ export default function PostsPage() {
   }, []);
 
   const filteredPosts = posts
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    .filter((post) => post.status === postsView)
+    .sort((a, b) => {
+      const dateA = a.scheduledAt ?? a.publishedAt ?? a.createdAt;
+      const dateB = b.scheduledAt ?? b.publishedAt ?? b.createdAt;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
 
   const topPosts = [...posts]
     .filter(p => p.status === "published")
@@ -233,13 +241,57 @@ export default function PostsPage() {
     setGenerating(false);
   }
 
+  function resetEditor() {
+    setEditingPostId(null);
+    setGeneratedContent("");
+    setGeneratedSlides([]);
+    setManualIdea("");
+    setSourceInput("");
+    setScrapedContent("");
+    setScrapedTitle("");
+    setTags("");
+    setScheduleDate("");
+  }
+
+  function isoToLocalInput(iso?: string) {
+    if (!iso) return "";
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function openPostForEdit(post: LinkedInPost) {
+    setEditingPostId(post.id);
+    setPostType(post.type);
+    setSourceTab(post.sourceType === "idea" || post.sourceType === "manual" || post.sourceType === "url" || post.sourceType === "youtube" ? post.sourceType : "manual");
+    setSelectedStyleId(post.styleId ?? "");
+    setGeneratedContent(post.type === "carousel" ? "" : post.content);
+    setGeneratedSlides(post.type === "carousel" ? post.slides ?? post.content.split("\n\n---\n\n") : []);
+    setActiveSlide(0);
+    setManualIdea(post.sourceType === "manual" ? post.content : "");
+    setSourceInput(post.sourceUrl ?? "");
+    setScrapedTitle(post.sourceTitle ?? "");
+    setScrapedContent("");
+    setTags("");
+    setScheduleDate(isoToLocalInput(post.scheduledAt));
+  }
+
   function handleSave(status: "draft" | "scheduled" | "published") {
     const content = postType === "carousel" ? generatedSlides.join("\n\n---\n\n") : generatedContent;
     if (!content.trim()) return;
     setSaving(true);
     const selectedStyle = styles.find(s => s.id === selectedStyleId);
-    const newPost: LinkedInPost = {
-      id: crypto.randomUUID(), content, type: postType,
+    const existingPost = editingPostId ? posts.find((post) => post.id === editingPostId) : null;
+    const nextPost: LinkedInPost = {
+      ...(existingPost ?? {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        likes: 0,
+        comments: 0,
+        impressions: 0,
+      }),
+      content, type: postType,
       slides: postType === "carousel" ? generatedSlides : undefined,
       sourceType: sourceTab === "idea" ? "idea" : sourceTab === "manual" ? "manual" : sourceTab,
       sourceUrl: ["url", "youtube"].includes(sourceTab) ? sourceInput : undefined,
@@ -247,14 +299,14 @@ export default function PostsPage() {
       styleId: selectedStyleId || undefined, styleName: selectedStyle?.name,
       scheduledAt: status === "scheduled" && scheduleDate ? new Date(scheduleDate).toISOString() : undefined,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
-      likes: 0, comments: 0, impressions: 0, status,
-      tags: tags.split(",").map(t => t.trim()).filter(Boolean),
-      createdAt: new Date().toISOString(),
+      status,
+      tags: [],
     };
-    const updated = normalizePosts([newPost, ...posts]);
+    const updated = normalizePosts(editingPostId ? posts.map((post) => post.id === editingPostId ? nextPost : post) : [nextPost, ...posts]);
     setPosts(updated); saveLinkedInPosts(updated); void persistRemoteLinkedInPosts(updated, true);
-    setGeneratedContent(""); setGeneratedSlides([]); setManualIdea("");
-    setSourceInput(""); setScrapedContent(""); setScrapedTitle(""); setTags(""); setScheduleDate(""); setSaving(false);
+    setPostsView(status === "scheduled" ? "scheduled" : "draft");
+    resetEditor();
+    setSaving(false);
   }
 
   function deletePost(id: string) { const updated = normalizePosts(posts.filter(p => p.id !== id)); setPosts(updated); saveLinkedInPosts(updated); void persistRemoteLinkedInPosts(updated, true); }
@@ -419,7 +471,7 @@ export default function PostsPage() {
           </div>
 
           {/* Generate button */}
-          <ClientBlueButton compact type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>
+          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>
             {generating ? "Génération..." : "Générer avec l'IA"}
           </ClientBlueButton>
 
@@ -471,26 +523,18 @@ export default function PostsPage() {
                 </div>
               )}
 
-              {/* Tags + schedule */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
-                    <Tag size={10} /> Tags (virgule)
-                  </label>
-                  <input value={tags} onChange={e => setTags(e.target.value)} placeholder="linkedin, content..." style={{ ...inp, fontSize: 12 }} />
-                </div>
-                <div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
-                    <Clock size={10} /> Programmer
-                  </label>
-                  <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
-                </div>
+              {/* Schedule */}
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
+                  <Clock size={10} /> Programmer
+                </label>
+                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
               </div>
 
               {/* Save buttons */}
               <div style={{ display: "flex", gap: 8 }}>
                 <ClientBlueButton compact type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%" }}>
-                  Enregistrer en brouillon
+                  Sauvegarder
                 </ClientBlueButton>
                 {scheduleDate && (
                   <button onClick={() => handleSave("scheduled")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "10px 0", fontSize: 12 }}>
@@ -498,6 +542,15 @@ export default function PostsPage() {
                   </button>
                 )}
               </div>
+              {editingPostId && (
+                <button
+                  type="button"
+                  onClick={resetEditor}
+                  style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                >
+                  Fermer l&apos;edition
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -520,6 +573,36 @@ export default function PostsPage() {
 
         {/* Posts grid */}
         <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed" }}>
+              {([
+                ["draft", "Brouillons", stats.drafts],
+                ["scheduled", "PlanifiÃ©s", stats.scheduled],
+              ] as const).map(([view, label, count]) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setPostsView(view)}
+                  style={{
+                    minHeight: 30,
+                    padding: "0 13px",
+                    borderRadius: 999,
+                    border: "none",
+                    background: postsView === view ? "#fff" : "transparent",
+                    boxShadow: postsView === view ? "0px 1px 4px rgba(0,0,0,0.08)" : "none",
+                    color: postsView === view ? "#121a2e" : "rgba(18,26,46,0.5)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  }}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+          </div>
+
           {filteredPosts.length === 0 ? (
             <div style={{ textAlign: "center", paddingTop: 64 }}>
               <Edit3 size={32} style={{ color: "rgba(18,26,46,0.1)", margin: "0 auto 12px" }} />
@@ -531,7 +614,14 @@ export default function PostsPage() {
               {filteredPosts.map(post => {
                 const ss = STATUS_STYLES[post.status];
                 return (
-                  <div key={post.id} style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div
+                    key={post.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openPostForEdit(post)}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openPostForEdit(post); }}
+                    style={{ textAlign: "left", background: "#fff", borderRadius: 13, border: editingPostId === post.id ? "1px solid rgba(1,71,255,0.35)" : "1px solid rgba(0,0,0,0.09)", padding: 16, display: "flex", flexDirection: "column", gap: 12, cursor: "pointer", boxShadow: editingPostId === post.id ? "0 8px 22px rgba(1,71,255,0.08)" : "none", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                  >
                     {/* Header */}
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -544,11 +634,12 @@ export default function PostsPage() {
                         {post.styleName && <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{post.styleName}</span>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                        <button onClick={() => copyPost(post)} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
+                        <button onClick={(event) => { event.stopPropagation(); copyPost(post); }} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
                           {copiedId === post.id ? <Check size={13} style={{ color: "#168b64" }} /> : <Copy size={13} />}
                         </button>
                         <button
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             router.push(`/admin/linkedin/statistiques?postId=${encodeURIComponent(post.id)}`);
                           }}
                           title="Statistiques"
@@ -556,7 +647,7 @@ export default function PostsPage() {
                         >
                           <BarChart2 size={13} />
                         </button>
-                        <button onClick={() => deletePost(post.id)} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
+                        <button onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -592,16 +683,6 @@ export default function PostsPage() {
                       </div>
                     )}
 
-                    {/* Tags */}
-                    {post.tags.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {post.tags.map(tag => (
-                          <span key={tag} style={{ fontSize: 11, padding: "2px 8px", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 20, color: "rgba(18,26,46,0.5)" }}>
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}

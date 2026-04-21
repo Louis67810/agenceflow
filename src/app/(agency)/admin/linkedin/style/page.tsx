@@ -363,10 +363,10 @@ function StyleCard({
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <h3 style={{ fontWeight: 700, color: "#121a2e", fontSize: 14, margin: 0, letterSpacing: "-0.2px" }}>{style.name}</h3>
-              {style.isDefault && <span style={{ fontSize: 11, background: "#f6f6f6", color: "rgba(18,26,46,0.5)", padding: "2px 8px", borderRadius: 20 }}>Défaut</span>}
+              <h3 style={{ display: "none" }}>{style.name}</h3>
+              {style.isDefault && null}
             </div>
-            <span className={`inline-block text-xs rounded-full mt-1 ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1 }}>
+            <span className={`inline-block rounded-full ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1, fontSize: 14, fontWeight: 800, letterSpacing: "-0.15px" }}>
               {catLabel}
             </span>
           </div>

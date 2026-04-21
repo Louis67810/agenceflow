@@ -11,6 +11,9 @@ export interface LinkedInPostAnalytics {
   mediaStorageBytes?: number;
   autoRecycleSourcePostId?: string;
   autoRecycleCreatedAt?: string;
+  videoViews: number;
+  watchTime: string;
+  averageWatchTime: string;
   impressions: number;
   reach: number;
   profileViews: number;
@@ -24,6 +27,11 @@ export interface LinkedInPostAnalytics {
   linkClicks: number;
   customButtonClicks: number;
   engagementRate: number;
+  demographics: Array<{
+    category: string;
+    value: string;
+    percentage: string;
+  }>;
   importedAt?: string;
   sourceFileName?: string;
 }

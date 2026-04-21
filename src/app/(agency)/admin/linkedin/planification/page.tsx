@@ -169,14 +169,13 @@ export default function LinkedInPlanificationPage() {
   const publishedThisMonth = monthPosts.filter((post) => post.status === "published").length;
 
   const upcomingPosts = posts
-    .filter((post) => post.status === "scheduled" && post.scheduledAt && new Date(post.scheduledAt) > today)
-    .sort((a, b) => {
-      const autoA = a.analytics?.autoRecycleSourcePostId ? 1 : 0;
-      const autoB = b.analytics?.autoRecycleSourcePostId ? 1 : 0;
-      if (autoA !== autoB) return autoA - autoB;
-      return new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime();
-    })
+    .filter((post) => post.status === "scheduled" && post.scheduledAt && new Date(post.scheduledAt) > today && !post.analytics?.autoRecycleSourcePostId)
+    .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())
     .slice(0, 5);
+  const upcomingAutoRecyclePosts = posts
+    .filter((post) => post.status === "scheduled" && post.scheduledAt && new Date(post.scheduledAt) > today && post.analytics?.autoRecycleSourcePostId)
+    .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())
+    .slice(0, 3);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
@@ -351,6 +350,26 @@ export default function LinkedInPlanificationPage() {
                   </div>
                 </div>
               ))
+            )}
+            {upcomingAutoRecyclePosts.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                <p style={{ fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.35)", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Relances auto
+                </p>
+                {upcomingAutoRecyclePosts.map((post) => (
+                  <div key={post.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0" }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#7c3aed", marginTop: 6, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, color: "#6d28d9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
+                        {post.content.slice(0, 42)}...
+                      </p>
+                      <span style={{ fontSize: 11, color: "rgba(109,40,217,0.62)" }}>
+                        {new Date(post.scheduledAt!).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} a {formatTime(post.scheduledAt!)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
