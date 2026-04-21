@@ -142,6 +142,7 @@ export function ensureAutoRecyclePosts(
   options: {
     enabled: boolean;
     delayDays: number;
+    spacingDays?: number;
     now?: Date;
   }
 ): LinkedInPost[] {
@@ -149,6 +150,7 @@ export function ensureAutoRecyclePosts(
   if (!options.enabled) return normalizedPosts;
 
   const delayDays = Number.isFinite(options.delayDays) && options.delayDays > 0 ? options.delayDays : 120;
+  const spacingDays = Number.isFinite(options.spacingDays) && (options.spacingDays ?? 0) > 0 ? options.spacingDays! : 7;
   const now = options.now ?? new Date();
   const topPosts = getTopQuartilePublishedPosts(normalizedPosts);
   const existingSourceIds = new Set(
@@ -159,7 +161,7 @@ export function ensureAutoRecyclePosts(
 
   const createdPosts: LinkedInPost[] = [];
 
-  for (const post of topPosts) {
+  for (const [index, post] of topPosts.entries()) {
     if (existingSourceIds.has(post.id)) continue;
     const publishedFromAnalytics = post.analytics?.publishedDate
       ? new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`)
@@ -167,6 +169,7 @@ export function ensureAutoRecyclePosts(
     const baseDate = publishedFromAnalytics ?? (post.publishedAt ? new Date(post.publishedAt) : new Date(post.createdAt));
     const scheduledDate = new Date(baseDate);
     scheduledDate.setDate(scheduledDate.getDate() + delayDays);
+    scheduledDate.setDate(scheduledDate.getDate() + index * spacingDays);
     if (scheduledDate <= now) continue;
 
     createdPosts.push(

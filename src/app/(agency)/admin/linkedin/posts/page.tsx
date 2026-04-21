@@ -17,6 +17,7 @@ import {
   computeLinkedInPostScore,
   loadLinkedInPosts,
   mergePostAnalytics,
+  normalizeAnalytics,
   normalizePosts,
   saveLinkedInPosts,
 } from "@/lib/linkedin/posts";
@@ -36,6 +37,39 @@ import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type PostsView = "draft" | "scheduled";
+
+async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes: number; kind: "image" | "pdf" }> {
+  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" rx="20" fill="#f1f5f9"/><rect x="52" y="36" width="216" height="168" rx="16" fill="#fff" stroke="#d8dee8" stroke-width="5"/><rect x="78" y="66" width="74" height="90" rx="11" fill="#ef4444"/><text x="115" y="119" text-anchor="middle" font-size="24" font-family="Arial" font-weight="700" fill="#fff">PDF</text><text x="78" y="180" font-size="14" font-family="Arial" font-weight="700" fill="#121a2e">Aperçu PDF</text></svg>`;
+    return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, bytes: file.size, kind: "pdf" };
+  }
+
+  const rawDataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Impossible de lire l'image."));
+    reader.readAsDataURL(file);
+  });
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.src = rawDataUrl;
+  });
+  const ratio = Math.min(420 / image.width, 420 / image.height, 1);
+  const width = Math.max(96, Math.round(image.width * ratio));
+  const height = Math.max(96, Math.round(image.height * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas indisponible.");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  const url = canvas.toDataURL("image/jpeg", 0.45);
+  return { url, bytes: Math.round((url.length * 3) / 4), kind: "image" };
+}
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
@@ -78,6 +112,8 @@ export default function PostsPage() {
   const [saving, setSaving] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [postsView, setPostsView] = useState<PostsView>("draft");
+  const [draftMedia, setDraftMedia] = useState<{ url: string; kind: "image" | "pdf"; fileName: string; bytes: number } | null>(null);
+  const [manualEditorStarted, setManualEditorStarted] = useState(false);
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({
@@ -251,6 +287,8 @@ export default function PostsPage() {
     setScrapedTitle("");
     setTags("");
     setScheduleDate("");
+    setDraftMedia(null);
+    setManualEditorStarted(false);
   }
 
   function isoToLocalInput(iso?: string) {
@@ -275,6 +313,35 @@ export default function PostsPage() {
     setScrapedContent("");
     setTags("");
     setScheduleDate(isoToLocalInput(post.scheduledAt));
+    const analytics = normalizeAnalytics(post.analytics);
+    setDraftMedia(analytics.mediaPreviewUrl ? {
+      url: analytics.mediaPreviewUrl,
+      kind: analytics.mediaPreviewKind === "pdf" ? "pdf" : "image",
+      fileName: analytics.mediaFileName ?? "media",
+      bytes: analytics.mediaStorageBytes ?? 0,
+    } : null);
+    setManualEditorStarted(true);
+  }
+
+  function startManualPost() {
+    setSourceTab("manual");
+    setEditingPostId(null);
+    setGeneratedContent("");
+    setGeneratedSlides([]);
+    setPostType("post");
+    setGenerationError("");
+    setDraftMedia(null);
+    setManualEditorStarted(true);
+  }
+
+  async function handleDraftMedia(file: File) {
+    try {
+      const preview = await fileToCompressedPreview(file);
+      setDraftMedia({ url: preview.url, kind: preview.kind, fileName: file.name, bytes: preview.bytes });
+      setGenerationError("");
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Image impossible à charger.");
+    }
   }
 
   function handleSave(status: "draft" | "scheduled" | "published") {
@@ -300,7 +367,14 @@ export default function PostsPage() {
       scheduledAt: status === "scheduled" && scheduleDate ? new Date(scheduleDate).toISOString() : undefined,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
       status,
-      tags: [],
+      tags: selectedStyle ? [selectedStyle.name, selectedStyle.category] : [],
+      analytics: normalizeAnalytics({
+        ...existingPost?.analytics,
+        mediaPreviewUrl: draftMedia?.url ?? existingPost?.analytics?.mediaPreviewUrl,
+        mediaPreviewKind: draftMedia?.kind ?? existingPost?.analytics?.mediaPreviewKind,
+        mediaFileName: draftMedia?.fileName ?? existingPost?.analytics?.mediaFileName,
+        mediaStorageBytes: draftMedia?.bytes ?? existingPost?.analytics?.mediaStorageBytes,
+      }),
     };
     const updated = normalizePosts(editingPostId ? posts.map((post) => post.id === editingPostId ? nextPost : post) : [nextPost, ...posts]);
     setPosts(updated); saveLinkedInPosts(updated); void persistRemoteLinkedInPosts(updated, true);
@@ -339,6 +413,7 @@ export default function PostsPage() {
   }
 
   const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
+  const editorVisible = hasGenerated || manualEditorStarted || Boolean(editingPostId);
   const stats = {
     drafts: posts.filter(p => p.status === "draft").length,
     scheduled: posts.filter(p => p.status === "scheduled").length,
@@ -471,9 +546,14 @@ export default function PostsPage() {
           </div>
 
           {/* Generate button */}
-          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%", fontSize: 16 }}>
             {generating ? "Génération..." : "Générer avec l'IA"}
           </ClientBlueButton>
+            <button type="button" onClick={startManualPost} style={{ minWidth: 142, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
+              Démarrer manuellement
+            </button>
+          </div>
 
           {generationError && (
             <p style={{ fontSize: 12, color: "#c53030", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 9, padding: "8px 12px", margin: 0 }}>
@@ -482,7 +562,7 @@ export default function PostsPage() {
           )}
 
           {/* Generated content */}
-          {hasGenerated && (
+          {editorVisible && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {postType === "carousel" && generatedSlides.length > 0 ? (
                 <div>
@@ -523,6 +603,32 @@ export default function PostsPage() {
                 </div>
               )}
 
+              <label
+                style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 12, background: "#f7f7f7", minHeight: draftMedia ? 82 : 58, padding: 10, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+              >
+                {draftMedia ? (
+                  <>
+                    <span style={{ width: 58, height: 62, borderRadius: 8, background: `url(${draftMedia.url}) center / cover`, flexShrink: 0, boxShadow: "0 10px 22px rgba(18,26,46,0.12)" }} />
+                    <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#121a2e" }}>Image du brouillon</span>
+                      <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draftMedia.fileName}</span>
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.58)" }}>Importer une image ou un PDF pour ce brouillon</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*,.pdf,application/pdf"
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleDraftMedia(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+
               {/* Schedule */}
               <div>
                 <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
@@ -536,11 +642,9 @@ export default function PostsPage() {
                 <ClientBlueButton compact type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%" }}>
                   Sauvegarder
                 </ClientBlueButton>
-                {scheduleDate && (
-                  <button onClick={() => handleSave("scheduled")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "10px 0", fontSize: 12 }}>
+                <button onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate} style={{ ...btnGrad, flex: 1, padding: "10px 0", fontSize: 12, opacity: scheduleDate ? 1 : 0.45 }}>
                     Planifier
-                  </button>
-                )}
+                </button>
               </div>
               {editingPostId && (
                 <button
@@ -613,6 +717,7 @@ export default function PostsPage() {
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
               {filteredPosts.map(post => {
                 const ss = STATUS_STYLES[post.status];
+                const analytics = normalizeAnalytics(post.analytics);
                 return (
                   <div
                     key={post.id}
@@ -654,6 +759,17 @@ export default function PostsPage() {
                     </div>
 
                     {/* Content preview */}
+                    {analytics.mediaPreviewUrl && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          router.push(`/admin/linkedin/statistiques?postId=${encodeURIComponent(post.id)}`);
+                        }}
+                        style={{ width: "100%", height: 138, border: "none", borderRadius: 11, background: `url(${analytics.mediaPreviewUrl}) center / cover`, cursor: "pointer", boxShadow: "0 12px 26px rgba(18,26,46,0.1)" }}
+                        aria-label="Ouvrir les statistiques du post"
+                      />
+                    )}
                     <p style={{ fontSize: 13, color: "#121a2e", lineHeight: 1.6, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", whiteSpace: "pre-line" }}>
                       {post.content}
                     </p>

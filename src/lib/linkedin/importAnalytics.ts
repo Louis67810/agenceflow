@@ -41,6 +41,16 @@ function normalizeTime(input: string | undefined): string | undefined {
   return `${match[1].padStart(2, "0")}:${match[2]}`;
 }
 
+function normalizeLabel(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function readZipEntries(buffer: Buffer): Map<string, Buffer> {
   const entries = new Map<string, Buffer>();
   let eocdOffset = -1;
@@ -139,8 +149,31 @@ function rowsToAnalytics(rows: string[][], sourceFileName?: string): LinkedInPos
 
   for (const [label, rawValue, thirdValue] of rows) {
     const key = label.trim();
+    const normalizedKey = normalizeLabel(key);
     const value = rawValue.trim();
     if (!key) continue;
+
+    if (normalizedKey === "url du post") analytics.postUrl = value;
+    if (normalizedKey === "date de publication") analytics.publishedDate = normalizeFrenchDate(value);
+    if (normalizedKey === "heure de publication du post") analytics.publishedTime = normalizeTime(value);
+    if (normalizedKey === "impressions") analytics.impressions = parseFrenchNumber(value);
+    if (normalizedKey === "membres touches") analytics.reach = parseFrenchNumber(value);
+    if (normalizedKey === "vues de videos") analytics.videoViews = parseFrenchNumber(value);
+    if (normalizedKey === "temps de visionnage") analytics.watchTime = value;
+    if (normalizedKey === "duree moyenne de visionnage") analytics.averageWatchTime = value;
+    if (normalizedKey === "vues du profil depuis ce post") analytics.profileViews = parseFrenchNumber(value);
+    if (normalizedKey === "abonnes gagnes grace a ce post") analytics.followersGained = parseFrenchNumber(value);
+    if (normalizedKey === "engagement sur les reseaux sociaux") analytics.socialEngagement = parseFrenchNumber(value);
+    if (normalizedKey === "reactions") analytics.reactions = parseFrenchNumber(value);
+    if (normalizedKey === "commentaires") analytics.comments = parseFrenchNumber(value);
+    if (normalizedKey === "republications") analytics.reposts = parseFrenchNumber(value);
+    if (normalizedKey === "enregistrements") analytics.saves = parseFrenchNumber(value);
+    if (normalizedKey === "envois sur linkedin") analytics.sends = parseFrenchNumber(value);
+    if (normalizedKey === "engagement avec le lien") analytics.linkClicks = parseFrenchNumber(value);
+    if (normalizedKey === "engagements avec le bouton personnalise premium") analytics.customButtonClicks = parseFrenchNumber(value);
+    if (["lieu", "niveau hierarchique", "secteur", "taille de l'entreprise"].includes(normalizedKey) && value) {
+      analytics.demographics.push({ category: key, value, percentage: thirdValue.trim() });
+    }
 
     switch (key) {
       case "URL du post":

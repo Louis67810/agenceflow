@@ -268,7 +268,7 @@ function MediaSquare({ analytics }: { analytics: LinkedInPostAnalytics }) {
         width: 76,
         height: 84,
         borderRadius: 5.4,
-        border: "2px solid #fff",
+        border: "3px solid rgba(18,26,46,0.18)",
         background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc",
         boxShadow: previewShadow,
         transform: "rotate(-1.83deg)",
@@ -298,7 +298,7 @@ function StyleChip({
 }) {
   const colorClass = STYLE_CATEGORY_COLORS[style.category] || "bg-gray-100 text-gray-700";
   return (
-    <span className={`inline-block text-xs rounded-full ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1 }}>
+    <span className={`inline-block text-xs rounded-full ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1, fontWeight: 500 }}>
       {styleCategoryLabel(style)}
     </span>
   );
@@ -562,6 +562,7 @@ export default function LinkedInStatsPage() {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
+          overflowY: "auto",
         }}
       >
         <div style={{ padding: "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -675,7 +676,7 @@ export default function LinkedInStatsPage() {
         </div>
 
         {selectedPost ? (
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Format du post *">
               <div style={{ position: "relative" }}>
                 <button type="button" onClick={() => setFormatOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
@@ -747,6 +748,51 @@ export default function LinkedInStatsPage() {
             <Field label="Lien du post">
               <input value={toInputValue(editor.postUrl)} onChange={(event) => handleEditorChange("postUrl", event.target.value)} style={figmaInputStyle} />
             </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Heure">
+                <input type="time" value={toInputValue(editor.publishedTime)} onChange={(event) => handleEditorChange("publishedTime", event.target.value)} style={figmaInputStyle} />
+              </Field>
+              <Field label="Lien cliqué">
+                <input value={toInputValue(editor.linkUrl)} onChange={(event) => handleEditorChange("linkUrl", event.target.value)} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Membres touchés">
+                <input type="number" min={0} value={toInputValue(editor.reach)} onChange={(event) => handleEditorChange("reach", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+              <Field label="Vues profil">
+                <input type="number" min={0} value={toInputValue(editor.profileViews)} onChange={(event) => handleEditorChange("profileViews", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Abonnés gagnés">
+                <input type="number" min={0} value={toInputValue(editor.followersGained)} onChange={(event) => handleEditorChange("followersGained", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+              <Field label="Engagement social">
+                <input type="number" min={0} value={toInputValue(editor.socialEngagement)} onChange={(event) => handleEditorChange("socialEngagement", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Republications">
+                <input type="number" min={0} value={toInputValue(editor.reposts)} onChange={(event) => handleEditorChange("reposts", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+              <Field label="Enregistrements">
+                <input type="number" min={0} value={toInputValue(editor.saves)} onChange={(event) => handleEditorChange("saves", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Field label="Envois LinkedIn">
+                <input type="number" min={0} value={toInputValue(editor.sends)} onChange={(event) => handleEditorChange("sends", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+              <Field label="Clics bouton">
+                <input type="number" min={0} value={toInputValue(editor.customButtonClicks)} onChange={(event) => handleEditorChange("customButtonClicks", Number(event.target.value))} style={figmaInputStyle} />
+              </Field>
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="Date">
@@ -904,7 +950,7 @@ export default function LinkedInStatsPage() {
                       display: "grid",
                       gridTemplateColumns: "84px minmax(180px, 1fr) auto auto",
                       alignItems: "center",
-                      gap: 16,
+                      gap: 8,
                       padding: 16,
                       textAlign: "left",
                       cursor: "pointer",
@@ -918,17 +964,17 @@ export default function LinkedInStatsPage() {
                   >
                     <MediaSquare analytics={analytics} />
                     <div style={{ minWidth: 0 }}>
-                      <h3 style={{ margin: 0, fontSize: 18, lineHeight: "23px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.25px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <h3 style={{ margin: 0, fontSize: 16, lineHeight: "21px", fontWeight: 500, color: "#121a2e", letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {buildPostTitle(post)}
                       </h3>
                       <p style={{ margin: "7px 0 0", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>
                         {formatPreviewDate(post)}
                       </p>
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.reactions)} réactions <ReactionDots />
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
                   </button>
