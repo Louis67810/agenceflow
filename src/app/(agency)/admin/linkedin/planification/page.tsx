@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar, Clock, Plus, Repeat2, Settings, X } from "lucide-react";
 import type { LinkedInPost } from "@/types/linkedin";
 import Link from "next/link";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 import {
   ensureAutoRecyclePosts,
   getTopQuartilePublishedPosts,
@@ -169,16 +170,13 @@ export default function LinkedInPlanificationPage() {
 
   const upcomingPosts = posts
     .filter((post) => post.status === "scheduled" && post.scheduledAt && new Date(post.scheduledAt) > today)
-    .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())
+    .sort((a, b) => {
+      const autoA = a.analytics?.autoRecycleSourcePostId ? 1 : 0;
+      const autoB = b.analytics?.autoRecycleSourcePostId ? 1 : 0;
+      if (autoA !== autoB) return autoA - autoB;
+      return new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime();
+    })
     .slice(0, 5);
-
-  const btnGradient = {
-    background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-    border: "1px solid #2f4d9d",
-    color: "#fff",
-    cursor: "pointer",
-    borderRadius: 9,
-  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
@@ -217,12 +215,10 @@ export default function LinkedInPlanificationPage() {
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7c3aed" }} />
               <span style={{ color: "rgba(18,26,46,0.6)" }}>{autoRecyclePosts.length} relances auto</span>
             </div>
-            <Link
-              href="/admin/linkedin/posts"
-              style={{ ...btnGradient, display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", fontSize: 12, fontWeight: 600, textDecoration: "none" }}
-            >
-              <Plus size={14} />
-              Nouveau post
+            <Link href="/admin/linkedin/posts" style={{ textDecoration: "none" }}>
+              <ClientBlueButton compact type="button" icon={<Plus size={14} />}>
+                Nouveau post
+              </ClientBlueButton>
             </Link>
           </div>
         </div>
@@ -276,7 +272,7 @@ export default function LinkedInPlanificationPage() {
                       alignItems: "center",
                       justifyContent: "center",
                       borderRadius: "50%",
-                      background: isToday ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)" : "transparent",
+                      background: isToday ? "#0147ff" : "transparent",
                       color: isToday ? "#fff" : isSelected ? "#0147ff" : "rgba(18,26,46,0.7)",
                     }}
                   >

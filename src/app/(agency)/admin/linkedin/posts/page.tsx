@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wand2, Loader2, X, Check, Copy, Trash2, Link2,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
@@ -31,9 +32,9 @@ import {
   patchRemoteLinkedInWorkspace,
   persistLinkedInWorkspacePatch,
 } from "@/lib/linkedin/workspace";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
-type FilterTab = "all" | "draft" | "scheduled" | "published";
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
@@ -51,10 +52,10 @@ const STATUS_LABELS = { draft: "Brouillon", scheduled: "Planifié", published: "
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PostsPage() {
+  const router = useRouter();
   const [posts, setPosts] = useState<LinkedInPost[]>([]);
   const [styles, setStyles] = useState<LinkedInStyle[]>(DEFAULT_STYLES);
   const [ideas, setIdeas] = useState<LinkedInIdea[]>([]);
-  const [filter, setFilter] = useState<FilterTab>("all");
 
   const [sourceTab, setSourceTab] = useState<SourceTab>("idea");
   const [selectedStyleId, setSelectedStyleId] = useState("");
@@ -140,7 +141,6 @@ export default function PostsPage() {
   }, []);
 
   const filteredPosts = posts
-    .filter(p => filter === "all" || p.status === filter)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const topPosts = [...posts]
@@ -288,9 +288,8 @@ export default function PostsPage() {
 
   const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
   const stats = {
-    total: posts.length, drafts: posts.filter(p => p.status === "draft").length,
-    scheduled: posts.filter(p => p.status === "scheduled").length, published: posts.filter(p => p.status === "published").length,
-    totalLikes: posts.reduce((s, p) => s + p.likes, 0), totalImpressions: posts.reduce((s, p) => s + p.impressions, 0),
+    drafts: posts.filter(p => p.status === "draft").length,
+    scheduled: posts.filter(p => p.status === "scheduled").length,
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -420,10 +419,9 @@ export default function PostsPage() {
           </div>
 
           {/* Generate button */}
-          <button onClick={handleGenerate} disabled={generating} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13, opacity: generating ? 0.7 : 1 }}>
-            {generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />}
+          <ClientBlueButton compact type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>
             {generating ? "Génération..." : "Générer avec l'IA"}
-          </button>
+          </ClientBlueButton>
 
           {generationError && (
             <p style={{ fontSize: 12, color: "#c53030", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 9, padding: "8px 12px", margin: 0 }}>
@@ -491,17 +489,14 @@ export default function PostsPage() {
 
               {/* Save buttons */}
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => handleSave("draft")} disabled={saving} style={{ flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 500, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, cursor: "pointer", color: "rgba(18,26,46,0.6)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                  Brouillon
-                </button>
+                <ClientBlueButton compact type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%" }}>
+                  Enregistrer en brouillon
+                </ClientBlueButton>
                 {scheduleDate && (
-                  <button onClick={() => handleSave("scheduled")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "8px 0", fontSize: 12 }}>
+                  <button onClick={() => handleSave("scheduled")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "10px 0", fontSize: 12 }}>
                     Planifier
                   </button>
                 )}
-                <button onClick={() => handleSave("published")} disabled={saving} style={{ ...btnGrad, flex: 1, padding: "8px 0", fontSize: 12 }}>
-                  Publié
-                </button>
               </div>
             </div>
           )}
@@ -513,32 +508,13 @@ export default function PostsPage() {
         {/* Stats bar */}
         <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 24, flexShrink: 0 }}>
           {[
-            { label: "Total", value: stats.total, color: "#121a2e" },
             { label: "Brouillons", value: stats.drafts, color: "rgba(18,26,46,0.5)" },
             { label: "Planifiés", value: stats.scheduled, color: "#073e63" },
-            { label: "Publiés", value: stats.published, color: "#168b64" },
-            { label: "Likes", value: stats.totalLikes, color: "#0147ff", icon: <ThumbsUp size={11} /> },
-            { label: "Impressions", value: stats.totalImpressions > 1000 ? `${(stats.totalImpressions / 1000).toFixed(1)}k` : stats.totalImpressions, color: "#6236AA", icon: <Eye size={11} /> },
           ].map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              {s.icon && <span style={{ color: s.color }}>{s.icon}</span>}
               <span style={{ fontSize: 17, fontWeight: 700, color: s.color }}>{s.value}</span>
               <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{s.label}</span>
             </div>
-          ))}
-        </div>
-
-        {/* Filter tabs */}
-        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "0 24px", display: "flex", flexShrink: 0 }}>
-          {([{ id: "all", label: "Tous" }, { id: "draft", label: "Brouillons" }, { id: "scheduled", label: "Planifiés" }, { id: "published", label: "Publiés" }] as { id: FilterTab; label: string }[]).map(f => (
-            <button key={f.id} onClick={() => setFilter(f.id)} style={{
-              padding: "10px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", background: "none", border: "none",
-              borderBottom: `2px solid ${filter === f.id ? "#0147ff" : "transparent"}`,
-              color: filter === f.id ? "#0147ff" : "rgba(18,26,46,0.5)",
-              fontFamily: '"Plus Jakarta Sans", sans-serif',
-            }}>
-              {f.label}
-            </button>
           ))}
         </div>
 
@@ -573,21 +549,7 @@ export default function PostsPage() {
                         </button>
                         <button
                           onClick={() => {
-                            setStatsPost(post);
-                            setStatsInput({
-                              postUrl: post.analytics?.postUrl ?? post.postUrl ?? "",
-                              reactions: post.analytics?.reactions ?? post.likes,
-                              comments: post.analytics?.comments ?? post.comments,
-                              impressions: post.analytics?.impressions ?? post.impressions,
-                              reach: post.analytics?.reach ?? 0,
-                              profileViews: post.analytics?.profileViews ?? 0,
-                              followersGained: post.analytics?.followersGained ?? 0,
-                              reposts: post.analytics?.reposts ?? 0,
-                              saves: post.analytics?.saves ?? 0,
-                              sends: post.analytics?.sends ?? 0,
-                              linkClicks: post.analytics?.linkClicks ?? 0,
-                              engagementRate: post.analytics?.engagementRate ?? 0,
-                            });
+                            router.push(`/admin/linkedin/statistiques?postId=${encodeURIComponent(post.id)}`);
                           }}
                           title="Statistiques"
                           style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}

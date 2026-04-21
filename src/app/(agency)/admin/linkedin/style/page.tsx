@@ -13,6 +13,7 @@ import {
   patchRemoteLinkedInWorkspace,
   persistLinkedInWorkspacePatch,
 } from "@/lib/linkedin/workspace";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -173,9 +174,9 @@ export default function LinkedInStylePage() {
             <h2 style={{ fontSize: 17, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.4px", margin: 0 }}>Styles d&apos;écriture</h2>
             <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", marginTop: 2, marginBottom: 0 }}>{styles.length} styles · {customCount} personnalisés</p>
           </div>
-          <button onClick={openCreate} style={{ ...btnGradient, display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600 }}>
-            <Plus size={16} />Nouveau style
-          </button>
+          <ClientBlueButton compact type="button" onClick={openCreate} icon={<Plus size={16} />}>
+            Nouveau style
+          </ClientBlueButton>
         </div>
 
         {/* Category filter */}
@@ -365,7 +366,7 @@ function StyleCard({
               <h3 style={{ fontWeight: 700, color: "#121a2e", fontSize: 14, margin: 0, letterSpacing: "-0.2px" }}>{style.name}</h3>
               {style.isDefault && <span style={{ fontSize: 11, background: "#f6f6f6", color: "rgba(18,26,46,0.5)", padding: "2px 8px", borderRadius: 20 }}>Défaut</span>}
             </div>
-            <span className={`inline-block text-xs px-2 py-0.5 rounded-full mt-1 ${colorClass}`}>
+            <span className={`inline-block text-xs rounded-full mt-1 ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1 }}>
               {catLabel}
             </span>
           </div>

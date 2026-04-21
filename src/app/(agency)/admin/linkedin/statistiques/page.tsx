@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
-import { ChevronDown, Eye, SlidersHorizontal } from "lucide-react";
+import { BarChart3, ChevronDown, Eye, MousePointerClick, SlidersHorizontal, ThumbsUp } from "lucide-react";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 import {
   DEFAULT_STYLES,
   STYLE_CATEGORY_COLORS,
@@ -11,7 +12,6 @@ import {
   type LinkedInStyle,
 } from "@/types/linkedin";
 import {
-  computeLinkedInPostScore,
   createImportedAnalyticsPost,
   findPostByAnalytics,
   loadLinkedInPosts,
@@ -38,15 +38,14 @@ const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,
 
 type EditableAnalytics = Omit<LinkedInPostAnalytics, "importedAt" | "sourceFileName">;
 type PostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
-type SortKey = "date" | "impressions" | "reactions" | "comments" | "linkClicks" | "score";
+type SortKey = "date" | "impressions" | "reactions" | "comments" | "linkClicks";
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: "score", label: "Meilleure performance" },
   { key: "date", label: "Plus récent" },
   { key: "impressions", label: "Plus d'impressions" },
   { key: "reactions", label: "Plus de réactions" },
   { key: "comments", label: "Plus de commentaires" },
-  { key: "linkClicks", label: "Plus de clics lien" },
+  { key: "linkClicks", label: "Plus de clics sur le lien" },
 ];
 
 const figmaInputStyle: CSSProperties = {
@@ -141,6 +140,12 @@ function formatPreviewDate(post: LinkedInPost) {
   } catch {
     return raw;
   }
+}
+
+function getPublishedSortDate(post: LinkedInPost) {
+  const analytics = normalizeAnalytics(post.analytics);
+  if (analytics.publishedDate) return `${analytics.publishedDate}T${analytics.publishedTime || "12:00"}:00`;
+  return post.publishedAt || post.createdAt;
 }
 
 function buildPostTitle(post: LinkedInPost) {
@@ -284,16 +289,13 @@ function styleCategoryLabel(style: LinkedInStyle) {
 
 function StyleChip({
   style,
-  active,
 }: {
   style: LinkedInStyle;
-  active: boolean;
 }) {
   const colorClass = STYLE_CATEGORY_COLORS[style.category] || "bg-gray-100 text-gray-700";
   return (
-    <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${colorClass}`}>
+    <span className={`inline-block text-xs rounded-full ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1 }}>
       {styleCategoryLabel(style)}
-      {active ? " ✓" : ""}
     </span>
   );
 }
@@ -307,7 +309,7 @@ export default function LinkedInStatsPage() {
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [sortBy, setSortBy] = useState<SortKey>("score");
+  const [sortBy, setSortBy] = useState<SortKey>("date");
   const [sortOpen, setSortOpen] = useState(false);
   const [formatOpen, setFormatOpen] = useState(false);
   const [styleOpen, setStyleOpen] = useState(false);
@@ -340,6 +342,13 @@ export default function LinkedInStatsPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    const postId = new URLSearchParams(window.location.search).get("postId");
+    if (!postId || selectedPostId === postId) return;
+    const post = posts.find((item) => item.id === postId);
+    if (post) selectPost(post);
+  }, [posts, selectedPostId]);
+
   const publishedPosts = useMemo(
     () => posts.filter((post) => post.status === "published"),
     [posts]
@@ -349,19 +358,16 @@ export default function LinkedInStatsPage() {
     const sorted = [...publishedPosts];
     if (sortBy === "date") {
       return sorted.sort((a, b) => {
-        const aDate = a.publishedAt || a.createdAt;
-        const bDate = b.publishedAt || b.createdAt;
+        const aDate = getPublishedSortDate(a);
+        const bDate = getPublishedSortDate(b);
         return new Date(bDate).getTime() - new Date(aDate).getTime();
       });
     }
-    if (sortBy !== "score") {
-      return sorted.sort((a, b) => {
-        const aValue = normalizeAnalytics(a.analytics)[sortBy] ?? 0;
-        const bValue = normalizeAnalytics(b.analytics)[sortBy] ?? 0;
-        return bValue - aValue;
-      });
-    }
-    return sorted.sort((a, b) => computeLinkedInPostScore(b) - computeLinkedInPostScore(a));
+    return sorted.sort((a, b) => {
+      const aValue = normalizeAnalytics(a.analytics)[sortBy] ?? 0;
+      const bValue = normalizeAnalytics(b.analytics)[sortBy] ?? 0;
+      return bValue - aValue;
+    });
   }, [publishedPosts, sortBy]);
 
   const selectedPost = posts.find((post) => post.id === selectedPostId) ?? null;
@@ -695,7 +701,7 @@ export default function LinkedInStatsPage() {
                     {selectedStyle ? (
                       <>
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedStyle.name}</span>
-                        <StyleChip style={selectedStyle} active={false} />
+                        <StyleChip style={selectedStyle} />
                       </>
                     ) : "Choisir un style"}
                   </span>
@@ -716,7 +722,7 @@ export default function LinkedInStatsPage() {
                         <span style={{ minWidth: 0 }}>
                           <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{style.name}</span>
                         </span>
-                        <StyleChip style={style} active={selectedStyleId === style.id} />
+                        <StyleChip style={style} />
                       </button>
                     ))}
                   </div>
@@ -766,16 +772,9 @@ export default function LinkedInStatsPage() {
 
         {selectedPost ? (
           <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
-            <div style={{ padding: 6, background: "#e1e5ee", borderRadius: 15 }}>
-            <button
-              type="button"
-              onClick={saveEditor}
-              disabled={!canSave}
-              style={{ ...loginButtonStyle, opacity: canSave ? 1 : 0.48, cursor: canSave ? "pointer" : "not-allowed" }}
-            >
-              Sauvegarder
-            </button>
-            </div>
+            <ClientBlueButton type="button" onClick={saveEditor} disabled={!canSave}>
+              Enregistrer
+            </ClientBlueButton>
           </div>
         ) : null}
       </aside>
@@ -783,14 +782,14 @@ export default function LinkedInStatsPage() {
       <main style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}>
         <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
           {[
-            { label: "Posts publiés", value: publishedPosts.length },
-            { label: "Impressions", value: formatNumber(totalImpressions) },
-            { label: "Réactions", value: formatNumber(totalReactions) },
-            { label: "Clics lien", value: formatNumber(totalLinkClicks || totalComments) },
+            { label: "Posts publiés", value: publishedPosts.length, icon: <BarChart3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+            { label: "Impressions", value: formatNumber(totalImpressions), icon: <Eye size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+            { label: "Réactions", value: formatNumber(totalReactions), icon: <ThumbsUp size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+            { label: "Clics sur le lien", value: formatNumber(totalLinkClicks || totalComments), icon: <MousePointerClick size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
           ].map((card) => (
             <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box" }}>
               <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13 }}>
-                <Eye size={17} style={{ color: "rgba(18,26,46,0.24)" }} />
+                {card.icon}
               </div>
               <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
               <strong style={{ display: "block", marginTop: 8, fontSize: 20, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
@@ -799,7 +798,7 @@ export default function LinkedInStatsPage() {
         </section>
 
         <section>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 22, position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 32, position: "relative" }}>
             <h2 style={{ margin: 0, fontSize: 24, lineHeight: "28px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
               Tous les posts
             </h2>
@@ -827,6 +826,7 @@ export default function LinkedInStatsPage() {
                       border: 0,
                       borderRadius: 10,
                       background: sortBy === option.key || hoveredSortKey === option.key ? "rgba(0,0,0,0.03)" : "transparent",
+                      marginBottom: option.key === SORT_OPTIONS[SORT_OPTIONS.length - 1].key ? 0 : 4,
                       padding: "10px 11px",
                       textAlign: "left",
                       fontFamily: '"Inter", sans-serif',
@@ -843,7 +843,7 @@ export default function LinkedInStatsPage() {
             ) : null}
           </div>
 
-          <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)" }}>
+          <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 32 }}>
             {visiblePosts.length === 0 ? (
               <div style={{ padding: "70px 20px", textAlign: "center", color: "rgba(18,26,46,0.45)", fontFamily: '"Inter", sans-serif', fontSize: 16 }}>
                 Importe un export LinkedIn pour faire apparaître tes posts ici.
@@ -863,7 +863,7 @@ export default function LinkedInStatsPage() {
                       width: "100%",
                       minHeight: 118,
                       border: 0,
-                      borderBottom: "1px solid rgba(18,26,46,0.06)",
+                      borderBottom: "none",
                       background: "transparent",
                       display: "grid",
                       gridTemplateColumns: "84px minmax(180px, 1fr) auto auto",
@@ -873,7 +873,7 @@ export default function LinkedInStatsPage() {
                       textAlign: "left",
                       cursor: "pointer",
                       borderRadius: 13,
-                      margin: "0 0 6px",
+                      margin: "0 0 32px",
                       boxSizing: "border-box",
                       boxShadow: "none",
                       backgroundColor: isActive ? "rgba(0,0,0,0.03)" : hoveredPostId === post.id ? "rgba(0,0,0,0.02)" : "transparent",
