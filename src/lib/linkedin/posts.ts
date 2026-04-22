@@ -152,9 +152,39 @@ export function ensureAutoRecyclePosts(
   const delayDays = Number.isFinite(options.delayDays) && options.delayDays > 0 ? options.delayDays : 120;
   const spacingDays = Number.isFinite(options.spacingDays) && (options.spacingDays ?? 0) > 0 ? options.spacingDays! : 7;
   const now = options.now ?? new Date();
-  const topPosts = getTopQuartilePublishedPosts(normalizedPosts);
+  const getPublishedBaseDate = (post: LinkedInPost): Date | null => {
+    if (post.analytics?.publishedDate) {
+      const date = new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    if (post.publishedAt) {
+      const date = new Date(post.publishedAt);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+  };
+  const buildScheduledDate = (post: LinkedInPost, index = 0): Date | null => {
+    const baseDate = getPublishedBaseDate(post);
+    if (!baseDate) return null;
+    const scheduledDate = new Date(baseDate);
+    scheduledDate.setDate(scheduledDate.getDate() + delayDays + index * spacingDays);
+    return scheduledDate;
+  };
+  const sourcePostsById = new Map(normalizedPosts.map((post) => [post.id, post]));
+  const recalibratedPosts = normalizedPosts.map((post) => {
+    const sourceId = post.analytics?.autoRecycleSourcePostId;
+    if (!sourceId) return post;
+    const sourcePost = sourcePostsById.get(sourceId);
+    if (!sourcePost) return post;
+    const scheduledDate = buildScheduledDate(sourcePost);
+    if (!scheduledDate || scheduledDate <= now) return post;
+    const nextScheduledAt = scheduledDate.toISOString();
+    if (post.scheduledAt === nextScheduledAt) return post;
+    return normalizePost({ ...post, scheduledAt: nextScheduledAt });
+  });
+  const topPosts = getTopQuartilePublishedPosts(recalibratedPosts);
   const existingSourceIds = new Set(
-    normalizedPosts
+    recalibratedPosts
       .map((post) => post.analytics?.autoRecycleSourcePostId)
       .filter((value): value is string => Boolean(value))
   );
@@ -163,13 +193,8 @@ export function ensureAutoRecyclePosts(
 
   for (const [index, post] of topPosts.entries()) {
     if (existingSourceIds.has(post.id)) continue;
-    const publishedFromAnalytics = post.analytics?.publishedDate
-      ? new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`)
-      : null;
-    const baseDate = publishedFromAnalytics ?? (post.publishedAt ? new Date(post.publishedAt) : new Date(post.createdAt));
-    const scheduledDate = new Date(baseDate);
-    scheduledDate.setDate(scheduledDate.getDate() + delayDays);
-    scheduledDate.setDate(scheduledDate.getDate() + index * spacingDays);
+    const scheduledDate = buildScheduledDate(post, index);
+    if (!scheduledDate) continue;
     if (scheduledDate <= now) continue;
 
     createdPosts.push(
@@ -190,8 +215,8 @@ export function ensureAutoRecyclePosts(
     );
   }
 
-  if (createdPosts.length === 0) return normalizedPosts;
-  return normalizePosts([...createdPosts, ...normalizedPosts]);
+  if (createdPosts.length === 0) return recalibratedPosts;
+  return normalizePosts([...createdPosts, ...recalibratedPosts]);
 }
 
 export function mergePostAnalytics(post: LinkedInPost, analyticsPatch: Partial<LinkedInPostAnalytics>): LinkedInPost {

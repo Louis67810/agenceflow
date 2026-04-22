@@ -174,7 +174,23 @@ export default function PostsPage() {
         const idea = JSON.parse(prefill);
         setSourceTab("idea");
         setManualIdea(`${idea.title}\n\n${idea.description}`);
+        if (idea.styleId) setSelectedStyleId(idea.styleId);
+        if (idea.scheduledAt) setScheduleDate(isoToLocalInput(idea.scheduledAt));
         sessionStorage.removeItem("linkedin_idea_prefill");
+      } catch {}
+    }
+
+    const postPrefill = sessionStorage.getItem("linkedin_post_schedule_prefill");
+    if (postPrefill) {
+      try {
+        const prefillPost = JSON.parse(postPrefill);
+        setSourceTab("manual");
+        setPostType("post");
+        setGeneratedContent(prefillPost.content ?? "");
+        setScheduleDate(prefillPost.scheduledAt ? isoToLocalInput(prefillPost.scheduledAt) : "");
+        setManualEditorStarted(true);
+        setPostsView("draft");
+        sessionStorage.removeItem("linkedin_post_schedule_prefill");
       } catch {}
     }
   }, []);
@@ -709,7 +725,7 @@ export default function PostsPage() {
           </div>
 
           {rightEditorVisible ? (
-            <div style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 920 }}>
+            <div style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{editingPostId ? "Modifier le brouillon" : "Nouveau brouillon manuel"}</h3>
@@ -720,17 +736,38 @@ export default function PostsPage() {
                 </button>
               </div>
 
-              <SmartSelectionTextarea
-                rows={18}
-                value={generatedContent}
-                onChange={setGeneratedContent}
-                placeholder="Écris ton post ici..."
-                contextLabel="post LinkedIn"
-                showGlobalAction={false}
-                apiKey={settings?.openrouterApiKey || undefined}
-                model={settings?.model}
-                style={{ ...inp, minHeight: 360, background: "#fff", lineHeight: 1.7, fontSize: 15, padding: 16 }}
-              />
+              <div>
+                <label style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>
+                  Style du post
+                </label>
+                <select value={selectedStyleId} onChange={(event) => setSelectedStyleId(event.target.value)} style={{ ...inp, minHeight: 44, background: "#fff", fontSize: 14 }}>
+                  <option value="">Aucun style</option>
+                  {styles.map((style) => (
+                    <option key={style.id} value={style.id}>{style.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ width: "100%", maxWidth: 552, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.05)", padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg,#dbeafe,#eef2ff)", flexShrink: 0 }} />
+                  <div>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#121a2e" }}>Louis Staub</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Prévisualisation LinkedIn</p>
+                  </div>
+                </div>
+                <SmartSelectionTextarea
+                  rows={18}
+                  value={generatedContent}
+                  onChange={setGeneratedContent}
+                  placeholder="Écris ton post ici..."
+                  contextLabel="post LinkedIn"
+                  showGlobalAction={false}
+                  apiKey={settings?.openrouterApiKey || undefined}
+                  model={settings?.model}
+                  style={{ ...inp, minHeight: 390, background: "#fff", border: "none", lineHeight: 1.55, fontSize: 14, padding: 0, resize: "vertical", whiteSpace: "pre-wrap" }}
+                />
+              </div>
 
               <label style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 14, background: "#f7f7f7", minHeight: draftMedia ? 92 : 64, padding: 12, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
                 {draftMedia ? (

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Calendar, Clock, Plus, Repeat2, Settings, X } from "lucide-react";
-import type { LinkedInPost, LinkedInStyle } from "@/types/linkedin";
+import { ChevronLeft, ChevronRight, Calendar, Clock, Plus, Repeat2, Settings, X, CalendarPlus, PenLine, MoreVertical, CheckCircle2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import type { LinkedInIdea, LinkedInPost, LinkedInStyle } from "@/types/linkedin";
 import Link from "next/link";
 import ClientBlueButton from "@/components/shared/ClientBlueButton";
 import {
@@ -51,6 +52,14 @@ function getPostCalendarDateKey(post: LinkedInPost): string | null {
   return null;
 }
 
+function getIdeaCalendarDateKey(idea: LinkedInIdea): string | null {
+  return idea.scheduledAt ? isoToDateKey(idea.scheduledAt) : null;
+}
+
+function createScheduledAt(dateKey: string, hour = 9, minute = 0): string {
+  return new Date(`${dateKey}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`).toISOString();
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
@@ -73,7 +82,9 @@ const STYLE_TONES: Record<LinkedInStyle["category"] | "fallback", { bg: string; 
 };
 
 export default function LinkedInPlanificationPage() {
+  const router = useRouter();
   const [posts, setPosts] = useState<LinkedInPost[]>([]);
+  const [ideas, setIdeas] = useState<LinkedInIdea[]>([]);
   const [today] = useState(new Date());
   const [current, setCurrent] = useState({
     year: new Date().getFullYear(),
@@ -83,6 +94,7 @@ export default function LinkedInPlanificationPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [styles, setStyles] = useState<LinkedInStyle[]>([]);
   const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
+  const [dayMenu, setDayMenu] = useState<{ dateKey: string; x: number; y: number } | null>(null);
   const [autoRecycleEnabled, setAutoRecycleEnabled] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled);
   const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
 
@@ -91,6 +103,7 @@ export default function LinkedInPlanificationPage() {
     const cachedWorkspace = loadLinkedInWorkspaceCache();
     setPosts(localPosts);
     setStyles(cachedWorkspace.styles);
+    setIdeas(cachedWorkspace.ideas);
     setAutoRecycleEnabled(cachedWorkspace.preferences.autoRecycleEnabled);
     setAutoRecycleDelayDays(cachedWorkspace.preferences.autoRecycleDelayDays);
 
@@ -111,6 +124,7 @@ export default function LinkedInPlanificationPage() {
       try {
         const remoteWorkspace = await fetchRemoteLinkedInWorkspace();
         setStyles(remoteWorkspace.workspace.styles);
+        setIdeas(remoteWorkspace.workspace.ideas);
         setAutoRecycleEnabled(remoteWorkspace.workspace.preferences.autoRecycleEnabled);
         setAutoRecycleDelayDays(remoteWorkspace.workspace.preferences.autoRecycleDelayDays);
       } catch {}
@@ -122,7 +136,7 @@ export default function LinkedInPlanificationPage() {
       enabled: autoRecycleEnabled,
       delayDays: autoRecycleDelayDays,
     });
-    if (updated.length === posts.length) return;
+    if (JSON.stringify(updated) === JSON.stringify(posts)) return;
     setPosts(updated);
     saveLinkedInPosts(updated);
     void persistRemoteLinkedInPosts(updated, true);
@@ -164,6 +178,45 @@ export default function LinkedInPlanificationPage() {
     setDraggedPostId(null);
   };
 
+  const openPostComposer = (dateKey: string, mode: "new" | "schedule") => {
+    sessionStorage.setItem("linkedin_post_schedule_prefill", JSON.stringify({
+      scheduledAt: mode === "schedule" ? createScheduledAt(dateKey) : undefined,
+      content: "",
+    }));
+    setDayMenu(null);
+    router.push("/admin/linkedin/posts");
+  };
+
+  const createIdeaForDate = (dateKey: string) => {
+    const idea: LinkedInIdea = {
+      id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      title: `Idée du ${new Date(`${dateKey}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`,
+      description: "",
+      status: "new",
+      scheduledAt: createScheduledAt(dateKey),
+      generatedAt: new Date().toISOString(),
+    };
+    const updated = [idea, ...ideas];
+    setIdeas(updated);
+    persistLinkedInWorkspacePatch({ ideas: updated });
+    sessionStorage.setItem("linkedin_idea_prefill", JSON.stringify(idea));
+    setDayMenu(null);
+    router.push("/admin/linkedin/idees");
+  };
+
+  const validateScheduledPost = (postId: string) => {
+    const updated = posts.map((post) => {
+      if (post.id !== postId) return post;
+      const publicationDate = post.scheduledAt ?? new Date().toISOString();
+      return {
+        ...post,
+        status: "published" as const,
+        publishedAt: publicationDate,
+      };
+    });
+    persistPosts(updated);
+  };
+
   const prevMonth = () => {
     setCurrent((value) => (value.month === 0 ? { year: value.year - 1, month: 11 } : { year: value.year, month: value.month - 1 }));
     setSelectedDate(null);
@@ -190,11 +243,23 @@ export default function LinkedInPlanificationPage() {
     return map;
   }, [posts]);
 
+  const ideasByDate = useMemo(() => {
+    const map: Record<string, LinkedInIdea[]> = {};
+    for (const idea of ideas) {
+      const dateKey = getIdeaCalendarDateKey(idea);
+      if (!dateKey) continue;
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(idea);
+    }
+    return map;
+  }, [ideas]);
+
   const firstDay = getFirstDayOfMonth(current.year, current.month);
   const daysInMonth = getDaysInMonth(current.year, current.month);
   const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
   const todayKey = isoToDateKey(today.toISOString());
   const selectedPosts = selectedDate ? postsByDate[selectedDate] || [] : [];
+  const selectedIdeas = selectedDate ? ideasByDate[selectedDate] || [] : [];
   const topQuartilePosts = getTopQuartilePublishedPosts(posts);
   const autoRecyclePosts = posts.filter((post) => Boolean(post.analytics?.autoRecycleSourcePostId));
 
@@ -217,8 +282,6 @@ export default function LinkedInPlanificationPage() {
 
   const getPostTone = (post: LinkedInPost) => {
     if (post.analytics?.autoRecycleSourcePostId) return { ...STYLE_TONES.storytelling, bg: "#f3e8ff", border: "#d8b4fe", color: "#6d28d9", dot: "#7c3aed" };
-    const dateKey = getPostCalendarDateKey(post);
-    if (dateKey && dateKey < todayKey) return { ...STYLE_TONES.educatif, bg: "#dcfce7", border: "#86efac", color: "#166534", dot: "#22c55e" };
     const style = styles.find((item) => item.id === post.styleId || item.name === post.styleName);
     return STYLE_TONES[style?.category ?? "fallback"];
   };
@@ -287,6 +350,7 @@ export default function LinkedInPlanificationPage() {
 
               const dateKey = `${current.year}-${String(current.month + 1).padStart(2, "0")}-${String(dayNumber).padStart(2, "0")}`;
               const dayPosts = postsByDate[dateKey] || [];
+              const dayIdeas = ideasByDate[dateKey] || [];
               const isToday = dateKey === todayKey;
               const isSelected = dateKey === selectedDate;
 
@@ -294,6 +358,11 @@ export default function LinkedInPlanificationPage() {
                 <button
                   key={index}
                   onClick={() => setSelectedDate(isSelected ? null : dateKey)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setSelectedDate(dateKey);
+                    setDayMenu({ dateKey, x: event.clientX, y: event.clientY });
+                  }}
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
@@ -330,8 +399,9 @@ export default function LinkedInPlanificationPage() {
                     {dayNumber}
                   </span>
 
-                  {dayPosts.slice(0, 3).map((post) => {
+                  {dayPosts.slice(0, 2).map((post) => {
                     const tone = getPostTone(post);
+                    const analytics = post.analytics;
                     return (
                       <div
                         key={post.id}
@@ -340,14 +410,29 @@ export default function LinkedInPlanificationPage() {
                           setDraggedPostId(post.id);
                           event.dataTransfer.setData("text/plain", post.id);
                         }}
-                        style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, border: `1px solid ${tone.border}`, background: tone.bg, color: tone.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab" }}
+                        style={{ borderRadius: 8, border: `1px solid ${tone.border}`, background: tone.bg, color: tone.color, overflow: "hidden", cursor: "grab", display: "grid", gridTemplateRows: "1fr auto" }}
                       >
-                        <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: tone.dot, marginRight: 4, verticalAlign: "middle" }} />
-                        {post.content.slice(0, 20)}...
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: 6, minHeight: 34 }}>
+                          {analytics?.mediaPreviewUrl ? (
+                            <span style={{ width: 28, height: 28, borderRadius: 5, background: `url(${analytics.mediaPreviewUrl}) center / cover`, flexShrink: 0 }} />
+                          ) : null}
+                          <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                            {post.content.slice(0, 42)}...
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "5px 7px", borderTop: `1px solid ${tone.border}`, background: "rgba(255,255,255,0.34)" }}>
+                          <CheckCircle2 size={11} />
+                          <MoreVertical size={12} style={{ opacity: 0.55 }} />
+                        </div>
                       </div>
                     );
                   })}
-                  {dayPosts.length > 3 && <span style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", paddingLeft: 4 }}>+{dayPosts.length - 3}</span>}
+                  {dayIdeas.slice(0, 1).map((idea) => (
+                    <div key={idea.id} style={{ fontSize: 11, padding: "4px 7px", borderRadius: 7, border: "1px dashed rgba(18,26,46,0.15)", background: "#fff", color: "rgba(18,26,46,0.62)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Idée: {idea.title}
+                    </div>
+                  ))}
+                  {dayPosts.length + dayIdeas.length > 3 && <span style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", paddingLeft: 4 }}>+{dayPosts.length + dayIdeas.length - 3}</span>}
                 </button>
               );
             })}
@@ -363,7 +448,7 @@ export default function LinkedInPlanificationPage() {
                     {new Date(`${selectedDate}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
                   </h3>
                   <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginTop: 2, marginBottom: 0 }}>
-                    {selectedPosts.length} post{selectedPosts.length > 1 ? "s" : ""}
+                    {selectedPosts.length} post{selectedPosts.length > 1 ? "s" : ""} · {selectedIdeas.length} idée{selectedIdeas.length > 1 ? "s" : ""}
                   </p>
                 </div>
                 <button type="button" onClick={() => setSettingsOpen(true)} style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 14, padding: "7px 9px", boxShadow: "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,0,0.03), 0px 0.47px 1.18px rgba(0,0,0,0.03)", cursor: "pointer", display: "flex" }} aria-label="Auto-republication">
@@ -372,14 +457,22 @@ export default function LinkedInPlanificationPage() {
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                {selectedPosts.length === 0 ? (
+                {selectedPosts.length === 0 && selectedIdeas.length === 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 128, textAlign: "center" }}>
                     <Calendar size={20} style={{ color: "rgba(18,26,46,0.2)", marginBottom: 8 }} />
                     <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>Aucun post ce jour</p>
                     <Link href="/admin/linkedin/posts" style={{ marginTop: 8, fontSize: 12, color: "#0147ff" }}>Creer un post</Link>
                   </div>
                 ) : (
-                  selectedPosts.map((post) => <PostSideCard key={post.id} post={post} tone={getPostTone(post)} />)
+                  <>
+                    {selectedPosts.map((post) => <PostSideCard key={post.id} post={post} tone={getPostTone(post)} onValidate={() => validateScheduledPost(post.id)} />)}
+                    {selectedIdeas.map((idea) => (
+                      <div key={idea.id} style={{ borderRadius: 10, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", padding: 12 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#121a2e" }}>{idea.title}</p>
+                        <p style={{ margin: "5px 0 0", fontSize: 12, color: "rgba(18,26,46,0.48)" }}>Idée planifiée</p>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </>
@@ -403,7 +496,7 @@ export default function LinkedInPlanificationPage() {
             ) : (
               upcomingPosts.map((post) => (
                 <div key={post.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: post.analytics?.autoRecycleSourcePostId ? "#7c3aed" : "#0147ff", marginTop: 6, flexShrink: 0 }} />
+                  {post.analytics?.mediaPreviewUrl ? <div style={{ width: 32, height: 32, borderRadius: 7, background: `url(${post.analytics.mediaPreviewUrl}) center / cover`, flexShrink: 0 }} /> : null}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 12, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
                       {post.content.slice(0, 42)}...
@@ -425,7 +518,7 @@ export default function LinkedInPlanificationPage() {
                 </p>
                 {upcomingAutoRecyclePosts.map((post) => (
                   <div key={post.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0" }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#7c3aed", marginTop: 6, flexShrink: 0 }} />
+                    {post.analytics?.mediaPreviewUrl ? <div style={{ width: 32, height: 32, borderRadius: 7, background: `url(${post.analytics.mediaPreviewUrl}) center / cover`, flexShrink: 0 }} /> : null}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, color: "#6d28d9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
                         {post.content.slice(0, 42)}...
@@ -441,6 +534,60 @@ export default function LinkedInPlanificationPage() {
           </div>
         </div>
       </div>
+
+      {dayMenu ? (
+        <>
+          <button type="button" aria-label="Fermer le menu" onClick={() => setDayMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 25, border: "none", background: "transparent", cursor: "default" }} />
+          <div
+            style={{
+              position: "fixed",
+              zIndex: 26,
+              left: dayMenu.x,
+              top: dayMenu.y,
+              width: 238,
+              borderRadius: 18,
+              border: "1px solid rgba(18,26,46,0.12)",
+              background: "rgba(255,255,255,0.96)",
+              boxShadow: "0 22px 70px rgba(18,26,46,0.16)",
+              padding: 10,
+              backdropFilter: "blur(12px)",
+            }}
+          >
+            {[
+              { label: "Nouveau post", icon: <Plus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey, "new") },
+              { label: "Planifier un post", icon: <CalendarPlus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey, "schedule") },
+              { label: "Ajouter une idée", icon: <PenLine size={18} />, onClick: () => createIdeaForDate(dayMenu.dateKey) },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                style={{
+                  width: "100%",
+                  minHeight: 52,
+                  border: "none",
+                  borderRadius: 12,
+                  background: "transparent",
+                  color: "#121a2e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "0 12px",
+                  fontSize: 15,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                }}
+                onMouseEnter={(event) => { event.currentTarget.style.background = "rgba(18,26,46,0.04)"; }}
+                onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {settingsOpen ? (
         <div
@@ -550,20 +697,21 @@ export default function LinkedInPlanificationPage() {
   );
 }
 
-function PostSideCard({ post, tone: _tone }: { post: LinkedInPost; tone?: { bg: string; border: string; color: string; dot: string } }) {
+function PostSideCard({ post, tone, onValidate }: { post: LinkedInPost; tone?: { bg: string; border: string; color: string; dot: string }; onValidate?: () => void }) {
   const date = post.status === "scheduled"
     ? post.scheduledAt
     : post.analytics?.publishedDate
       ? new Date(`${post.analytics.publishedDate}T${post.analytics.publishedTime || "12:00"}:00`).toISOString()
       : post.publishedAt;
-  const style = STATUS_STYLES[post.status] || STATUS_STYLES.draft;
-  const statusLabel = post.status === "scheduled" ? "Planifie" : post.status === "published" ? "Publie" : "Brouillon";
+  const style = tone ?? STATUS_STYLES[post.status] ?? STATUS_STYLES.draft;
   const isAutoRecycle = Boolean(post.analytics?.autoRecycleSourcePostId);
+  const statusLabel = isAutoRecycle ? "Relance auto" : post.status === "scheduled" ? "Planifie" : post.status === "published" ? "Valide LinkedIn" : "Brouillon";
+  const mediaUrl = post.analytics?.mediaPreviewUrl;
 
   return (
     <div style={{ borderRadius: 10, border: `1px solid ${isAutoRecycle ? "#d8b4fe" : style.border}`, background: isAutoRecycle ? "#faf5ff" : style.bg, padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <div style={{ width: 6, height: 6, borderRadius: "50%", background: isAutoRecycle ? "#7c3aed" : style.dot }} />
+        {mediaUrl ? <div style={{ width: 34, height: 34, borderRadius: 7, background: `url(${mediaUrl}) center / cover`, flexShrink: 0 }} /> : null}
         <span style={{ fontSize: 12, fontWeight: 600, color: isAutoRecycle ? "#6d28d9" : style.color }}>{statusLabel}</span>
         {date && <span style={{ fontSize: 12, color: isAutoRecycle ? "#6d28d9" : style.color, opacity: 0.7, marginLeft: "auto" }}>{formatTime(date)}</span>}
       </div>
@@ -573,6 +721,11 @@ function PostSideCard({ post, tone: _tone }: { post: LinkedInPost; tone?: { bg: 
       {post.styleName && <p style={{ fontSize: 12, opacity: 0.6, margin: "6px 0 0", color: isAutoRecycle ? "#6d28d9" : style.color }}>Style: {post.styleName}</p>}
       {post.type === "carousel" && <span style={{ fontSize: 12, opacity: 0.6, color: isAutoRecycle ? "#6d28d9" : style.color }}>Carrousel · {post.slides?.length || 0} slides</span>}
       {isAutoRecycle && <p style={{ fontSize: 12, opacity: 0.78, margin: "6px 0 0", color: "#6d28d9" }}>Relance automatique top 25%</p>}
+      {post.status === "scheduled" && !isAutoRecycle && onValidate ? (
+        <button type="button" onClick={onValidate} style={{ marginTop: 8, border: "none", borderRadius: 999, background: "rgba(255,255,255,0.72)", color: style.color, padding: "6px 10px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+          Valider sur LinkedIn
+        </button>
+      ) : null}
     </div>
   );
 }

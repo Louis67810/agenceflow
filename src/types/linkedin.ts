@@ -75,6 +75,7 @@ export interface LinkedInIdea {
   description: string;
   styleId?: string;
   styleName?: string;
+  scheduledAt?: string;
   status: "new" | "used" | "dismissed";
   generatedAt: string;
   usedAt?: string;

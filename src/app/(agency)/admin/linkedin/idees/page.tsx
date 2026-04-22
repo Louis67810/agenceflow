@@ -63,6 +63,7 @@ function AddManualModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   const inp = {
     background: "#f6f6f6",
@@ -86,6 +87,7 @@ function AddManualModal({
       title: title.trim(),
       description: description.trim(),
       styleName: category ? STYLE_CATEGORY_LABELS[category] : undefined,
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       status: "new",
       generatedAt: new Date().toISOString(),
     };
@@ -171,6 +173,16 @@ function AddManualModal({
                 );
               })}
             </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 6 }}>Date prévue <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              style={inp}
+            />
           </div>
         </div>
 
@@ -687,6 +699,12 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
       {idea.styleName && ss && (
         <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 500, alignSelf: "flex-start", background: ss.bg, color: ss.color }}>
           {idea.styleName}
+        </span>
+      )}
+
+      {idea.scheduledAt && (
+        <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 600, alignSelf: "flex-start", background: "#f6f6f6", color: "rgba(18,26,46,0.58)" }}>
+          Prévue le {new Date(idea.scheduledAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
         </span>
       )}
 
