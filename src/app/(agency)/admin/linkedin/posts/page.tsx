@@ -83,6 +83,15 @@ const STATUS_STYLES: Record<"draft" | "scheduled" | "published", { bg: string; c
   published: { bg: "#d1fae5", color: "#168b64" },
 };
 const STATUS_LABELS = { draft: "Brouillon", scheduled: "Planifié", published: "Publié" };
+const STYLE_TAGS: Record<LinkedInStyle["category"] | "custom", { bg: string; color: string; border: string }> = {
+  storytelling: { bg: "#E1D1FA", color: "#6236AA", border: "rgba(98,54,170,0.18)" },
+  valeur: { bg: "#d5eeff", color: "#073e63", border: "rgba(7,62,99,0.14)" },
+  educatif: { bg: "#ccfbf1", color: "#0f766e", border: "rgba(15,118,110,0.16)" },
+  viral: { bg: "#ffe4e4", color: "#c53030", border: "rgba(197,48,48,0.14)" },
+  engagement: { bg: "#fee6d0", color: "#663b12", border: "rgba(102,59,18,0.14)" },
+  data: { bg: "#e0e7ff", color: "#3730a3", border: "rgba(55,48,163,0.14)" },
+  custom: { bg: "#f6f6f6", color: "rgba(18,26,46,0.58)", border: "rgba(18,26,46,0.1)" },
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -173,7 +182,11 @@ export default function PostsPage() {
       try {
         const idea = JSON.parse(prefill);
         setSourceTab("idea");
-        setManualIdea(`${idea.title}\n\n${idea.description}`);
+        setSelectedIdeaId(idea.id ?? "");
+        setManualIdea("");
+        if (idea.id) {
+          setIdeas((currentIdeas) => currentIdeas.some((item) => item.id === idea.id) ? currentIdeas : [idea, ...currentIdeas]);
+        }
         if (idea.styleId) setSelectedStyleId(idea.styleId);
         if (idea.scheduledAt) setScheduleDate(isoToLocalInput(idea.scheduledAt));
         sessionStorage.removeItem("linkedin_idea_prefill");
@@ -250,7 +263,7 @@ export default function PostsPage() {
     const selectedIdea = ideas.find(i => i.id === selectedIdeaId);
     let sourceContent = "", sourceTitle = "";
     switch (sourceTab) {
-      case "idea": sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}` : manualIdea; sourceTitle = selectedIdea?.title ?? ""; break;
+      case "idea": sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}${manualIdea.trim() ? `\n\nPrécisions:\n${manualIdea}` : ""}` : manualIdea; sourceTitle = selectedIdea?.title ?? ""; break;
       case "url": case "youtube": sourceContent = scrapedContent || sourceInput; sourceTitle = scrapedTitle; break;
       case "manual": sourceContent = manualIdea; break;
     }
@@ -479,9 +492,9 @@ export default function PostsPage() {
                 <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic" }}>Aucune idée disponible. Allez dans l&apos;onglet Idées pour en générer.</p>
               )}
               <div style={{ marginTop: 8 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Ou entrer une idée libre</label>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Ajouter des précisions</label>
                 <textarea rows={3} value={manualIdea} onChange={e => setManualIdea(e.target.value)}
-                  placeholder="Ex: Ma méthode pour closer des clients sans être pushy..."
+                  placeholder="Ajoute un angle, une nuance, un exemple à intégrer..."
                   style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
               </div>
             </div>
@@ -523,10 +536,20 @@ export default function PostsPage() {
           {/* Style */}
           <div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Style de rédaction</label>
-            <select value={selectedStyleId} onChange={e => setSelectedStyleId(e.target.value)} style={inp}>
-              <option value="">— Style automatique —</option>
-              {styles.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              <button type="button" onClick={() => setSelectedStyleId("")} style={{ padding: "8px 14px", borderRadius: 999, border: selectedStyleId === "" ? "1px solid rgba(18,26,46,0.18)" : "1px solid rgba(18,26,46,0.08)", background: selectedStyleId === "" ? "#f6f6f6" : "#fff", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Auto
+              </button>
+              {styles.map((style) => {
+                const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
+                const active = selectedStyleId === style.id;
+                return (
+                  <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "8px 14px", borderRadius: 999, border: active ? `1px solid ${tag.color}` : `1px solid ${tag.border}`, background: tag.bg, color: tag.color, fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', opacity: active ? 1 : 0.72 }}>
+                    {style.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Type */}
@@ -740,12 +763,20 @@ export default function PostsPage() {
                 <label style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>
                   Style du post
                 </label>
-                <select value={selectedStyleId} onChange={(event) => setSelectedStyleId(event.target.value)} style={{ ...inp, minHeight: 44, background: "#fff", fontSize: 14 }}>
-                  <option value="">Aucun style</option>
-                  {styles.map((style) => (
-                    <option key={style.id} value={style.id}>{style.name}</option>
-                  ))}
-                </select>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  <button type="button" onClick={() => setSelectedStyleId("")} style={{ padding: "8px 14px", borderRadius: 999, border: selectedStyleId === "" ? "1px solid rgba(18,26,46,0.18)" : "1px solid rgba(18,26,46,0.08)", background: selectedStyleId === "" ? "#f6f6f6" : "#fff", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    Auto
+                  </button>
+                  {styles.map((style) => {
+                    const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
+                    const active = selectedStyleId === style.id;
+                    return (
+                      <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "8px 14px", borderRadius: 999, border: active ? `1px solid ${tag.color}` : `1px solid ${tag.border}`, background: tag.bg, color: tag.color, fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', opacity: active ? 1 : 0.72 }}>
+                        {style.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div style={{ width: "100%", maxWidth: 552, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.05)", padding: 16 }}>

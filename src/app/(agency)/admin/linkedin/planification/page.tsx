@@ -95,6 +95,7 @@ export default function LinkedInPlanificationPage() {
   const [styles, setStyles] = useState<LinkedInStyle[]>([]);
   const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
   const [dayMenu, setDayMenu] = useState<{ dateKey: string; x: number; y: number } | null>(null);
+  const [draftPickerDate, setDraftPickerDate] = useState<string | null>(null);
   const [autoRecycleEnabled, setAutoRecycleEnabled] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled);
   const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
 
@@ -178,13 +179,28 @@ export default function LinkedInPlanificationPage() {
     setDraggedPostId(null);
   };
 
-  const openPostComposer = (dateKey: string, mode: "new" | "schedule") => {
+  const openPostComposer = (dateKey: string) => {
     sessionStorage.setItem("linkedin_post_schedule_prefill", JSON.stringify({
-      scheduledAt: mode === "schedule" ? createScheduledAt(dateKey) : undefined,
+      scheduledAt: createScheduledAt(dateKey),
       content: "",
     }));
     setDayMenu(null);
     router.push("/admin/linkedin/posts");
+  };
+
+  const scheduleExistingDraft = (postId: string, dateKey: string) => {
+    const updated = posts.map((post) => {
+      if (post.id !== postId) return post;
+      return {
+        ...post,
+        status: "scheduled" as const,
+        scheduledAt: createScheduledAt(dateKey),
+        publishedAt: undefined,
+      };
+    });
+    persistPosts(updated);
+    setDraftPickerDate(null);
+    setDayMenu(null);
   };
 
   const createIdeaForDate = (dateKey: string) => {
@@ -554,8 +570,8 @@ export default function LinkedInPlanificationPage() {
             }}
           >
             {[
-              { label: "Nouveau post", icon: <Plus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey, "new") },
-              { label: "Planifier un post", icon: <CalendarPlus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey, "schedule") },
+              { label: "Nouveau post", icon: <Plus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey) },
+              { label: "Planifier un post", icon: <CalendarPlus size={18} />, onClick: () => { setDraftPickerDate(dayMenu.dateKey); setDayMenu(null); } },
               { label: "Ajouter une idée", icon: <PenLine size={18} />, onClick: () => createIdeaForDate(dayMenu.dateKey) },
             ].map((item) => (
               <button
@@ -564,7 +580,7 @@ export default function LinkedInPlanificationPage() {
                 onClick={item.onClick}
                 style={{
                   width: "100%",
-                  minHeight: 52,
+                  minHeight: 46,
                   border: "none",
                   borderRadius: 12,
                   background: "transparent",
@@ -573,7 +589,7 @@ export default function LinkedInPlanificationPage() {
                   alignItems: "center",
                   gap: 14,
                   padding: "0 12px",
-                  fontSize: 15,
+                  fontSize: 16,
                   fontWeight: 500,
                   cursor: "pointer",
                   fontFamily: '"Plus Jakarta Sans", sans-serif',
@@ -587,6 +603,72 @@ export default function LinkedInPlanificationPage() {
             ))}
           </div>
         </>
+      ) : null}
+
+      {draftPickerDate ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 31,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(18,26,46,0.18)",
+            backdropFilter: "blur(10px)",
+          }}
+          onClick={() => setDraftPickerDate(null)}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 460,
+              maxHeight: "70vh",
+              overflow: "hidden",
+              borderRadius: 20,
+              border: "1px solid rgba(18,26,46,0.12)",
+              background: "rgba(255,255,255,0.96)",
+              boxShadow: "0 24px 70px rgba(18,26,46,0.18)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div style={{ padding: 18, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, color: "#121a2e", fontSize: 16, fontWeight: 800 }}>Planifier un brouillon</h3>
+                <p style={{ margin: "4px 0 0", color: "rgba(18,26,46,0.48)", fontSize: 12 }}>
+                  Date cible : {new Date(`${draftPickerDate}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
+                </p>
+              </div>
+              <button type="button" onClick={() => setDraftPickerDate(null)} style={{ width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div style={{ overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {posts.filter((post) => post.status === "draft").length === 0 ? (
+                <p style={{ margin: 0, padding: 18, color: "rgba(18,26,46,0.48)", fontSize: 13, textAlign: "center" }}>Aucun brouillon disponible.</p>
+              ) : (
+                posts.filter((post) => post.status === "draft").map((post) => {
+                  const tone = getPostTone(post);
+                  return (
+                    <button
+                      key={post.id}
+                      type="button"
+                      onClick={() => scheduleExistingDraft(post.id, draftPickerDate)}
+                      style={{ border: `1px solid ${tone.border}`, background: tone.bg, color: tone.color, borderRadius: 12, padding: 12, display: "flex", alignItems: "center", gap: 10, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                    >
+                      {post.analytics?.mediaPreviewUrl ? <span style={{ width: 42, height: 42, borderRadius: 8, background: `url(${post.analytics.mediaPreviewUrl}) center / cover`, flexShrink: 0 }} /> : null}
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 750, lineHeight: 1.35, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                        {post.content || "Brouillon sans titre"}
+                      </span>
+                      <CalendarPlus size={16} />
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {settingsOpen ? (

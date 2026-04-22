@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Clock, Plus, Bot, PenLine } from "lucide-react";
+import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine } from "lucide-react";
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
@@ -551,13 +551,6 @@ export default function LinkedInIdeesPage() {
           </div>
         </div>
 
-        {autoDue && ideas.length > 0 && (
-          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#663b12", background: "#fee6d0", padding: "8px 12px", borderRadius: 9, border: "1px solid #f59e0b" }}>
-            <Clock size={13} />
-            Votre dernière génération remonte à plus de 3 jours — de nouvelles idées vous attendent !
-          </div>
-        )}
-
         {/* Filter tabs */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 16 }}>
           {CATEGORIES.map((cat) => {
@@ -680,8 +673,18 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
         opacity: idea.status === "dismissed" ? 0.6 : 1,
         boxShadow: idea.status === "dismissed" ? "none" : "0px 2px 8px rgba(0,0,0,0.04)",
         fontFamily: '"Plus Jakarta Sans", sans-serif',
+        position: "relative",
       }}
     >
+      {idea.status !== "used" && idea.status !== "dismissed" && (
+        <button
+          onClick={onDismiss}
+          title="Ignorer"
+          style={{ position: "absolute", top: 10, right: 10, padding: 6, background: "rgba(255,255,255,0.86)", border: "1px solid rgba(18,26,46,0.08)", borderRadius: 999, cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}
+        >
+          <X size={14} />
+        </button>
+      )}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: idea.status === "dismissed" ? "rgba(18,26,46,0.4)" : "#121a2e", margin: 0, flex: 1, lineHeight: 1.4, letterSpacing: "-0.2px" }}>
           {idea.title}
@@ -727,14 +730,7 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
                 >
                   Restaurer
                 </button>
-              ) : (
-                <button
-                  onClick={onDismiss}
-                  style={{ padding: 6, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", display: "flex" }}
-                >
-                  <X size={14} />
-                </button>
-              )}
+              ) : null}
             </>
           )}
 
@@ -743,7 +739,7 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
               onClick={onUse}
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
             >
-              Créer un post
+              L’utiliser dans un post
               <ArrowRight size={12} />
             </button>
           )}
