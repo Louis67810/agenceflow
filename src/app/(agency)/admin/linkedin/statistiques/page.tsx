@@ -179,6 +179,10 @@ function formatNumber(value: number) {
   return value.toLocaleString("fr-FR");
 }
 
+function formatCompactNumber(value: number) {
+  return Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
 function formatPreviewDate(post: LinkedInPost) {
   const analytics = normalizeAnalytics(post.analytics);
   const raw = analytics.publishedDate || post.publishedAt?.slice(0, 10);
@@ -297,6 +301,19 @@ function getPeriodRange(days: number | null, offset = 0) {
   start.setDate(start.getDate() - days + 1);
   start.setHours(0, 0, 0, 0);
   return { start, end };
+}
+
+function getDaysBetween(start: Date, end: Date) {
+  const days: Date[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(12, 0, 0, 0);
+  const limit = new Date(end);
+  limit.setHours(12, 0, 0, 0);
+  while (cursor <= limit) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 }
 
 function buildPdfPreviewDataUrl(fileName: string) {
@@ -604,30 +621,39 @@ export default function LinkedInStatsPage() {
     }
     return [...map.entries()].map(([label, count]) => ({ label, count, percent: analyticsPosts.length ? Math.round((count / analyticsPosts.length) * 100) : 0 }));
   }, [analyticsPosts]);
+  const heatmapDays = useMemo(() => {
+    if (currentPeriodRange) return getDaysBetween(currentPeriodRange.start, currentPeriodRange.end);
+    if (analyticsPosts.length === 0) return getDaysBetween(getPeriodRange(30, 0)!.start, getPeriodRange(30, 0)!.end);
+    const sortedDates = analyticsPosts.map(getAnalyticsDate).sort((a, b) => a.getTime() - b.getTime());
+    return getDaysBetween(sortedDates[0], sortedDates[sortedDates.length - 1]);
+  }, [analyticsPosts, currentPeriodRange]);
   const heatmap = useMemo(() => {
-    const slots = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ total: 0, count: 0 })));
+    const dateIndex = new Map(heatmapDays.map((date, index) => [date.toISOString().slice(0, 10), index]));
+    const slots = Array.from({ length: 7 }, () => Array.from({ length: heatmapDays.length }, () => ({ total: 0, count: 0 })));
     for (const post of analyticsPosts) {
       const date = getAnalyticsDate(post);
       const day = (date.getDay() + 6) % 7;
-      const hour = date.getHours();
-      slots[day][hour].total += getEngagementValue(post);
-      slots[day][hour].count += 1;
+      const column = dateIndex.get(date.toISOString().slice(0, 10));
+      if (column === undefined) continue;
+      slots[day][column].total += getEngagementValue(post);
+      slots[day][column].count += 1;
     }
     return slots.map((row) => row.map((slot) => slot.count ? slot.total / slot.count : 0));
-  }, [analyticsPosts]);
+  }, [analyticsPosts, heatmapDays]);
   const bestTime = useMemo(() => {
     const days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-    let best = { day: 0, hour: 11, value: 0 };
-    heatmap.forEach((row, day) => row.forEach((value, hour) => {
-      if (value > best.value) best = { day, hour, value };
+    let best = { day: 0, column: 0, value: 0 };
+    heatmap.forEach((row, day) => row.forEach((value, column) => {
+      if (value > best.value) best = { day, column, value };
     }));
     const avgEngagement = average(analyticsPosts.map(getEngagementValue));
+    const date = heatmapDays[best.column];
     return {
-      label: `${String(best.hour).padStart(2, "0")}h00`,
+      label: date ? date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : days[best.day],
       day: days[best.day],
       delta: percentDelta(best.value, avgEngagement),
     };
-  }, [analyticsPosts, heatmap]);
+  }, [analyticsPosts, heatmap, heatmapDays]);
   const hookStats = useMemo(() => {
     const globalImpressions = average(analyticsPosts.map((post) => normalizeAnalytics(post.analytics).impressions));
     const globalEngagement = average(analyticsPosts.map(getEngagementValue));
@@ -635,7 +661,11 @@ export default function LinkedInStatsPage() {
     const build = (query: string) => {
       const clean = query.trim().toLowerCase();
       const matches = clean
-        ? analyticsPosts.filter((post) => extractHook(post.content).toLowerCase().includes(clean))
+        ? analyticsPosts.filter((post) => {
+          const content = getPostContentFallback(post).trim();
+          if (!content || content === "Post importé depuis LinkedIn") return false;
+          return extractHook(content).toLowerCase().includes(clean);
+        })
         : [];
       const impressions = average(matches.map((post) => normalizeAnalytics(post.analytics).impressions));
       const engagement = average(matches.map(getEngagementValue));
@@ -663,9 +693,6 @@ export default function LinkedInStatsPage() {
   const recentActivity = useMemo(() => [...analyticsPosts]
     .sort((a, b) => getAnalyticsDate(b).getTime() - getAnalyticsDate(a).getTime())
     .slice(0, 4), [analyticsPosts]);
-  const typeEvolutionPosts = useMemo(() => {
-    return [...analyticsPosts].sort((a, b) => getAnalyticsDate(a).getTime() - getAnalyticsDate(b).getTime());
-  }, [analyticsPosts]);
 
   function persist(updatedPosts: LinkedInPost[]) {
     const normalized = normalizePosts(updatedPosts);
@@ -945,12 +972,6 @@ export default function LinkedInStatsPage() {
     const y = 220 - (item.value / timelineMax) * 170;
     return `${x},${y}`;
   }).join(" ");
-  const typeMax = Math.max(...typeEvolutionPosts.map((post) => getDataMetricValue(post, dataMetric)), 1);
-  const typePoints = typeEvolutionPosts.map((post, index) => {
-    const x = typeEvolutionPosts.length <= 1 ? 58 : 58 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 820;
-    const y = 210 - (getDataMetricValue(post, dataMetric) / typeMax) * 150;
-    return `${x},${y}`;
-  }).join(" ");
   const formatConic = (() => {
     if (formatDistribution.length === 0) return "#eef1f5 0deg 360deg";
     let cursor = 0;
@@ -964,7 +985,10 @@ export default function LinkedInStatsPage() {
     }).join(", ");
   })();
   const maxHeatValue = Math.max(...heatmap.flat(), 1);
-  const hourLabels = [0, 4, 8, 12, 16, 20];
+  const heatmapLabelStep = Math.max(Math.ceil(heatmapDays.length / 6), 1);
+  const heatmapLabels = heatmapDays
+    .map((date, index) => ({ date, index }))
+    .filter(({ index }) => index === 0 || index === heatmapDays.length - 1 || index % heatmapLabelStep === 0);
   const dayLabels = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."];
   const selectedMetric = DATA_METRICS.find((metric) => metric.key === dataMetric) ?? DATA_METRICS[0];
   const SelectedMetricIcon = selectedMetric.icon;
@@ -1095,7 +1119,7 @@ export default function LinkedInStatsPage() {
           </div>
         </div>
 
-        <div style={{ padding: "22px 26px 0" }}>
+        <div style={{ padding: activeTab === "data" ? "22px 26px 24px" : "22px 26px 0" }}>
           <h1 style={{ margin: 0, fontSize: 22, lineHeight: "25px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
             {activeTab === "data" ? "Données LinkedIn" : "Posts LinkedIn"}
           </h1>
@@ -1395,14 +1419,22 @@ export default function LinkedInStatsPage() {
               const delta = percentDelta(card.value, card.previous);
               const hasPrevious = selectedPeriod.days !== null && card.previous > 0;
               return (
-              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${formatNumber(Math.round(card.value))} sur ${selectedPeriod.label}. Comparaison calculée avec la période précédente de même durée.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer" }}>
+              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${formatNumber(Math.round(card.value))} sur ${selectedPeriod.label}. Comparaison calculée avec la période précédente de même durée.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer", overflow: "hidden" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 9, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <Icon size={17} style={{ color: "#6f7887" }} />
                 </div>
                 <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
-                <strong style={{ display: "block", marginTop: 9, fontSize: 22, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{formatNumber(Math.round(card.value))}</strong>
-                <span style={{ display: "block", marginTop: 8, fontSize: 12, color: !hasPrevious ? "#6f7887" : delta >= 0 ? "#168b64" : "#c53434", fontWeight: 600 }}>
-                  {hasPrevious ? `${delta >= 0 ? "↑" : "↓"} ${formatDelta(Math.abs(delta))} vs période précédente` : "Pas assez de données avant"}
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 9, minWidth: 0 }}>
+                  <strong style={{ display: "block", minWidth: 0, fontSize: 22, fontWeight: 600, color: "#121a2e", lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{formatCompactNumber(Math.round(card.value))}</strong>
+                  <span style={{ fontSize: 18, lineHeight: 1, color: !hasPrevious ? "#6f7887" : delta >= 0 ? "#168b64" : "#c53434", flexShrink: 0 }}>
+                    {hasPrevious ? (delta >= 0 ? "↑" : "↓") : "·"}
+                  </span>
+                  <span style={{ fontSize: 16, color: !hasPrevious ? "#6f7887" : delta >= 0 ? "#168b64" : "#c53434", fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {hasPrevious ? formatDelta(Math.abs(delta)) : "n/a"}
+                  </span>
+                </div>
+                <span style={{ display: "block", marginTop: 7, fontSize: 11, color: "#8a94a3", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {hasPrevious ? "vs période précédente" : "Pas assez de données avant"}
                 </span>
               </button>
             );})}
@@ -1463,13 +1495,13 @@ export default function LinkedInStatsPage() {
                   Importe au moins un CSV LinkedIn sauvegarde pour afficher l'evolution.
                 </div>
               ) : (
-                <svg viewBox="0 0 920 270" preserveAspectRatio="none" style={{ width: "100%", height: 285, display: "block" }}>
+                <svg viewBox="0 0 920 285" preserveAspectRatio="none" style={{ width: "100%", height: 300, display: "block", overflow: "visible" }}>
                   {[0, 1, 2, 3, 4].map((line) => (
                     <line key={line} x1="46" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
                   ))}
                   {[0, 1, 2, 3, 4].map((line) => {
                     const value = Math.round(timelineMax - (timelineMax / 4) * line);
-                    return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter">{formatNumber(value)}</text>;
+                    return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter, sans-serif">{formatNumber(value)}</text>;
                   })}
                   <defs>
                     <linearGradient id="linkedinStatsLineFill" x1="0" y1="0" x2="0" y2="1">
@@ -1489,10 +1521,10 @@ export default function LinkedInStatsPage() {
                     const firstPost = item.posts[0];
                     const firstAnalytics = normalizeAnalytics(firstPost.analytics);
                     return (
-                      <g key={item.date.toISOString()} onClick={() => setDataOverlay({ title: item.date.toLocaleDateString("fr-FR"), body: `${formatNumber(item.value)} ${DATA_METRICS.find((metric) => metric.key === dataMetric)?.label.toLowerCase()} sur ${item.posts.length} post(s).` })} style={{ cursor: "pointer" }}>
+                      <g key={item.date.toISOString()} onClick={() => { setActiveTab("posts"); selectPost(firstPost); }} style={{ cursor: "pointer" }}>
                         <line x1={x} x2={x} y1="35" y2="228" stroke="rgba(18,26,46,0.08)" strokeDasharray="3 4" />
-                        <foreignObject x={x - 18} y={y - 18} width="36" height="40">
-                          <div style={{ width: 26, height: 30, margin: 4, borderRadius: 5, border: "2px solid #fff", background: firstAnalytics.mediaPreviewUrl ? `url(${firstAnalytics.mediaPreviewUrl}) center / cover` : "#cfcfcf", boxShadow: previewShadow }} />
+                        <foreignObject x={x - 26} y={y - 30} width="58" height="68">
+                          <div style={{ width: 30, height: 36, margin: 14, borderRadius: 5, border: "2px solid #fff", background: firstAnalytics.mediaPreviewUrl ? `url(${firstAnalytics.mediaPreviewUrl}) center / cover` : "#cfcfcf", boxShadow: previewShadow }} />
                         </foreignObject>
                         <title>{`${item.date.toLocaleDateString("fr-FR")} - ${formatNumber(item.value)}`}</title>
                       </g>
@@ -1501,7 +1533,7 @@ export default function LinkedInStatsPage() {
                   {timeline.map((item, index) => {
                     if (index % Math.max(Math.ceil(timeline.length / 6), 1) !== 0) return null;
                     const x = timeline.length <= 1 ? 58 : 58 + (index / Math.max(timeline.length - 1, 1)) * 820;
-                    return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="260" fill="rgba(18,26,46,0.54)" fontSize="12" fontFamily="Inter">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
+                    return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontFamily="Inter, sans-serif">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
                   })}
                 </svg>
               )}
@@ -1510,9 +1542,9 @@ export default function LinkedInStatsPage() {
             <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 22 }}>
               <article style={{ ...dataCardStyle, padding: 24 }}>
                 <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Repartition par format</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "132px 1fr", gap: 20, alignItems: "center" }}>
-                  <div style={{ width: 132, height: 132, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
-                    <div style={{ position: "absolute", inset: 34, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "152px 1fr", gap: 20, alignItems: "center" }}>
+                  <div style={{ width: 152, height: 152, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
+                    <div style={{ position: "absolute", inset: 42, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
                       <span style={{ ...dataMutedText, fontSize: 13 }}>Total</span>
                       <strong style={{ fontSize: 22, color: "#121a2e" }}>{analyticsPosts.length}</strong>
                       <span style={{ ...dataMutedText, fontSize: 12 }}>posts</span>
@@ -1532,33 +1564,43 @@ export default function LinkedInStatsPage() {
 
               <article style={{ ...dataCardStyle, padding: 24 }}>
                 <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Performances par jour</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", columnGap: 8, rowGap: 3 }}>
                   {dayLabels.map((day, dayIndex) => (
                     <div key={day} style={{ display: "contents" }}>
                       <span style={{ ...dataMutedText, fontSize: 12, alignSelf: "center" }}>{day}</span>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 12px)", gap: 3 }}>
-                        {heatmap[dayIndex].map((value, hour) => (
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${heatmapDays.length}, 12px)`, gap: 3, overflow: "hidden" }}>
+                        {heatmap[dayIndex].map((value, column) => {
+                          const date = heatmapDays[column];
+                          return (
                           <button
-                            key={`${day}-${hour}`}
+                            key={`${day}-${column}`}
                             type="button"
-                            onClick={() => setDataOverlay({ title: `${day} ${String(hour).padStart(2, "0")}h`, body: `Engagement moyen : ${Math.round(value)}. Plus la case est bleue, plus les posts de ce créneau performent.` })}
+                            onClick={() => setDataOverlay({ title: date ? date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : day, body: `Engagement moyen : ${Math.round(value)}. Plus la case est bleue, plus les posts de ce jour performent.` })}
                             style={{ width: 12, height: 12, border: 0, borderRadius: 3, background: `rgba(45,110,253,${0.08 + (value / maxHeatValue) * 0.72})`, cursor: "pointer" }}
-                            aria-label={`${day} ${hour}h`}
+                            aria-label={`${day} jour ${column + 1}`}
                           />
-                        ))}
+                        );})}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 8, marginTop: 12 }}>
                   <span />
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", width: 357, ...dataMutedText, fontSize: 12 }}>
-                    {hourLabels.map((hour) => <span key={hour}>{String(hour).padStart(2, "0")}h</span>)}
+                  <div style={{ position: "relative", width: Math.max(heatmapDays.length * 15 - 3, 80), height: 18, ...dataMutedText, fontSize: 12 }}>
+                    {heatmapLabels.map(({ date, index }) => (
+                      <span key={`${date.toISOString()}-${index}`} style={{ position: "absolute", left: Math.min(index * 15, Math.max(heatmapDays.length * 15 - 48, 0)), whiteSpace: "nowrap" }}>
+                        J+{index}
+                      </span>
+                    ))}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingLeft: 44 }}>
                   <span style={{ ...dataMutedText, fontSize: 12 }}>Faible</span>
-                  <span style={{ width: 142, height: 10, borderRadius: 999, background: "linear-gradient(90deg, rgba(45,110,253,0.08), rgba(45,110,253,0.8))" }} />
+                  <span style={{ display: "grid", gridTemplateColumns: "repeat(6, 34px)", gap: 3 }}>
+                    {[0.08, 0.18, 0.3, 0.45, 0.62, 0.8].map((opacity) => (
+                      <span key={opacity} style={{ height: 12, background: `rgba(45,110,253,${opacity})`, borderRadius: opacity === 0.08 ? "999px 0 0 999px" : opacity === 0.8 ? "0 999px 999px 0" : 0 }} />
+                    ))}
+                  </span>
                   <span style={{ ...dataMutedText, fontSize: 12 }}>Élevé</span>
                 </div>
               </article>
@@ -1630,34 +1672,6 @@ export default function LinkedInStatsPage() {
               </article>
             </section>
 
-            <section style={{ ...dataCardStyle, padding: "26px 28px", minHeight: 360 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, marginBottom: 20 }}>
-                <h3 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: "#121a2e" }}>Evolution par type</h3>
-                <span style={{ ...dataMutedText }}>
-                  {dataStyleFilter ? styles.find((style) => style.id === dataStyleFilter)?.name ?? "Style filtré" : "Tous les styles"} · {selectedMetric.label}
-                </span>
-              </div>
-              {typeEvolutionPosts.length === 0 ? (
-                <div style={{ minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, background: "#f7f8fa", ...dataMutedText }}>
-                  Aucun post pour ce style sur la periode choisie.
-                </div>
-              ) : (
-                <svg viewBox="0 0 920 260" preserveAspectRatio="none" style={{ width: "100%", height: 270, display: "block" }}>
-                  {[0, 1, 2, 3].map((line) => <line key={line} x1="60" x2="890" y1={55 + line * 46} y2={55 + line * 46} stroke="rgba(18,26,46,0.06)" />)}
-                  <polyline points={typePoints} fill="none" stroke="#6D96FE" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-                  {typeEvolutionPosts.map((post, index) => {
-                    const x = typeEvolutionPosts.length <= 1 ? 58 : 58 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 820;
-                    const y = 210 - (getDataMetricValue(post, dataMetric) / typeMax) * 150;
-                    const analytics = normalizeAnalytics(post.analytics);
-                    return (
-                      <foreignObject key={post.id} x={x - 16} y={y - 18} width="38" height="42" style={{ cursor: "pointer" }} onClick={() => { setActiveTab("posts"); selectPost(post); }}>
-                        <div style={{ width: 28, height: 32, margin: 4, borderRadius: 5, border: "2px solid #fff", background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#cfcfcf", boxShadow: previewShadow }} />
-                      </foreignObject>
-                    );
-                  })}
-                </svg>
-              )}
-            </section>
           </div>
         ) : (
           <>
