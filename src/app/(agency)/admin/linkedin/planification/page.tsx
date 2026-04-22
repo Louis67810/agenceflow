@@ -200,6 +200,11 @@ export default function LinkedInPlanificationPage() {
     router.push("/admin/linkedin/posts");
   };
 
+  const startPostFromIdea = (idea: LinkedInIdea) => {
+    sessionStorage.setItem("linkedin_idea_prefill", JSON.stringify(idea));
+    router.push("/admin/linkedin/posts");
+  };
+
   const scheduleExistingDraft = (postId: string, dateKey: string) => {
     const updated = posts.map((post) => {
       if (post.id !== postId) return post;
@@ -320,6 +325,7 @@ export default function LinkedInPlanificationPage() {
 
   const getPostTone = (post: LinkedInPost) => {
     if (post.analytics?.autoRecycleSourcePostId) return { ...STYLE_TONES.storytelling, bg: "#f3e8ff", border: "#d8b4fe", color: "#6d28d9", dot: "#7c3aed" };
+    if (post.status === "published") return STATUS_STYLES.published;
     const style = styles.find((item) => item.id === post.styleId || item.name === post.styleName);
     return STYLE_TONES[style?.category ?? "fallback"];
   };
@@ -526,6 +532,16 @@ export default function LinkedInPlanificationPage() {
                       >
                         <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#121a2e" }}>{idea.title}</p>
                         <p style={{ margin: "5px 0 0", fontSize: 12, color: "rgba(18,26,46,0.48)" }}>Idée planifiée</p>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startPostFromIdea(idea);
+                          }}
+                          style={{ marginTop: 10, width: "100%", minHeight: 34, borderRadius: 9, border: "1px solid rgba(18,26,46,0.1)", background: "#f6f6f6", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                        >
+                          Démarrer un post avec cette idée
+                        </button>
                       </div>
                     ))}
                   </>

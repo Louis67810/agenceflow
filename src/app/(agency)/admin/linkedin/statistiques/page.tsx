@@ -2,20 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
-import { BarChart3, ChevronDown, Eye, MousePointerClick, SlidersHorizontal, ThumbsUp } from "lucide-react";
-import ClientBlueButton from "@/components/shared/ClientBlueButton";
+import { BarChart3, ChevronDown, Eye, Link2, MousePointerClick, Search, SlidersHorizontal, ThumbsUp, Upload, X } from "lucide-react";
 import {
   DEFAULT_STYLES,
-  STYLE_CATEGORY_COLORS,
   type LinkedInPost,
   type LinkedInPostAnalytics,
   type LinkedInStyle,
 } from "@/types/linkedin";
 import {
-  createImportedAnalyticsPost,
   findPostByAnalytics,
   loadLinkedInPosts,
-  mergePostAnalytics,
   normalizeAnalytics,
   normalizePost,
   normalizePosts,
@@ -251,7 +247,7 @@ function ReactionDots() {
             height: 14,
             borderRadius: 999,
             background: color,
-            border: "2px solid #f0f0f0",
+            border: "2px solid #fff",
             marginLeft: index === 0 ? 0 : -6,
             display: "inline-block",
           }}
@@ -268,7 +264,7 @@ function MediaSquare({ analytics }: { analytics: LinkedInPostAnalytics }) {
         width: 76,
         height: 84,
         borderRadius: 5.4,
-        border: "3px solid rgba(18,26,46,0.18)",
+        border: "3px solid #fff",
         background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc",
         boxShadow: previewShadow,
         transform: "rotate(-1.83deg)",
@@ -291,17 +287,19 @@ function styleCategoryLabel(style: LinkedInStyle) {
   return labels[style.category] ?? style.category;
 }
 
-function StyleChip({
-  style,
-}: {
-  style: LinkedInStyle;
-}) {
-  const colorClass = STYLE_CATEGORY_COLORS[style.category] || "bg-gray-100 text-gray-700";
-  return (
-    <span className={`inline-block text-xs rounded-full ${colorClass}`} style={{ padding: "10px 14px", lineHeight: 1, fontWeight: 500 }}>
-      {styleCategoryLabel(style)}
-    </span>
-  );
+const STYLE_TAG_STYLES: Record<LinkedInStyle["category"], { bg: string; color: string; border: string }> = {
+  storytelling: { bg: "#f1eaff", color: "#6236AA", border: "#d8c3ff" },
+  valeur: { bg: "#e8f6ff", color: "#073e63", border: "#bfe2fa" },
+  educatif: { bg: "#dcfaf5", color: "#0f766e", border: "#99f6e4" },
+  viral: { bg: "#ffecec", color: "#c53030", border: "#fecaca" },
+  engagement: { bg: "#fff0df", color: "#663b12", border: "#fed7aa" },
+  data: { bg: "#eef2ff", color: "#3730a3", border: "#c7d2fe" },
+  custom: { bg: "#f6f6f6", color: "#5f6673", border: "#d9dce2" },
+};
+
+function getStyleTagVisual(style?: LinkedInStyle, active = true) {
+  if (!style || !active) return { bg: "#f3f4f6", color: "#6f7887", border: "#e1e4e8" };
+  return STYLE_TAG_STYLES[style.category] ?? STYLE_TAG_STYLES.custom;
 }
 
 export default function LinkedInStatsPage() {
@@ -316,11 +314,13 @@ export default function LinkedInStatsPage() {
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [sortOpen, setSortOpen] = useState(false);
   const [formatOpen, setFormatOpen] = useState(false);
-  const [styleOpen, setStyleOpen] = useState(false);
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
   const [hoveredSortKey, setHoveredSortKey] = useState<SortKey | null>(null);
   const [importDragActive, setImportDragActive] = useState(false);
   const [mediaDragActive, setMediaDragActive] = useState(false);
+  const [pendingImportedAnalytics, setPendingImportedAnalytics] = useState<LinkedInPostAnalytics | null>(null);
+  const [linkOverlayOpen, setLinkOverlayOpen] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
 
   useEffect(() => {
     const loaded = loadLinkedInPosts();
@@ -390,6 +390,8 @@ export default function LinkedInStatsPage() {
 
   function selectPost(post: LinkedInPost) {
     const analytics = normalizeAnalytics(post.analytics);
+    setPendingImportedAnalytics(null);
+    setLinkOverlayOpen(false);
     setSelectedPostId(post.id);
     setSelectedStyleId(post.styleId ?? styles[0]?.id ?? "");
     setPostContent(getPostContentFallback(post));
@@ -426,8 +428,26 @@ export default function LinkedInStatsPage() {
     });
   }
 
+  function loadImportedAnalyticsInEditor(analytics: LinkedInPostAnalytics) {
+    const normalized = normalizeAnalytics(analytics);
+    setSelectedPostId(null);
+    setPostContent("");
+    setSelectedStyleId(styles[0]?.id ?? "");
+    setEditor({
+      ...emptyEditableAnalytics(),
+      ...normalized,
+      format: normalized.format ?? "text",
+      demographics: normalized.demographics ?? [],
+    });
+    setPendingImportedAnalytics(normalized);
+    setLinkSearch("");
+    setLinkOverlayOpen(true);
+  }
+
   function clearEditorSelection(message?: string) {
     setSelectedPostId(null);
+    setPendingImportedAnalytics(null);
+    setLinkOverlayOpen(false);
     setEditor(emptyEditableAnalytics());
     setPostContent("");
     setSelectedStyleId("");
@@ -438,32 +458,50 @@ export default function LinkedInStatsPage() {
     setEditor((prev) => ({ ...prev, [key]: value }));
   }
 
+  function mergeAnalyticsIntoExistingPost(post: LinkedInPost, analytics: EditableAnalytics | LinkedInPostAnalytics, styleId = selectedStyleId, content = postContent) {
+    const selectedStyle = styles.find((style) => style.id === styleId);
+    const normalizedAnalytics = normalizeAnalytics({
+      ...post.analytics,
+      ...analytics,
+      importedAt: post.analytics?.importedAt ?? new Date().toISOString(),
+      format: analytics.format ?? post.analytics?.format ?? "text",
+    });
+
+    return normalizePost({
+      ...post,
+      content: content.trim() || post.content,
+      postUrl: normalizedAnalytics.postUrl || post.postUrl,
+      type: normalizedAnalytics.format === "carousel" ? "carousel" : "post",
+      styleId: selectedStyle?.id ?? post.styleId,
+      styleName: selectedStyle?.name ?? post.styleName,
+      likes: normalizedAnalytics.reactions,
+      comments: normalizedAnalytics.comments,
+      impressions: normalizedAnalytics.impressions,
+      tags: Array.from(new Set([...(post.tags ?? []), normalizedAnalytics.format ?? "text", selectedStyle?.name ?? ""])).filter(Boolean),
+      analytics: normalizedAnalytics,
+    });
+  }
+
   function saveEditor() {
     if (!selectedPostId || !canSave) return;
-    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
     const updated = posts.map((post) => {
       if (post.id !== selectedPostId) return post;
-      const merged = mergePostAnalytics(post, {
-        ...editor,
-        importedAt: post.analytics?.importedAt ?? new Date().toISOString(),
-      });
-      return normalizePost({
-        ...merged,
-        content: postContent.trim(),
-        type: editor.format === "carousel" ? "carousel" : "post",
-        styleId: selectedStyle?.id,
-        styleName: selectedStyle?.name,
-        tags: Array.from(new Set([...(merged.tags ?? []), editor.format ?? "text", selectedStyle?.name ?? ""])).filter(Boolean),
-        analytics: normalizeAnalytics({
-          ...merged.analytics,
-          ...editor,
-          format: editor.format,
-        }),
-      });
+      return mergeAnalyticsIntoExistingPost(post, editor);
     });
 
     persist(updated);
     clearEditorSelection();
+  }
+
+  function linkImportedAnalyticsToPost(post: LinkedInPost) {
+    const analyticsToLink = pendingImportedAnalytics ?? normalizeAnalytics({ ...editor, importedAt: new Date().toISOString() });
+    const updated = posts.map((item) => (item.id === post.id ? mergeAnalyticsIntoExistingPost(item, analyticsToLink, item.styleId ?? selectedStyleId, item.content) : item));
+    persist(updated);
+    const linked = updated.find((item) => item.id === post.id);
+    setPendingImportedAnalytics(null);
+    setLinkOverlayOpen(false);
+    setImportMessage("");
+    if (linked) selectPost(linked);
   }
 
   async function handleImport(file: File) {
@@ -476,22 +514,14 @@ export default function LinkedInStatsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Import impossible.");
 
-      const analytics = data.analytics as LinkedInPostAnalytics;
+      const analytics = normalizeAnalytics(data.analytics as LinkedInPostAnalytics);
       const match = findPostByAnalytics(posts, analytics);
 
-      let updatedPosts: LinkedInPost[];
-      let targetPost: LinkedInPost;
-      if (match) {
-        updatedPosts = posts.map((post) => (post.id === match.id ? mergePostAnalytics(post, analytics) : post));
-        targetPost = updatedPosts.find((post) => post.id === match.id)!;
-      } else {
-        targetPost = createImportedAnalyticsPost(analytics);
-        updatedPosts = [targetPost, ...posts];
-      }
-
-      persist(updatedPosts);
-      selectPost(targetPost);
-      setImportMessage("");
+      loadImportedAnalyticsInEditor(analytics);
+      setImportMessage(match
+        ? `Import pret. Correspondance possible : "${buildPostTitle(match)}". Clique sur le post pour le lier.`
+        : "Import pret. Lie ces statistiques a un post existant avant de sauvegarder."
+      );
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "Import impossible.");
     } finally {
@@ -530,9 +560,25 @@ export default function LinkedInStatsPage() {
     if (file) void handleMediaFile(file);
   }
 
-  const uploadIsMedia = Boolean(selectedPost);
+  const editorActive = Boolean(selectedPost || pendingImportedAnalytics);
+  const uploadIsMedia = editorActive;
   const uploadDragActive = uploadIsMedia ? mediaDragActive : importDragActive;
   const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+  const linkCandidates = useMemo(() => {
+    const query = linkSearch.trim().toLowerCase();
+    return posts
+      .filter((post) => {
+        if (!query) return true;
+        return `${buildPostTitle(post)} ${post.content} ${post.styleName ?? ""}`.toLowerCase().includes(query);
+      })
+      .slice(0, 8);
+  }, [linkSearch, posts]);
+  const metricCards = [
+    { label: "Posts publies", value: publishedPosts.length, icon: <BarChart3 size={17} style={{ color: "#6f7887" }} /> },
+    { label: "Impressions", value: formatNumber(totalImpressions), icon: <Eye size={17} style={{ color: "#6f7887" }} /> },
+    { label: "Reactions", value: formatNumber(totalReactions), icon: <ThumbsUp size={17} style={{ color: "#6f7887" }} /> },
+    { label: "Clics sur le lien", value: formatNumber(totalLinkClicks || totalComments), icon: <MousePointerClick size={17} style={{ color: "#6f7887" }} /> },
+  ];
   const formatLabels: Record<PostFormat, string> = {
     text: "Texte",
     image: "Image",
@@ -645,6 +691,9 @@ export default function LinkedInStatsPage() {
               </span>
             ) : (
               <span style={{ display: "flex", flexDirection: "column", gap: 13, alignItems: "center" }}>
+                <span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", border: "1px solid #e1e4e8", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: sortShadow }}>
+                  <Upload size={16} style={{ color: "#6f7887" }} />
+                </span>
                 <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
                   {uploadIsMedia ? "Importer une photo ici :" : "Importer un post LinkedIn Ici"}
                 </span>
@@ -675,7 +724,19 @@ export default function LinkedInStatsPage() {
           )}
         </div>
 
-        {selectedPost ? (
+        {!editorActive ? (
+          <div style={{ padding: "24px 26px 0", display: "flex", flexDirection: "column", gap: 13 }}>
+            {metricCards.map((card) => (
+              <article key={card.label} style={{ minHeight: 96, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  {card.icon}
+                </div>
+                <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
+                <strong style={{ display: "block", marginTop: 8, fontSize: 20, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
+              </article>
+            ))}
+          </div>
+        ) : (
           <div style={{ padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Format du post *">
               <div style={{ position: "relative" }}>
@@ -704,34 +765,32 @@ export default function LinkedInStatsPage() {
             </Field>
 
             <Field label="Style du post *">
-              <div style={{ position: "relative" }}>
-                <button type="button" onClick={() => setStyleOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: 10 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    {selectedStyle ? (
-                      <>
-                        <StyleChip style={selectedStyle} />
-                      </>
-                    ) : "Choisir un style"}
-                  </span>
-                  <ChevronDown size={15} style={{ color: "rgba(18,26,46,0.42)", flexShrink: 0 }} />
-                </button>
-                {styleOpen ? (
-                  <div style={{ position: "absolute", top: 48, left: 0, right: 0, zIndex: 11, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 12, background: "#fff", boxShadow: "0px 16px 34px rgba(18,26,46,0.12)", padding: 6, maxHeight: 260, overflowY: "auto" }}>
-                    {styles.map((style) => (
-                      <button
-                        key={style.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStyleId(style.id);
-                          setStyleOpen(false);
-                        }}
-                        style={{ width: "100%", border: 0, borderRadius: 9, background: selectedStyleId === style.id ? "rgba(0,0,0,0.03)" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, textAlign: "left", cursor: "pointer", fontFamily: '"Inter", sans-serif' }}
-                      >
-                        <StyleChip style={style} />
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {styles.map((style) => {
+                  const active = selectedStyleId === style.id;
+                  const visual = getStyleTagVisual(style, active);
+                  return (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => setSelectedStyleId(style.id)}
+                      style={{
+                        border: `1px solid ${visual.border}`,
+                        borderRadius: 999,
+                        background: visual.bg,
+                        color: visual.color,
+                        padding: "10px 14px",
+                        fontFamily: '"Inter", sans-serif',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        lineHeight: 1,
+                      }}
+                    >
+                      {styleCategoryLabel(style)}
+                    </button>
+                  );
+                })}
               </div>
             </Field>
 
@@ -848,21 +907,24 @@ export default function LinkedInStatsPage() {
               </div>
             )}
           </div>
-        ) : (
-          <div style={{ flex: 1 }} />
         )}
 
-        {selectedPost ? (
-          <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)" }}>
-            <ClientBlueButton type="button" onClick={saveEditor} disabled={!canSave}>
+        {editorActive ? (
+          <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)", display: "flex", flexDirection: "column", gap: 10 }}>
+            {pendingImportedAnalytics ? (
+              <button type="button" onClick={() => setLinkOverlayOpen(true)} style={{ minHeight: 42, borderRadius: 10, border: "1px solid #e1e4e8", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Link2 size={15} /> Lier a un post existant
+              </button>
+            ) : null}
+            <button type="button" onClick={saveEditor} disabled={!canSave} style={{ ...loginButtonStyle, opacity: canSave ? 1 : 0.55, cursor: canSave ? "pointer" : "not-allowed" }}>
               Sauvegarder
-            </ClientBlueButton>
+            </button>
           </div>
         ) : null}
       </aside>
 
       <main style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}>
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
+        <section style={{ display: "none", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
           {[
             { label: "Posts publiés", value: publishedPosts.length, icon: <BarChart3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
             { label: "Impressions", value: formatNumber(totalImpressions), icon: <Eye size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
@@ -984,6 +1046,44 @@ export default function LinkedInStatsPage() {
           </div>
         </section>
       </main>
+
+      {linkOverlayOpen ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setLinkOverlayOpen(false)}>
+          <div style={{ width: "min(560px, 100%)", maxHeight: "72vh", overflow: "hidden", borderRadius: 20, background: "#fff", border: "1px solid #e1e4e8", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ padding: "18px 20px", borderBottom: "1px solid #edf0f3", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.3px" }}>Lier les statistiques</h3>
+                <p style={{ margin: "5px 0 0", fontSize: 13, color: "#6f7887", fontFamily: '"Inter", sans-serif' }}>Choisis le post existant auquel rattacher cet export LinkedIn.</p>
+              </div>
+              <button type="button" onClick={() => setLinkOverlayOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid #e1e4e8", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} aria-label="Fermer">
+                <X size={16} style={{ color: "#6f7887" }} />
+              </button>
+            </div>
+            <div style={{ padding: 16, borderBottom: "1px solid #edf0f3" }}>
+              <div style={{ minHeight: 44, borderRadius: 12, border: "1px solid #e1e4e8", background: "#f8f9fb", display: "flex", alignItems: "center", gap: 10, padding: "0 12px" }}>
+                <Search size={16} style={{ color: "#6f7887" }} />
+                <input value={linkSearch} onChange={(event) => setLinkSearch(event.target.value)} placeholder="Rechercher par titre, contenu ou style..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontFamily: '"Inter", sans-serif', fontSize: 14, color: "#121a2e" }} autoFocus />
+              </div>
+            </div>
+            <div style={{ overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+              {linkCandidates.length === 0 ? (
+                <p style={{ margin: 0, padding: 20, textAlign: "center", color: "#6f7887", fontSize: 14 }}>Aucun post trouve.</p>
+              ) : linkCandidates.map((post) => {
+                const analytics = normalizeAnalytics(post.analytics);
+                return (
+                  <button key={post.id} type="button" onClick={() => linkImportedAnalyticsToPost(post)} style={{ border: 0, borderRadius: 14, background: "#fff", padding: 10, display: "grid", gridTemplateColumns: "52px 1fr", gap: 12, textAlign: "left", cursor: "pointer" }}>
+                    <span style={{ width: 52, height: 58, borderRadius: 6, border: "3px solid #fff", background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc", boxShadow: previewShadow }} />
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={{ display: "block", fontSize: 15, fontWeight: 700, color: "#121a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{buildPostTitle(post)}</strong>
+                      <span style={{ display: "block", marginTop: 5, fontSize: 12, color: "#6f7887" }}>{post.status === "published" ? "Valide LinkedIn" : post.status === "scheduled" ? "Planifie" : "Brouillon"} · {post.styleName ?? "Sans style"}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
