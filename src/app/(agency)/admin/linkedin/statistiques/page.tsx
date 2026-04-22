@@ -92,7 +92,7 @@ function emptyEditableAnalytics(): EditableAnalytics {
     publishedDate: "",
     publishedTime: "",
     linkUrl: "",
-    format: "text",
+    format: undefined,
     topic: "",
     mediaPreviewUrl: "",
     mediaPreviewKind: "none",
@@ -413,14 +413,14 @@ export default function LinkedInStatsPage() {
     setPendingImportedAnalytics(null);
     setLinkOverlayOpen(false);
     setSelectedPostId(post.id);
-    setSelectedStyleId(post.styleId ?? styles[0]?.id ?? "");
+    setSelectedStyleId(post.styleId ?? "");
     setPostContent(getPostContentFallback(post));
     setEditor({
       postUrl: analytics.postUrl ?? post.postUrl ?? "",
       publishedDate: analytics.publishedDate ?? post.publishedAt?.slice(0, 10) ?? "",
       publishedTime: analytics.publishedTime ?? post.publishedAt?.slice(11, 16) ?? "",
       linkUrl: analytics.linkUrl ?? "",
-      format: analytics.format ?? (post.type === "carousel" ? "carousel" : "text"),
+      format: hasImportedAnalytics(post) ? analytics.format : post.type === "carousel" ? "carousel" : undefined,
       topic: analytics.topic ?? "",
       mediaPreviewUrl: analytics.mediaPreviewUrl ?? "",
       mediaPreviewKind: analytics.mediaPreviewKind ?? "none",
@@ -452,11 +452,11 @@ export default function LinkedInStatsPage() {
     const normalized = normalizeAnalytics(analytics);
     setSelectedPostId(null);
     setPostContent("");
-    setSelectedStyleId(styles[0]?.id ?? "");
+    setSelectedStyleId("");
     setEditor({
       ...emptyEditableAnalytics(),
       ...normalized,
-      format: normalized.format ?? "text",
+      format: analytics.format,
       demographics: normalized.demographics ?? [],
     });
     setPendingImportedAnalytics(normalized);
@@ -484,20 +484,20 @@ export default function LinkedInStatsPage() {
       ...post.analytics,
       ...analytics,
       importedAt: post.analytics?.importedAt ?? new Date().toISOString(),
-      format: analytics.format ?? post.analytics?.format ?? "text",
+      format: analytics.format,
     });
 
     return normalizePost({
       ...post,
       content: content.trim() || post.content,
-      postUrl: normalizedAnalytics.postUrl || post.postUrl,
+      postUrl: normalizedAnalytics.postUrl,
       type: normalizedAnalytics.format === "carousel" ? "carousel" : "post",
-      styleId: selectedStyle?.id ?? post.styleId,
-      styleName: selectedStyle?.name ?? post.styleName,
+      styleId: selectedStyle?.id,
+      styleName: selectedStyle?.name,
       likes: normalizedAnalytics.reactions,
       comments: normalizedAnalytics.comments,
       impressions: normalizedAnalytics.impressions,
-      tags: Array.from(new Set([...(post.tags ?? []), normalizedAnalytics.format ?? "text", selectedStyle?.name ?? ""])).filter(Boolean),
+      tags: Array.from(new Set([normalizedAnalytics.format ?? "", selectedStyle?.name ?? ""])).filter(Boolean),
       analytics: normalizedAnalytics,
     });
   }
@@ -515,7 +515,7 @@ export default function LinkedInStatsPage() {
 
   function linkImportedAnalyticsToPost(post: LinkedInPost) {
     const analyticsToLink = pendingImportedAnalytics ?? normalizeAnalytics({ ...editor, importedAt: new Date().toISOString() });
-    const updated = posts.map((item) => (item.id === post.id ? mergeAnalyticsIntoExistingPost(item, analyticsToLink, item.styleId ?? selectedStyleId, item.content) : item));
+    const updated = posts.map((item) => (item.id === post.id ? mergeAnalyticsIntoExistingPost(item, { ...analyticsToLink, ...editor }, selectedStyleId || item.styleId || "", postContent || item.content) : item));
     persist(updated);
     const linked = updated.find((item) => item.id === post.id);
     setPendingImportedAnalytics(null);
@@ -536,6 +536,10 @@ export default function LinkedInStatsPage() {
 
       const analytics = normalizeAnalytics(data.analytics as LinkedInPostAnalytics);
       if (selectedPost && selectedPost.status === "published" && !hasImportedAnalytics(selectedPost)) {
+        if (!selectedStyleId || !editor.format) {
+          setImportMessage("Choisis d'abord un style et un format avant de lier le CSV a ce post.");
+          return;
+        }
         const updated = posts.map((post) => (
           post.id === selectedPost.id
             ? mergeAnalyticsIntoExistingPost(post, { ...analytics, format: editor.format ?? analytics.format }, selectedStyleId, postContent || post.content)
@@ -781,7 +785,9 @@ export default function LinkedInStatsPage() {
             <Field label="Format du post *">
               <div style={{ position: "relative" }}>
                 <button type="button" onClick={() => setFormatOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-                  <span>{formatLabels[(editor.format ?? "text") as PostFormat]}</span>
+                  <span style={{ color: editor.format ? "#121a2e" : "rgba(18,26,46,0.45)" }}>
+                    {editor.format ? formatLabels[editor.format as PostFormat] : "Choisir un format"}
+                  </span>
                   <ChevronDown size={15} style={{ color: "rgba(18,26,46,0.42)" }} />
                 </button>
                 {formatOpen ? (
