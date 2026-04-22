@@ -10,6 +10,7 @@ import {
   type LinkedInStyle,
 } from "@/types/linkedin";
 import {
+  createImportedAnalyticsPost,
   findPostByAnalytics,
   loadLinkedInPosts,
   normalizeAnalytics,
@@ -399,7 +400,7 @@ export default function LinkedInStatsPage() {
   const totalReactions = getMetricTotal(publishedPosts, "reactions");
   const totalComments = getMetricTotal(publishedPosts, "comments");
   const totalLinkClicks = getMetricTotal(publishedPosts, "linkClicks");
-  const canSave = Boolean(selectedPostId && postContent.trim() && selectedStyleId && editor.format);
+  const canSave = Boolean((selectedPostId || pendingImportedAnalytics) && (postContent.trim() || pendingImportedAnalytics) && selectedStyleId && editor.format);
 
   function persist(updatedPosts: LinkedInPost[]) {
     const normalized = normalizePosts(updatedPosts);
@@ -461,7 +462,7 @@ export default function LinkedInStatsPage() {
     });
     setPendingImportedAnalytics(normalized);
     setLinkSearch("");
-    setLinkOverlayOpen(true);
+    setLinkOverlayOpen(false);
   }
 
   function clearEditorSelection(message?: string) {
@@ -503,25 +504,64 @@ export default function LinkedInStatsPage() {
   }
 
   function saveEditor() {
-    if (!selectedPostId || !canSave) return;
-    const updated = posts.map((post) => {
-      if (post.id !== selectedPostId) return post;
-      return mergeAnalyticsIntoExistingPost(post, editor);
-    });
+    if (!canSave) return;
+    let updated: LinkedInPost[];
+
+    if (selectedPostId) {
+      updated = posts.map((post) => {
+        if (post.id !== selectedPostId) return post;
+        return mergeAnalyticsIntoExistingPost(post, editor);
+      });
+    } else {
+      const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+      const importedPost = createImportedAnalyticsPost({
+        ...pendingImportedAnalytics,
+        ...editor,
+        importedAt: pendingImportedAnalytics?.importedAt ?? new Date().toISOString(),
+      });
+      updated = [
+        normalizePost({
+          ...importedPost,
+          content: postContent.trim() || editor.postUrl || "Post importé depuis LinkedIn",
+          type: editor.format === "carousel" ? "carousel" : "post",
+          styleId: selectedStyle?.id,
+          styleName: selectedStyle?.name,
+          tags: Array.from(new Set([editor.format ?? "", selectedStyle?.name ?? ""])).filter(Boolean),
+          analytics: normalizeAnalytics({
+            ...importedPost.analytics,
+            ...editor,
+            importedAt: pendingImportedAnalytics?.importedAt ?? new Date().toISOString(),
+            format: editor.format,
+          }),
+        }),
+        ...posts,
+      ];
+    }
 
     persist(updated);
+    setShowPendingCsvPosts(false);
     clearEditorSelection();
   }
 
   function linkImportedAnalyticsToPost(post: LinkedInPost) {
     const analyticsToLink = pendingImportedAnalytics ?? normalizeAnalytics({ ...editor, importedAt: new Date().toISOString() });
-    const updated = posts.map((item) => (item.id === post.id ? mergeAnalyticsIntoExistingPost(item, { ...analyticsToLink, ...editor }, selectedStyleId || item.styleId || "", postContent || item.content) : item));
-    persist(updated);
-    const linked = updated.find((item) => item.id === post.id);
-    setPendingImportedAnalytics(null);
+    const postAnalytics = normalizeAnalytics(post.analytics);
+    setSelectedPostId(post.id);
+    setPostContent(getPostContentFallback(post) || postContent);
+    setSelectedStyleId(post.styleId ?? selectedStyleId);
+    setEditor({
+      ...emptyEditableAnalytics(),
+      ...postAnalytics,
+      ...analyticsToLink,
+      mediaPreviewUrl: postAnalytics.mediaPreviewUrl || editor.mediaPreviewUrl || analyticsToLink.mediaPreviewUrl,
+      mediaPreviewKind: postAnalytics.mediaPreviewKind || editor.mediaPreviewKind || analyticsToLink.mediaPreviewKind,
+      mediaFileName: postAnalytics.mediaFileName || editor.mediaFileName || analyticsToLink.mediaFileName,
+      mediaStorageBytes: postAnalytics.mediaStorageBytes || editor.mediaStorageBytes || analyticsToLink.mediaStorageBytes,
+      format: post.analytics?.format ?? editor.format ?? analyticsToLink.format,
+      demographics: analyticsToLink.demographics ?? [],
+    });
     setLinkOverlayOpen(false);
     setImportMessage("");
-    if (linked) selectPost(linked);
   }
 
   async function handleImport(file: File) {
@@ -557,8 +597,8 @@ export default function LinkedInStatsPage() {
 
       loadImportedAnalyticsInEditor(analytics);
       setImportMessage(match
-        ? `Import pret. Correspondance possible : "${buildPostTitle(match)}". Clique sur le post pour le lier.`
-        : "Import pret. Lie ces statistiques a un post existant avant de sauvegarder."
+        ? `Import pret. Correspondance possible : "${buildPostTitle(match)}". Tu peux sauvegarder sans lier, ou cliquer sur "Lier a un post existant".`
+        : "Import pret. Tu peux sauvegarder sans lier, ou le lier a un post existant."
       );
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "Import impossible.");
