@@ -151,8 +151,8 @@ function getPublishedSortDate(post: LinkedInPost) {
 function buildPostTitle(post: LinkedInPost) {
   const words = post.content.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
   if (words.length === 0) return "Post LinkedIn importé";
-  const title = words.slice(0, 6).join(" ");
-  return words.length > 6 ? `${title}...` : title;
+  const title = words.join(" ");
+  return title.length > 40 ? `${title.slice(0, 40).trim()}...` : title;
 }
 
 function getPostContentFallback(post: LinkedInPost) {
@@ -162,6 +162,10 @@ function getPostContentFallback(post: LinkedInPost) {
 
 function getMetricTotal(posts: LinkedInPost[], key: "impressions" | "reactions" | "comments" | "linkClicks") {
   return posts.reduce((sum, post) => sum + (normalizeAnalytics(post.analytics)[key] ?? 0), 0);
+}
+
+function hasImportedAnalytics(post: LinkedInPost) {
+  return Boolean(normalizeAnalytics(post.analytics).importedAt);
 }
 
 function buildPdfPreviewDataUrl(fileName: string) {
@@ -237,19 +241,29 @@ async function buildMediaPreview(file: File) {
 }
 
 function ReactionDots() {
+  const reactions = [
+    "/linkedin-reactions/like.png",
+    "/linkedin-reactions/love.png",
+    "/linkedin-reactions/support.png",
+    "/linkedin-reactions/celebrate.png",
+    "/linkedin-reactions/funny.png",
+  ];
   return (
     <span style={{ display: "inline-flex", alignItems: "center", marginLeft: 8 }}>
-      {["#0A66C2", "#e34d2f", "#22c55e", "#94a3b8", "#ef4444"].map((color, index) => (
-        <span
-          key={color}
+      {reactions.map((src, index) => (
+        <img
+          key={src}
+          src={src}
+          alt=""
           style={{
-            width: 14,
-            height: 14,
+            width: 18,
+            height: 18,
             borderRadius: 999,
-            background: color,
             border: "2px solid #fff",
-            marginLeft: index === 0 ? 0 : -6,
+            marginLeft: index === 0 ? 0 : -7,
             display: "inline-block",
+            objectFit: "contain",
+            background: "transparent",
           }}
         />
       ))}
@@ -321,6 +335,7 @@ export default function LinkedInStatsPage() {
   const [pendingImportedAnalytics, setPendingImportedAnalytics] = useState<LinkedInPostAnalytics | null>(null);
   const [linkOverlayOpen, setLinkOverlayOpen] = useState(false);
   const [linkSearch, setLinkSearch] = useState("");
+  const [showPendingCsvPosts, setShowPendingCsvPosts] = useState(false);
 
   useEffect(() => {
     const loaded = loadLinkedInPosts();
@@ -354,12 +369,17 @@ export default function LinkedInStatsPage() {
   }, [posts, selectedPostId]);
 
   const publishedPosts = useMemo(
-    () => posts.filter((post) => post.status === "published"),
+    () => posts.filter((post) => post.status === "published" && hasImportedAnalytics(post)),
+    [posts]
+  );
+
+  const pendingCsvPosts = useMemo(
+    () => posts.filter((post) => post.status === "published" && !hasImportedAnalytics(post)),
     [posts]
   );
 
   const visiblePosts = useMemo(() => {
-    const sorted = [...publishedPosts];
+    const sorted = [...(showPendingCsvPosts ? pendingCsvPosts : publishedPosts)];
     if (sortBy === "date") {
       return sorted.sort((a, b) => {
         const aDate = getPublishedSortDate(a);
@@ -372,7 +392,7 @@ export default function LinkedInStatsPage() {
       const bValue = normalizeAnalytics(b.analytics)[sortBy] ?? 0;
       return bValue - aValue;
     });
-  }, [publishedPosts, sortBy]);
+  }, [pendingCsvPosts, publishedPosts, showPendingCsvPosts, sortBy]);
 
   const selectedPost = posts.find((post) => post.id === selectedPostId) ?? null;
   const totalImpressions = getMetricTotal(publishedPosts, "impressions");
@@ -515,6 +535,20 @@ export default function LinkedInStatsPage() {
       if (!res.ok) throw new Error(data.error || "Import impossible.");
 
       const analytics = normalizeAnalytics(data.analytics as LinkedInPostAnalytics);
+      if (selectedPost && selectedPost.status === "published" && !hasImportedAnalytics(selectedPost)) {
+        const updated = posts.map((post) => (
+          post.id === selectedPost.id
+            ? mergeAnalyticsIntoExistingPost(post, { ...analytics, format: editor.format ?? analytics.format }, selectedStyleId, postContent || post.content)
+            : post
+        ));
+        persist(updated);
+        const linked = updated.find((post) => post.id === selectedPost.id);
+        if (linked) selectPost(linked);
+        setShowPendingCsvPosts(false);
+        setImportMessage("");
+        return;
+      }
+
       const match = findPostByAnalytics(posts, analytics);
 
       loadImportedAnalyticsInEditor(analytics);
@@ -561,7 +595,8 @@ export default function LinkedInStatsPage() {
   }
 
   const editorActive = Boolean(selectedPost || pendingImportedAnalytics);
-  const uploadIsMedia = editorActive;
+  const selectedPostNeedsCsv = Boolean(selectedPost && selectedPost.status === "published" && !hasImportedAnalytics(selectedPost));
+  const uploadIsMedia = editorActive && !selectedPostNeedsCsv;
   const uploadDragActive = uploadIsMedia ? mediaDragActive : importDragActive;
   const selectedStyle = styles.find((style) => style.id === selectedStyleId);
   const linkCandidates = useMemo(() => {
@@ -668,6 +703,7 @@ export default function LinkedInStatsPage() {
             onDrop={uploadIsMedia ? handleMediaDrop : handleImportDrop}
             style={{
               height: 102,
+              padding: "16px 12px",
               borderRadius: 9,
               border: uploadDragActive ? "1px dashed rgba(18,26,46,0.45)" : "1px dashed rgba(0,0,0,0.16)",
               background: uploadDragActive ? "#f1f3f5" : "#f6f6f6",
@@ -695,7 +731,7 @@ export default function LinkedInStatsPage() {
                   <Upload size={16} style={{ color: "#6f7887" }} />
                 </span>
                 <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
-                  {uploadIsMedia ? "Importer une photo ici :" : "Importer un post LinkedIn Ici"}
+                  {uploadIsMedia ? "Importer une photo ici :" : selectedPostNeedsCsv ? "Importer le CSV de ce post" : "Importer un post LinkedIn Ici"}
                 </span>
                 <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
                   {importing ? "Import en cours..." : "Clique ici ou glisse un fichier ici"}
@@ -782,7 +818,7 @@ export default function LinkedInStatsPage() {
                         padding: "10px 14px",
                         fontFamily: '"Inter", sans-serif',
                         fontSize: 13,
-                        fontWeight: 600,
+                        fontWeight: 700,
                         cursor: "pointer",
                         lineHeight: 1,
                       }}
@@ -944,15 +980,24 @@ export default function LinkedInStatsPage() {
         <section>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, marginBottom: 32, position: "relative" }}>
             <h2 style={{ margin: 0, fontSize: 24, lineHeight: "28px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
-              Tous les posts
+              {showPendingCsvPosts ? "Posts validés sans CSV" : "Tous les posts"}
             </h2>
-            <button
-              type="button"
-              onClick={() => setSortOpen((current) => !current)}
-              style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
-            >
-              {SORT_OPTIONS.find((option) => option.key === sortBy)?.label ?? "Plus récent"} <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowPendingCsvPosts((current) => !current)}
+                style={{ border: "1px solid rgba(18,26,46,0.12)", background: showPendingCsvPosts ? "#121a2e" : "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 600, color: showPendingCsvPosts ? "#fff" : "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
+              >
+                À importer {pendingCsvPosts.length > 0 ? `(${pendingCsvPosts.length})` : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortOpen((current) => !current)}
+                style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
+              >
+                {SORT_OPTIONS.find((option) => option.key === sortBy)?.label ?? "Plus récent"} <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
+              </button>
+            </div>
             {sortOpen ? (
               <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>
                 {SORT_OPTIONS.map((option) => (
@@ -990,7 +1035,7 @@ export default function LinkedInStatsPage() {
           <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 32 }}>
             {visiblePosts.length === 0 ? (
               <div style={{ padding: "70px 20px", textAlign: "center", color: "rgba(18,26,46,0.45)", fontFamily: '"Inter", sans-serif', fontSize: 16 }}>
-                Importe un export LinkedIn pour faire apparaître tes posts ici.
+                {showPendingCsvPosts ? "Aucun post validé n'attend de CSV." : "Importe un export LinkedIn pour faire apparaître tes posts ici."}
               </div>
             ) : (
               visiblePosts.map((post) => {
@@ -1033,10 +1078,10 @@ export default function LinkedInStatsPage() {
                         {formatPreviewDate(post)}
                       </p>
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.reactions)} réactions <ReactionDots />
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
                   </button>
