@@ -627,7 +627,7 @@ export default function LinkedInStatsPage() {
   return (
     <div
       onClick={() => setSortOpen(false)}
-      style={{ display: "flex", height: "100vh", background: "#fbfbfb", overflow: "hidden", ...jk }}
+      style={{ display: "flex", height: "100%", minHeight: 0, background: "#fbfbfb", overflow: "hidden", ...jk }}
     >
       <style jsx global>{`
         @keyframes fadeIn {
@@ -639,7 +639,7 @@ export default function LinkedInStatsPage() {
         style={{
           width: 358,
           minWidth: 358,
-          height: "100vh",
+          height: "100%",
           background: "#fff",
           borderRight: "1px solid rgba(18,26,46,0.18)",
           boxShadow: "11px 0px 25px rgba(0,0,0,0.08)",
