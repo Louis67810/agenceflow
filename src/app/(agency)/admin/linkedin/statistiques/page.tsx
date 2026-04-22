@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
-import { Activity, BarChart3, Calendar, ChevronDown, Eye, GitCompare, Info, Link2, MousePointerClick, Search, SlidersHorizontal, ThumbsUp, Upload, X } from "lucide-react";
+import { Activity, BarChart3, Calendar, ChevronDown, Eye, GitCompare, Info, Link2, MessageCircle, MousePointerClick, Repeat2, Search, Send, SlidersHorizontal, ThumbsUp, Trash2, Upload, X } from "lucide-react";
 import {
   DEFAULT_STYLES,
   type LinkedInPost,
@@ -38,7 +38,7 @@ type PostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
 type SortKey = "date" | "impressions" | "reactions" | "comments" | "linkClicks";
 type StatsTab = "posts" | "data";
 type PeriodKey = "30" | "90" | "365" | "all";
-type DataMetricKey = "impressions" | "reactions" | "comments" | "engagement";
+type DataMetricKey = "impressions" | "reactions" | "comments" | "engagement" | "linkClicks" | "saves" | "sends" | "reposts" | "profileViews" | "followersGained";
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "date", label: "Plus récent" },
@@ -48,11 +48,17 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "linkClicks", label: "Plus de clics sur le lien" },
 ];
 
-const DATA_METRICS: Array<{ key: DataMetricKey; label: string }> = [
-  { key: "impressions", label: "Impressions" },
-  { key: "reactions", label: "Likes" },
-  { key: "comments", label: "Commentaires" },
-  { key: "engagement", label: "Engagement" },
+const DATA_METRICS: Array<{ key: DataMetricKey; label: string; icon: typeof Activity }> = [
+  { key: "impressions", label: "Impressions", icon: Eye },
+  { key: "reactions", label: "Likes", icon: ThumbsUp },
+  { key: "comments", label: "Commentaires", icon: MessageCircle },
+  { key: "engagement", label: "Engagement", icon: Activity },
+  { key: "linkClicks", label: "Clics lien", icon: MousePointerClick },
+  { key: "saves", label: "Enregistrements", icon: BarChart3 },
+  { key: "sends", label: "Envois LinkedIn", icon: Send },
+  { key: "reposts", label: "Republications", icon: Repeat2 },
+  { key: "profileViews", label: "Vues profil", icon: Eye },
+  { key: "followersGained", label: "Abonnés gagnés", icon: Activity },
 ];
 
 const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string; days: number | null }> = [
@@ -119,7 +125,16 @@ const dataMutedText: CSSProperties = {
   color: "rgba(18,26,46,0.58)",
 };
 
-const formatChartColors = ["#0147ff", "#8fb0ff", "#dfe7ff", "#cfcfcf", "#aeb7c7", "#7c8799"];
+const formatChartColors: Record<string, string> = {
+  Texte: "#2D6EFD",
+  Image: "#BBCCFC",
+  Carrousel: "#E1E9FD",
+  Video: "#D3D2D2",
+  Vidéo: "#D3D2D2",
+  Document: "#E1E9FD",
+  Sondage: "#BBCCFC",
+  Autre: "#D3D2D2",
+};
 
 function emptyEditableAnalytics(): EditableAnalytics {
   return {
@@ -226,7 +241,7 @@ function getFormatLabel(format?: LinkedInPostAnalytics["format"]) {
     text: "Texte",
     image: "Image",
     carousel: "Carrousel",
-    video: "Video",
+    video: "Vidéo",
     poll: "Sondage",
     document: "Document",
     other: "Autre",
@@ -271,6 +286,17 @@ function percentDelta(value: number, baseline: number) {
 function formatDelta(value: number) {
   const rounded = Math.round(value);
   return `${rounded >= 0 ? "+" : ""}${rounded}%`;
+}
+
+function getPeriodRange(days: number | null, offset = 0) {
+  if (!days) return null;
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  end.setDate(end.getDate() - days * offset);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days + 1);
+  start.setHours(0, 0, 0, 0);
+  return { start, end };
 }
 
 function buildPdfPreviewDataUrl(fileName: string) {
@@ -444,11 +470,12 @@ export default function LinkedInStatsPage() {
   const [activeTab, setActiveTab] = useState<StatsTab>("posts");
   const [periodKey, setPeriodKey] = useState<PeriodKey>("30");
   const [dataMetric, setDataMetric] = useState<DataMetricKey>("reactions");
+  const [dataMetricOpen, setDataMetricOpen] = useState(false);
   const [dataOverlay, setDataOverlay] = useState<{ title: string; body: string } | null>(null);
   const [hookQuery, setHookQuery] = useState("");
   const [compareHookQuery, setCompareHookQuery] = useState("");
   const [compareMode, setCompareMode] = useState(false);
-  const [typeEvolutionStyle, setTypeEvolutionStyle] = useState("");
+  const [dataStyleFilter, setDataStyleFilter] = useState("");
 
   useEffect(() => {
     const loaded = loadLinkedInPosts();
@@ -514,21 +541,49 @@ export default function LinkedInStatsPage() {
   const totalLinkClicks = getMetricTotal(publishedPosts, "linkClicks");
   const canSave = Boolean((selectedPostId || pendingImportedAnalytics) && (postContent.trim() || pendingImportedAnalytics) && selectedStyleId && editor.format);
   const selectedPeriod = PERIOD_OPTIONS.find((period) => period.key === periodKey) ?? PERIOD_OPTIONS[0];
+  const currentPeriodRange = useMemo(() => getPeriodRange(selectedPeriod.days, 0), [selectedPeriod.days]);
+  const previousPeriodRange = useMemo(() => getPeriodRange(selectedPeriod.days, 1), [selectedPeriod.days]);
+  const analyticsPeriodPosts = useMemo(() => {
+    if (!currentPeriodRange) return publishedPosts;
+    return publishedPosts.filter((post) => {
+      const date = getAnalyticsDate(post);
+      return date >= currentPeriodRange.start && date <= currentPeriodRange.end;
+    });
+  }, [currentPeriodRange, publishedPosts]);
+  const previousAnalyticsPosts = useMemo(() => {
+    if (!previousPeriodRange) return [];
+    return publishedPosts.filter((post) => {
+      const date = getAnalyticsDate(post);
+      return date >= previousPeriodRange.start && date <= previousPeriodRange.end;
+    });
+  }, [previousPeriodRange, publishedPosts]);
   const analyticsPosts = useMemo(() => {
-    const periodDays = selectedPeriod.days;
-    if (!periodDays) return publishedPosts;
-    const threshold = new Date();
-    threshold.setDate(threshold.getDate() - periodDays);
-    return publishedPosts.filter((post) => getAnalyticsDate(post) >= threshold);
-  }, [publishedPosts, selectedPeriod.days]);
-  const dataTotals = useMemo(() => ({
-    posts: analyticsPosts.length,
-    impressions: getMetricTotal(analyticsPosts, "impressions"),
-    reactions: getMetricTotal(analyticsPosts, "reactions"),
-    comments: getMetricTotal(analyticsPosts, "comments"),
-    linkClicks: getMetricTotal(analyticsPosts, "linkClicks"),
-    engagement: analyticsPosts.reduce((sum, post) => sum + getEngagementValue(post), 0),
-  }), [analyticsPosts]);
+    if (!dataStyleFilter) return analyticsPeriodPosts;
+    const style = styles.find((item) => item.id === dataStyleFilter);
+    return analyticsPeriodPosts.filter((post) => post.styleId === dataStyleFilter || post.styleName === style?.name);
+  }, [analyticsPeriodPosts, dataStyleFilter, styles]);
+  const previousFilteredPosts = useMemo(() => {
+    if (!dataStyleFilter) return previousAnalyticsPosts;
+    const style = styles.find((item) => item.id === dataStyleFilter);
+    return previousAnalyticsPosts.filter((post) => post.styleId === dataStyleFilter || post.styleName === style?.name);
+  }, [dataStyleFilter, previousAnalyticsPosts, styles]);
+  const buildTotals = (sourcePosts: LinkedInPost[]) => ({
+    posts: sourcePosts.length,
+    impressions: getMetricTotal(sourcePosts, "impressions"),
+    reactions: getMetricTotal(sourcePosts, "reactions"),
+    comments: getMetricTotal(sourcePosts, "comments"),
+    linkClicks: getMetricTotal(sourcePosts, "linkClicks"),
+    engagement: sourcePosts.reduce((sum, post) => sum + getEngagementValue(post), 0),
+    saves: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).saves, 0),
+    sends: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).sends, 0),
+    reposts: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).reposts, 0),
+    profileViews: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).profileViews, 0),
+    followersGained: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).followersGained, 0),
+    reach: sourcePosts.reduce((sum, post) => sum + normalizeAnalytics(post.analytics).reach, 0),
+    engagementRate: average(sourcePosts.map((post) => normalizeAnalytics(post.analytics).engagementRate)),
+  });
+  const dataTotals = useMemo(() => buildTotals(analyticsPosts), [analyticsPosts]);
+  const previousDataTotals = useMemo(() => buildTotals(previousFilteredPosts), [previousFilteredPosts]);
   const timeline = useMemo(() => {
     const byDay = new Map<string, { date: Date; value: number; posts: LinkedInPost[] }>();
     for (const post of analyticsPosts) {
@@ -609,17 +664,21 @@ export default function LinkedInStatsPage() {
     .sort((a, b) => getAnalyticsDate(b).getTime() - getAnalyticsDate(a).getTime())
     .slice(0, 4), [analyticsPosts]);
   const typeEvolutionPosts = useMemo(() => {
-    const selected = typeEvolutionStyle || styles[0]?.id || "";
-    return analyticsPosts
-      .filter((post) => !selected || post.styleId === selected || post.styleName === styles.find((style) => style.id === selected)?.name)
-      .sort((a, b) => getAnalyticsDate(a).getTime() - getAnalyticsDate(b).getTime());
-  }, [analyticsPosts, styles, typeEvolutionStyle]);
+    return [...analyticsPosts].sort((a, b) => getAnalyticsDate(a).getTime() - getAnalyticsDate(b).getTime());
+  }, [analyticsPosts]);
 
   function persist(updatedPosts: LinkedInPost[]) {
     const normalized = normalizePosts(updatedPosts);
     setPosts(normalized);
     saveLinkedInPosts(normalized);
     void persistRemoteLinkedInPosts(normalized, true);
+  }
+
+  function deletePost(postId: string) {
+    if (!window.confirm("Supprimer ce post des statistiques LinkedIn ?")) return;
+    const updated = posts.filter((post) => post.id !== postId);
+    persist(updated);
+    if (selectedPostId === postId) clearEditorSelection("Post supprimé.");
   }
 
   function selectPost(post: LinkedInPost) {
@@ -882,29 +941,45 @@ export default function LinkedInStatsPage() {
   };
   const timelineMax = Math.max(...timeline.map((item) => item.value), 1);
   const timelinePoints = timeline.map((item, index) => {
-    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+    const x = timeline.length <= 1 ? 58 : 58 + (index / Math.max(timeline.length - 1, 1)) * 820;
     const y = 220 - (item.value / timelineMax) * 170;
     return `${x},${y}`;
   }).join(" ");
-  const typeMax = Math.max(...typeEvolutionPosts.map(getEngagementValue), 1);
+  const typeMax = Math.max(...typeEvolutionPosts.map((post) => getDataMetricValue(post, dataMetric)), 1);
   const typePoints = typeEvolutionPosts.map((post, index) => {
-    const x = typeEvolutionPosts.length <= 1 ? 80 : 80 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 780;
-    const y = 210 - (getEngagementValue(post) / typeMax) * 150;
+    const x = typeEvolutionPosts.length <= 1 ? 58 : 58 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 820;
+    const y = 210 - (getDataMetricValue(post, dataMetric) / typeMax) * 150;
     return `${x},${y}`;
   }).join(" ");
   const formatConic = (() => {
     if (formatDistribution.length === 0) return "#eef1f5 0deg 360deg";
     let cursor = 0;
     return formatDistribution.map((item, index) => {
+      const color = formatChartColors[item.label] ?? formatChartColors.Autre;
+      const gap = formatDistribution.length > 1 ? 2 : 0;
       const start = cursor;
       const end = cursor + item.percent * 3.6;
       cursor = end;
-      return `${formatChartColors[index % formatChartColors.length]} ${start}deg ${end}deg`;
+      return `${color} ${start}deg ${Math.max(start, end - gap)}deg, #fff ${Math.max(start, end - gap)}deg ${end}deg`;
     }).join(", ");
   })();
   const maxHeatValue = Math.max(...heatmap.flat(), 1);
   const hourLabels = [0, 4, 8, 12, 16, 20];
   const dayLabels = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."];
+  const selectedMetric = DATA_METRICS.find((metric) => metric.key === dataMetric) ?? DATA_METRICS[0];
+  const SelectedMetricIcon = selectedMetric.icon;
+  const dataSideCards = [
+    { key: "posts", label: "Posts analysés", value: dataTotals.posts, previous: previousDataTotals.posts, icon: BarChart3 },
+    { key: "impressions", label: "Impressions", value: dataTotals.impressions, previous: previousDataTotals.impressions, icon: Eye },
+    { key: "reactions", label: "Réactions", value: dataTotals.reactions, previous: previousDataTotals.reactions, icon: ThumbsUp },
+    { key: "engagement", label: "Engagement", value: dataTotals.engagement, previous: previousDataTotals.engagement, icon: Activity },
+    { key: "comments", label: "Commentaires", value: dataTotals.comments, previous: previousDataTotals.comments, icon: MessageCircle },
+    { key: "linkClicks", label: "Clics lien", value: dataTotals.linkClicks, previous: previousDataTotals.linkClicks, icon: MousePointerClick },
+    { key: "saves", label: "Enregistrements", value: dataTotals.saves, previous: previousDataTotals.saves, icon: BarChart3 },
+    { key: "sends", label: "Envois LinkedIn", value: dataTotals.sends, previous: previousDataTotals.sends, icon: Send },
+    { key: "reach", label: "Membres touchés", value: dataTotals.reach, previous: previousDataTotals.reach, icon: Eye },
+    { key: "profileViews", label: "Vues profil", value: dataTotals.profileViews, previous: previousDataTotals.profileViews, icon: Eye },
+  ];
 
   function renderHookPanel(stats: typeof hookStats.primary, accent: string) {
     const hasQuery = stats.query.trim().length > 0;
@@ -920,7 +995,9 @@ export default function LinkedInStatsPage() {
           <strong style={{ fontSize: 15, fontWeight: 700, color: "#121a2e" }}>{hasQuery ? `"${stats.query.trim()}"` : "Aucune accroche"}</strong>
           <span style={{ ...dataMutedText, color: accent }}>{stats.matches.length} post{stats.matches.length > 1 ? "s" : ""}</span>
         </div>
-        {hasQuery ? (
+        {hasQuery && stats.matches.length === 0 ? (
+          <p style={{ margin: 0, ...dataMutedText }}>Nous n'avons pas trouvé de post avec ce mot dans les accroches. Essaie un autre terme ou importe plus de posts.</p>
+        ) : hasQuery ? (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
               {rows.map((row) => (
@@ -946,7 +1023,10 @@ export default function LinkedInStatsPage() {
 
   return (
     <div
-      onClick={() => setSortOpen(false)}
+      onClick={() => {
+        setSortOpen(false);
+        setDataMetricOpen(false);
+      }}
       style={{ display: "flex", height: "100%", minHeight: 0, background: "#fbfbfb", overflow: "hidden", ...jk }}
     >
       <style jsx global>{`
@@ -1296,7 +1376,7 @@ export default function LinkedInStatsPage() {
         ) : null}
           </>
         ) : (
-          <div style={{ padding: "28px 26px 24px", display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", minHeight: 0 }}>
+          <div style={{ padding: "28px 26px 24px", display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", minHeight: 0, flex: 1 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#6f7887", fontFamily: '"Inter", sans-serif' }}>Période analysée</span>
               <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
@@ -1310,21 +1390,22 @@ export default function LinkedInStatsPage() {
 
             <div style={{ height: 1, background: "#e9ecef" }} />
 
-            {[
-              { label: "Posts analysés", value: dataTotals.posts, icon: <BarChart3 size={17} style={{ color: "#6f7887" }} />, delta: `${selectedPeriod.label}` },
-              { label: "Impressions", value: formatNumber(dataTotals.impressions), icon: <Eye size={17} style={{ color: "#6f7887" }} />, delta: `${Math.round(average(analyticsPosts.map((post) => normalizeAnalytics(post.analytics).impressions)))} moy.` },
-              { label: "Engagement", value: formatNumber(dataTotals.engagement), icon: <Activity size={17} style={{ color: "#6f7887" }} />, delta: `${Math.round(average(analyticsPosts.map(getEngagementValue)))} moy.` },
-              { label: "Clics lien", value: formatNumber(dataTotals.linkClicks), icon: <MousePointerClick size={17} style={{ color: "#6f7887" }} />, delta: `${dataTotals.comments} commentaires` },
-            ].map((card) => (
-              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${card.value} sur ${selectedPeriod.label}. Ces données viennent uniquement des exports LinkedIn importés.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer" }}>
+            {dataSideCards.map((card) => {
+              const Icon = card.icon;
+              const delta = percentDelta(card.value, card.previous);
+              const hasPrevious = selectedPeriod.days !== null && card.previous > 0;
+              return (
+              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${formatNumber(Math.round(card.value))} sur ${selectedPeriod.label}. Comparaison calculée avec la période précédente de même durée.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 9, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
-                  {card.icon}
+                  <Icon size={17} style={{ color: "#6f7887" }} />
                 </div>
                 <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
-                <strong style={{ display: "block", marginTop: 9, fontSize: 22, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
-                <span style={{ display: "block", marginTop: 8, fontSize: 12, color: "#168b64", fontWeight: 600 }}>{card.delta}</span>
+                <strong style={{ display: "block", marginTop: 9, fontSize: 22, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{formatNumber(Math.round(card.value))}</strong>
+                <span style={{ display: "block", marginTop: 8, fontSize: 12, color: !hasPrevious ? "#6f7887" : delta >= 0 ? "#168b64" : "#c53434", fontWeight: 600 }}>
+                  {hasPrevious ? `${delta >= 0 ? "↑" : "↓"} ${formatDelta(Math.abs(delta))} vs période précédente` : "Pas assez de données avant"}
+                </span>
               </button>
-            ))}
+            );})}
           </div>
         )}
       </aside>
@@ -1342,13 +1423,40 @@ export default function LinkedInStatsPage() {
                 <h2 style={{ margin: 0, fontSize: 22, lineHeight: "26px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.35px" }}>
                   Evolution de l'engagement
                 </h2>
-                <label style={{ position: "relative", minWidth: 170 }}>
-                  <select value={dataMetric} onChange={(event) => setDataMetric(event.target.value as DataMetricKey)} style={{ ...figmaInputStyle, minHeight: 42, paddingLeft: 42, appearance: "none" }}>
-                    {DATA_METRICS.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}
-                  </select>
-                  <Activity size={15} style={{ position: "absolute", left: 14, top: 13, color: "#6f7887" }} />
-                  <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 13, color: "#6f7887", pointerEvents: "none" }} />
-                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <label style={{ position: "relative", minWidth: 188 }}>
+                    <select value={dataStyleFilter} onChange={(event) => setDataStyleFilter(event.target.value)} style={{ ...figmaInputStyle, minHeight: 42, appearance: "none" }}>
+                      <option value="">Tous les styles</option>
+                      {styles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+                    </select>
+                    <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 13, color: "#6f7887", pointerEvents: "none" }} />
+                  </label>
+                  <div style={{ position: "relative" }} onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setDataMetricOpen((current) => !current)}
+                      style={{ minHeight: 42, minWidth: 178, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: sortShadow, padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)" }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <SelectedMetricIcon size={15} style={{ color: "#6f7887" }} />
+                        {selectedMetric.label}
+                      </span>
+                      <ChevronDown size={15} style={{ color: "#6f7887" }} />
+                    </button>
+                    {dataMetricOpen ? (
+                      <div style={{ position: "absolute", top: 48, right: 0, zIndex: 6, width: 220, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.94)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>
+                        {DATA_METRICS.map((metric) => {
+                          const Icon = metric.icon;
+                          return (
+                            <button key={metric.key} type="button" onClick={() => { setDataMetric(metric.key); setDataMetricOpen(false); }} style={{ width: "100%", border: 0, borderRadius: 10, background: dataMetric === metric.key ? "rgba(0,0,0,0.03)" : "transparent", padding: "10px 11px", textAlign: "left", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.78)", cursor: "pointer", display: "flex", alignItems: "center", gap: 9 }}>
+                              <Icon size={15} style={{ color: "#6f7887" }} /> {metric.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
               {timeline.length === 0 ? (
                 <div style={{ minHeight: 270, borderRadius: 16, background: "#f7f8fa", display: "flex", alignItems: "center", justifyContent: "center", ...dataMutedText }}>
@@ -1357,11 +1465,11 @@ export default function LinkedInStatsPage() {
               ) : (
                 <svg viewBox="0 0 920 270" preserveAspectRatio="none" style={{ width: "100%", height: 285, display: "block" }}>
                   {[0, 1, 2, 3, 4].map((line) => (
-                    <line key={line} x1="62" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
+                    <line key={line} x1="46" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
                   ))}
                   {[0, 1, 2, 3, 4].map((line) => {
                     const value = Math.round(timelineMax - (timelineMax / 4) * line);
-                    return <text key={line} x="12" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter">{formatNumber(value)}</text>;
+                    return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter">{formatNumber(value)}</text>;
                   })}
                   <defs>
                     <linearGradient id="linkedinStatsLineFill" x1="0" y1="0" x2="0" y2="1">
@@ -1371,24 +1479,28 @@ export default function LinkedInStatsPage() {
                   </defs>
                   {timelinePoints ? (
                     <>
-                      <polyline points={`80,230 ${timelinePoints} 860,230`} fill="url(#linkedinStatsLineFill)" stroke="none" />
-                      <polyline points={timelinePoints} fill="none" stroke="#4e7dfa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points={`58,230 ${timelinePoints} 878,230`} fill="url(#linkedinStatsLineFill)" stroke="none" />
+                      <polyline points={timelinePoints} fill="none" stroke="#6D96FE" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
                     </>
                   ) : null}
                   {timeline.map((item, index) => {
-                    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+                    const x = timeline.length <= 1 ? 58 : 58 + (index / Math.max(timeline.length - 1, 1)) * 820;
                     const y = 220 - (item.value / timelineMax) * 170;
+                    const firstPost = item.posts[0];
+                    const firstAnalytics = normalizeAnalytics(firstPost.analytics);
                     return (
                       <g key={item.date.toISOString()} onClick={() => setDataOverlay({ title: item.date.toLocaleDateString("fr-FR"), body: `${formatNumber(item.value)} ${DATA_METRICS.find((metric) => metric.key === dataMetric)?.label.toLowerCase()} sur ${item.posts.length} post(s).` })} style={{ cursor: "pointer" }}>
                         <line x1={x} x2={x} y1="35" y2="228" stroke="rgba(18,26,46,0.08)" strokeDasharray="3 4" />
-                        <rect x={x - 11} y={y - 11} width="22" height="22" rx="5" fill="#cfcfcf" />
+                        <foreignObject x={x - 18} y={y - 18} width="36" height="40">
+                          <div style={{ width: 26, height: 30, margin: 4, borderRadius: 5, border: "2px solid #fff", background: firstAnalytics.mediaPreviewUrl ? `url(${firstAnalytics.mediaPreviewUrl}) center / cover` : "#cfcfcf", boxShadow: previewShadow }} />
+                        </foreignObject>
                         <title>{`${item.date.toLocaleDateString("fr-FR")} - ${formatNumber(item.value)}`}</title>
                       </g>
                     );
                   })}
                   {timeline.map((item, index) => {
                     if (index % Math.max(Math.ceil(timeline.length / 6), 1) !== 0) return null;
-                    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+                    const x = timeline.length <= 1 ? 58 : 58 + (index / Math.max(timeline.length - 1, 1)) * 820;
                     return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="260" fill="rgba(18,26,46,0.54)" fontSize="12" fontFamily="Inter">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
                   })}
                 </svg>
@@ -1398,9 +1510,9 @@ export default function LinkedInStatsPage() {
             <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 22 }}>
               <article style={{ ...dataCardStyle, padding: 24 }}>
                 <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Repartition par format</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "168px 1fr", gap: 22, alignItems: "center" }}>
-                  <div style={{ width: 168, height: 168, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
-                    <div style={{ position: "absolute", inset: 43, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "132px 1fr", gap: 20, alignItems: "center" }}>
+                  <div style={{ width: 132, height: 132, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
+                    <div style={{ position: "absolute", inset: 34, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
                       <span style={{ ...dataMutedText, fontSize: 13 }}>Total</span>
                       <strong style={{ fontSize: 22, color: "#121a2e" }}>{analyticsPosts.length}</strong>
                       <span style={{ ...dataMutedText, fontSize: 12 }}>posts</span>
@@ -1409,7 +1521,7 @@ export default function LinkedInStatsPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {(formatDistribution.length ? formatDistribution : [{ label: "Aucune donnee", count: 0, percent: 0 }]).map((item, index) => (
                       <div key={item.label} style={{ display: "grid", gridTemplateColumns: "14px 1fr auto", alignItems: "center", gap: 10 }}>
-                        <span style={{ width: 12, height: 12, borderRadius: 4, background: formatChartColors[index % formatChartColors.length] }} />
+                        <span style={{ width: 12, height: 12, borderRadius: 4, background: formatChartColors[item.label] ?? formatChartColors.Autre }} />
                         <span style={{ ...dataMutedText }}>{item.label}</span>
                         <strong style={{ fontSize: 14, fontWeight: 700, color: "#121a2e" }}>{item.percent}%</strong>
                       </div>
@@ -1424,13 +1536,13 @@ export default function LinkedInStatsPage() {
                   {dayLabels.map((day, dayIndex) => (
                     <div key={day} style={{ display: "contents" }}>
                       <span style={{ ...dataMutedText, fontSize: 12, alignSelf: "center" }}>{day}</span>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 4 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 12px)", gap: 3 }}>
                         {heatmap[dayIndex].map((value, hour) => (
                           <button
                             key={`${day}-${hour}`}
                             type="button"
                             onClick={() => setDataOverlay({ title: `${day} ${String(hour).padStart(2, "0")}h`, body: `Engagement moyen : ${Math.round(value)}. Plus la case est bleue, plus les posts de ce créneau performent.` })}
-                            style={{ height: 14, border: 0, borderRadius: 3, background: `rgba(1,71,255,${0.06 + (value / maxHeatValue) * 0.7})`, cursor: "pointer" }}
+                            style={{ width: 12, height: 12, border: 0, borderRadius: 3, background: `rgba(45,110,253,${0.08 + (value / maxHeatValue) * 0.72})`, cursor: "pointer" }}
                             aria-label={`${day} ${hour}h`}
                           />
                         ))}
@@ -1440,9 +1552,14 @@ export default function LinkedInStatsPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 8, marginTop: 12 }}>
                   <span />
-                  <div style={{ display: "flex", justifyContent: "space-between", ...dataMutedText, fontSize: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", width: 357, ...dataMutedText, fontSize: 12 }}>
                     {hourLabels.map((hour) => <span key={hour}>{String(hour).padStart(2, "0")}h</span>)}
                   </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingLeft: 44 }}>
+                  <span style={{ ...dataMutedText, fontSize: 12 }}>Faible</span>
+                  <span style={{ width: 142, height: 10, borderRadius: 999, background: "linear-gradient(90deg, rgba(45,110,253,0.08), rgba(45,110,253,0.8))" }} />
+                  <span style={{ ...dataMutedText, fontSize: 12 }}>Élevé</span>
                 </div>
               </article>
 
@@ -1516,13 +1633,9 @@ export default function LinkedInStatsPage() {
             <section style={{ ...dataCardStyle, padding: "26px 28px", minHeight: 360 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, marginBottom: 20 }}>
                 <h3 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: "#121a2e" }}>Evolution par type</h3>
-                <label style={{ position: "relative", minWidth: 190 }}>
-                  <select value={typeEvolutionStyle} onChange={(event) => setTypeEvolutionStyle(event.target.value)} style={{ ...figmaInputStyle, appearance: "none" }}>
-                    <option value="">Tous les styles</option>
-                    {styles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
-                  </select>
-                  <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 13, color: "#6f7887", pointerEvents: "none" }} />
-                </label>
+                <span style={{ ...dataMutedText }}>
+                  {dataStyleFilter ? styles.find((style) => style.id === dataStyleFilter)?.name ?? "Style filtré" : "Tous les styles"} · {selectedMetric.label}
+                </span>
               </div>
               {typeEvolutionPosts.length === 0 ? (
                 <div style={{ minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, background: "#f7f8fa", ...dataMutedText }}>
@@ -1531,11 +1644,16 @@ export default function LinkedInStatsPage() {
               ) : (
                 <svg viewBox="0 0 920 260" preserveAspectRatio="none" style={{ width: "100%", height: 270, display: "block" }}>
                   {[0, 1, 2, 3].map((line) => <line key={line} x1="60" x2="890" y1={55 + line * 46} y2={55 + line * 46} stroke="rgba(18,26,46,0.06)" />)}
-                  <polyline points={typePoints} fill="none" stroke="#4e7dfa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  <polyline points={typePoints} fill="none" stroke="#6D96FE" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
                   {typeEvolutionPosts.map((post, index) => {
-                    const x = typeEvolutionPosts.length <= 1 ? 80 : 80 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 780;
-                    const y = 210 - (getEngagementValue(post) / typeMax) * 150;
-                    return <rect key={post.id} x={x - 13} y={y - 13} width="26" height="26" rx="5" fill="#cfcfcf" style={{ cursor: "pointer" }} onClick={() => { setActiveTab("posts"); selectPost(post); }} />;
+                    const x = typeEvolutionPosts.length <= 1 ? 58 : 58 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 820;
+                    const y = 210 - (getDataMetricValue(post, dataMetric) / typeMax) * 150;
+                    const analytics = normalizeAnalytics(post.analytics);
+                    return (
+                      <foreignObject key={post.id} x={x - 16} y={y - 18} width="38" height="42" style={{ cursor: "pointer" }} onClick={() => { setActiveTab("posts"); selectPost(post); }}>
+                        <div style={{ width: 28, height: 32, margin: 4, borderRadius: 5, border: "2px solid #fff", background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#cfcfcf", boxShadow: previewShadow }} />
+                      </foreignObject>
+                    );
                   })}
                 </svg>
               )}
@@ -1653,7 +1771,7 @@ export default function LinkedInStatsPage() {
                       borderBottom: "none",
                       background: "transparent",
                       display: "grid",
-                      gridTemplateColumns: "84px minmax(180px, 1fr) auto auto",
+                      gridTemplateColumns: "84px minmax(180px, 1fr) auto auto 42px",
                       alignItems: "center",
                       gap: 8,
                       padding: 16,
@@ -1682,6 +1800,25 @@ export default function LinkedInStatsPage() {
                     <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Supprimer le post"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deletePost(post.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          deletePost(post.id);
+                        }
+                      }}
+                      style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#c53434", cursor: "pointer", boxShadow: sortShadow }}
+                    >
+                      <Trash2 size={15} />
+                    </span>
                   </button>
                 );
               })
