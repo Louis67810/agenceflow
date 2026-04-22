@@ -92,6 +92,7 @@ const STYLE_TAGS: Record<LinkedInStyle["category"] | "custom", { bg: string; col
   data: { bg: "#e0e7ff", color: "#3730a3", border: "rgba(55,48,163,0.14)" },
   custom: { bg: "#f6f6f6", color: "rgba(18,26,46,0.58)", border: "rgba(18,26,46,0.1)" },
 };
+const inactiveStyleTag = { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.55)" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,10 @@ export default function PostsPage() {
       } catch {}
     }
   }, []);
+
+  useEffect(() => {
+    if (!selectedStyleId && styles.length > 0) setSelectedStyleId(styles[0].id);
+  }, [selectedStyleId, styles]);
 
   const filteredPosts = posts
     .filter((post) => post.status === postsView)
@@ -537,14 +542,11 @@ export default function PostsPage() {
           <div>
             <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Style de rédaction</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-              <button type="button" onClick={() => setSelectedStyleId("")} style={{ padding: "8px 14px", borderRadius: 999, border: selectedStyleId === "" ? "1px solid rgba(18,26,46,0.18)" : "1px solid rgba(18,26,46,0.08)", background: selectedStyleId === "" ? "#f6f6f6" : "#fff", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                Auto
-              </button>
               {styles.map((style) => {
                 const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
                 const active = selectedStyleId === style.id;
                 return (
-                  <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "8px 14px", borderRadius: 999, border: active ? `1px solid ${tag.color}` : `1px solid ${tag.border}`, background: tag.bg, color: tag.color, fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', opacity: active ? 1 : 0.72 }}>
+                  <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tag.border}` : inactiveStyleTag.border, background: active ? tag.bg : inactiveStyleTag.background, color: active ? tag.color : inactiveStyleTag.color, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     {style.name}
                   </button>
                 );
@@ -764,14 +766,11 @@ export default function PostsPage() {
                   Style du post
                 </label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                  <button type="button" onClick={() => setSelectedStyleId("")} style={{ padding: "8px 14px", borderRadius: 999, border: selectedStyleId === "" ? "1px solid rgba(18,26,46,0.18)" : "1px solid rgba(18,26,46,0.08)", background: selectedStyleId === "" ? "#f6f6f6" : "#fff", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                    Auto
-                  </button>
                   {styles.map((style) => {
                     const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
                     const active = selectedStyleId === style.id;
                     return (
-                      <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "8px 14px", borderRadius: 999, border: active ? `1px solid ${tag.color}` : `1px solid ${tag.border}`, background: tag.bg, color: tag.color, fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', opacity: active ? 1 : 0.72 }}>
+                      <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tag.border}` : inactiveStyleTag.border, background: active ? tag.bg : inactiveStyleTag.background, color: active ? tag.color : inactiveStyleTag.color, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                         {style.name}
                       </button>
                     );

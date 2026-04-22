@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine } from "lucide-react";
+import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine, Trash2 } from "lucide-react";
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings } from "../layout";
 import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
@@ -62,7 +62,7 @@ function AddManualModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedStyleId, setSelectedStyleId] = useState<string>(styles[0]?.id ?? "");
   const [scheduledAt, setScheduledAt] = useState("");
 
   const inp = {
@@ -77,16 +77,17 @@ function AddManualModal({
     fontFamily: '"Plus Jakarta Sans", sans-serif',
   } as const;
 
-  const canSave = title.trim().length > 0;
+  const canSave = title.trim().length > 0 && selectedStyleId.length > 0;
 
   const handleSave = () => {
     if (!canSave) return;
-    const category = selectedCategory || undefined;
+    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
     const idea: LinkedInIdea = {
       id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       title: title.trim(),
       description: description.trim(),
-      styleName: category ? STYLE_CATEGORY_LABELS[category] : undefined,
+      styleId: selectedStyle?.id,
+      styleName: selectedStyle?.name,
       scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       status: "new",
       generatedAt: new Date().toISOString(),
@@ -141,26 +142,15 @@ function AddManualModal({
 
           {/* Style */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 8 }}>Style de post <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 8 }}>Style de post *</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              <button
-                onClick={() => setSelectedCategory("")}
-                style={{
-                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer",
-                  ...(selectedCategory === ""
-                    ? { background: "#e8edff", border: "1px solid #c7d3ff", color: "#0147ff" }
-                    : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.55)" }),
-                }}
-              >
-                Aucun
-              </button>
               {styles.map((s) => {
                 const ss = STYLE_CATEGORY_STYLES[s.category] ?? STYLE_CATEGORY_STYLES.custom;
-                const isActive = selectedCategory === s.category;
+                const isActive = selectedStyleId === s.id;
                 return (
                   <button
                     key={s.id}
-                    onClick={() => setSelectedCategory(s.category)}
+                    onClick={() => setSelectedStyleId(s.id)}
                     style={{
                       padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer",
                       background: isActive ? ss.bg : "#f6f6f6",
@@ -495,9 +485,11 @@ export default function LinkedInIdeesPage() {
   };
 
   const useIdea = (idea: LinkedInIdea) => {
-    updateStatus(idea.id, "used");
     sessionStorage.setItem("linkedin_idea_prefill", JSON.stringify(idea));
     window.location.href = "/admin/linkedin/posts";
+  };
+  const deleteIdea = (id: string) => {
+    saveIdeas(ideas.filter((idea) => idea.id !== id));
   };
 
   const filtered = ideas.filter((i) => activeFilter === "all" || i.status === activeFilter);
@@ -617,7 +609,7 @@ export default function LinkedInIdeesPage() {
                 key={idea.id}
                 idea={idea}
                 onUse={() => useIdea(idea)}
-                onDismiss={() => updateStatus(idea.id, "dismissed")}
+                onDelete={() => deleteIdea(idea.id)}
                 onRestore={() => updateStatus(idea.id, "new")}
               />
             ))}
@@ -649,10 +641,10 @@ export default function LinkedInIdeesPage() {
   );
 }
 
-function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
+function IdeaCard({ idea, onUse, onDelete, onRestore }: {
   idea: LinkedInIdea;
   onUse: () => void;
-  onDismiss: () => void;
+  onDelete: () => void;
   onRestore: () => void;
 }) {
   const categoryKey = idea.styleName
@@ -676,15 +668,6 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
         position: "relative",
       }}
     >
-      {idea.status !== "used" && idea.status !== "dismissed" && (
-        <button
-          onClick={onDismiss}
-          title="Ignorer"
-          style={{ position: "absolute", top: 10, right: 10, padding: 6, background: "rgba(255,255,255,0.86)", border: "1px solid rgba(18,26,46,0.08)", borderRadius: 999, cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}
-        >
-          <X size={14} />
-        </button>
-      )}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: idea.status === "dismissed" ? "rgba(18,26,46,0.4)" : "#121a2e", margin: 0, flex: 1, lineHeight: 1.4, letterSpacing: "-0.2px" }}>
           {idea.title}
@@ -718,7 +701,13 @@ function IdeaCard({ idea, onUse, onDismiss, onRestore }: {
       )}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingTop: 4 }}>
-        <span style={{ fontSize: 12, color: "rgba(18,26,46,0.35)" }}>{daysAgo(idea.generatedAt)}</span>
+        <button
+          onClick={onDelete}
+          title="Supprimer"
+          style={{ padding: 6, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 8, cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}
+        >
+          <Trash2 size={14} />
+        </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {idea.status !== "used" && (

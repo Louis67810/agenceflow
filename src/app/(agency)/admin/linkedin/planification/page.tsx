@@ -94,8 +94,13 @@ export default function LinkedInPlanificationPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [styles, setStyles] = useState<LinkedInStyle[]>([]);
   const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
+  const [draggedIdeaId, setDraggedIdeaId] = useState<string | null>(null);
   const [dayMenu, setDayMenu] = useState<{ dateKey: string; x: number; y: number } | null>(null);
   const [draftPickerDate, setDraftPickerDate] = useState<string | null>(null);
+  const [ideaModalDate, setIdeaModalDate] = useState<string | null>(null);
+  const [ideaTitle, setIdeaTitle] = useState("");
+  const [ideaDescription, setIdeaDescription] = useState("");
+  const [ideaStyleId, setIdeaStyleId] = useState("");
   const [autoRecycleEnabled, setAutoRecycleEnabled] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled);
   const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
 
@@ -179,6 +184,13 @@ export default function LinkedInPlanificationPage() {
     setDraggedPostId(null);
   };
 
+  const moveIdeaToDate = (ideaId: string, dateKey: string) => {
+    const updated = ideas.map((idea) => idea.id === ideaId ? { ...idea, scheduledAt: createScheduledAt(dateKey) } : idea);
+    setIdeas(updated);
+    persistLinkedInWorkspacePatch({ ideas: updated });
+    setDraggedIdeaId(null);
+  };
+
   const openPostComposer = (dateKey: string) => {
     sessionStorage.setItem("linkedin_post_schedule_prefill", JSON.stringify({
       scheduledAt: createScheduledAt(dateKey),
@@ -204,20 +216,30 @@ export default function LinkedInPlanificationPage() {
   };
 
   const createIdeaForDate = (dateKey: string) => {
+    setIdeaModalDate(dateKey);
+    setIdeaTitle("");
+    setIdeaDescription("");
+    setIdeaStyleId(styles[0]?.id ?? "");
+    setDayMenu(null);
+  };
+
+  const saveIdeaForDate = () => {
+    if (!ideaModalDate || !ideaTitle.trim() || !ideaStyleId) return;
+    const selectedStyle = styles.find((style) => style.id === ideaStyleId);
     const idea: LinkedInIdea = {
       id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      title: `Idée du ${new Date(`${dateKey}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`,
-      description: "",
+      title: ideaTitle.trim(),
+      description: ideaDescription.trim(),
+      styleId: selectedStyle?.id,
+      styleName: selectedStyle?.name,
       status: "new",
-      scheduledAt: createScheduledAt(dateKey),
+      scheduledAt: createScheduledAt(ideaModalDate),
       generatedAt: new Date().toISOString(),
     };
     const updated = [idea, ...ideas];
     setIdeas(updated);
     persistLinkedInWorkspacePatch({ ideas: updated });
-    sessionStorage.setItem("linkedin_idea_prefill", JSON.stringify(idea));
-    setDayMenu(null);
-    router.push("/admin/linkedin/idees");
+    setIdeaModalDate(null);
   };
 
   const validateScheduledPost = (postId: string) => {
@@ -384,6 +406,8 @@ export default function LinkedInPlanificationPage() {
                     event.preventDefault();
                     const postId = draggedPostId || event.dataTransfer.getData("text/plain");
                     if (postId) movePostToDate(postId, dateKey);
+                    const ideaId = draggedIdeaId || event.dataTransfer.getData("application/x-linkedin-idea");
+                    if (ideaId) moveIdeaToDate(ideaId, dateKey);
                   }}
                   style={{
                     borderRadius: 11,
@@ -444,7 +468,15 @@ export default function LinkedInPlanificationPage() {
                     );
                   })}
                   {dayIdeas.slice(0, 1).map((idea) => (
-                    <div key={idea.id} style={{ fontSize: 11, padding: "4px 7px", borderRadius: 7, border: "1px dashed rgba(18,26,46,0.15)", background: "#fff", color: "rgba(18,26,46,0.62)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div
+                      key={idea.id}
+                      draggable
+                      onDragStart={(event) => {
+                        setDraggedIdeaId(idea.id);
+                        event.dataTransfer.setData("application/x-linkedin-idea", idea.id);
+                      }}
+                      style={{ fontSize: 11, padding: "4px 7px", borderRadius: 7, border: "1px dashed rgba(18,26,46,0.15)", background: "#fff", color: "rgba(18,26,46,0.62)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab" }}
+                    >
                       Idée: {idea.title}
                     </div>
                   ))}
@@ -483,7 +515,15 @@ export default function LinkedInPlanificationPage() {
                   <>
                     {selectedPosts.map((post) => <PostSideCard key={post.id} post={post} tone={getPostTone(post)} onValidate={() => validateScheduledPost(post.id)} />)}
                     {selectedIdeas.map((idea) => (
-                      <div key={idea.id} style={{ borderRadius: 10, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", padding: 12 }}>
+                      <div
+                        key={idea.id}
+                        draggable
+                        onDragStart={(event) => {
+                          setDraggedIdeaId(idea.id);
+                          event.dataTransfer.setData("application/x-linkedin-idea", idea.id);
+                        }}
+                        style={{ borderRadius: 10, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", padding: 12, cursor: "grab" }}
+                      >
                         <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#121a2e" }}>{idea.title}</p>
                         <p style={{ margin: "5px 0 0", fontSize: 12, color: "rgba(18,26,46,0.48)" }}>Idée planifiée</p>
                       </div>
@@ -560,19 +600,19 @@ export default function LinkedInPlanificationPage() {
               zIndex: 26,
               left: dayMenu.x,
               top: dayMenu.y,
-              width: 238,
-              borderRadius: 18,
+              width: 198,
+              borderRadius: 14,
               border: "1px solid rgba(18,26,46,0.12)",
               background: "rgba(255,255,255,0.96)",
               boxShadow: "0 22px 70px rgba(18,26,46,0.16)",
-              padding: 10,
+              padding: 6,
               backdropFilter: "blur(12px)",
             }}
           >
             {[
-              { label: "Nouveau post", icon: <Plus size={18} />, onClick: () => openPostComposer(dayMenu.dateKey) },
-              { label: "Planifier un post", icon: <CalendarPlus size={18} />, onClick: () => { setDraftPickerDate(dayMenu.dateKey); setDayMenu(null); } },
-              { label: "Ajouter une idée", icon: <PenLine size={18} />, onClick: () => createIdeaForDate(dayMenu.dateKey) },
+              { label: "Nouveau post", icon: <Plus size={15} />, onClick: () => openPostComposer(dayMenu.dateKey) },
+              { label: "Planifier un post", icon: <CalendarPlus size={15} />, onClick: () => { setDraftPickerDate(dayMenu.dateKey); setDayMenu(null); } },
+              { label: "Ajouter une idée", icon: <PenLine size={15} />, onClick: () => createIdeaForDate(dayMenu.dateKey) },
             ].map((item) => (
               <button
                 key={item.label}
@@ -580,16 +620,16 @@ export default function LinkedInPlanificationPage() {
                 onClick={item.onClick}
                 style={{
                   width: "100%",
-                  minHeight: 46,
+                  minHeight: 38,
                   border: "none",
-                  borderRadius: 12,
+                  borderRadius: 10,
                   background: "transparent",
                   color: "#121a2e",
                   display: "flex",
                   alignItems: "center",
-                  gap: 14,
-                  padding: "0 12px",
-                  fontSize: 16,
+                  gap: 10,
+                  padding: "0 10px",
+                  fontSize: 13,
                   fontWeight: 500,
                   cursor: "pointer",
                   fontFamily: '"Plus Jakarta Sans", sans-serif',
@@ -666,6 +706,83 @@ export default function LinkedInPlanificationPage() {
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {ideaModalDate ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 31,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(18,26,46,0.18)",
+            backdropFilter: "blur(10px)",
+          }}
+          onClick={() => setIdeaModalDate(null)}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 480,
+              borderRadius: 18,
+              border: "1px solid rgba(18,26,46,0.12)",
+              background: "rgba(255,255,255,0.96)",
+              boxShadow: "0 24px 70px rgba(18,26,46,0.18)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "18px 20px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, color: "#121a2e", fontSize: 16, fontWeight: 800 }}>Ajouter une idée</h3>
+                <p style={{ margin: "4px 0 0", color: "rgba(18,26,46,0.48)", fontSize: 12 }}>
+                  Date prévue : {new Date(`${ideaModalDate}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
+                </p>
+              </div>
+              <button type="button" onClick={() => setIdeaModalDate(null)} style={{ width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={15} />
+              </button>
+            </div>
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>Titre de l'idée *</label>
+                <input value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex: Le système qui m'a apporté..." style={{ width: "100%", minHeight: 42, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "0 12px", fontSize: 13, color: "#121a2e", outline: "none", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' }} autoFocus />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>Description</label>
+                <textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} rows={3} placeholder="Angle, points clés, exemple..." style={{ width: "100%", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "9px 12px", fontSize: 13, color: "#121a2e", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 8, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>Style *</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {styles.map((style) => {
+                    const tone = STYLE_TONES[style.category] ?? STYLE_TONES.fallback;
+                    const active = ideaStyleId === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        type="button"
+                        onClick={() => setIdeaStyleId(style.id)}
+                        style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tone.border}` : "1px solid rgba(0,0,0,0.09)", background: active ? tone.bg : "#f6f6f6", color: active ? tone.color : "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                      >
+                        {style.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: "14px 20px", borderTop: "1px solid rgba(18,26,46,0.08)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => setIdeaModalDate(null)} style={{ minHeight: 38, padding: "0 14px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.09)", background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Annuler
+              </button>
+              <ClientBlueButton compact type="button" onClick={saveIdeaForDate} disabled={!ideaTitle.trim() || !ideaStyleId}>
+                Enregistrer
+              </ClientBlueButton>
             </div>
           </div>
         </div>
