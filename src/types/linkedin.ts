@@ -81,6 +81,41 @@ export interface LinkedInIdea {
   usedAt?: string;
 }
 
+export interface LinkedInCarouselFieldTemplate {
+  id: string;
+  label: string;
+  kind: "text" | "image";
+  required: boolean;
+  aiPrompt: string;
+  defaultValue?: string;
+}
+
+export interface LinkedInCarouselPageTemplate {
+  id: string;
+  name: string;
+  description: string;
+  figmaNodeId?: string;
+  pagePrompt: string;
+  imagePrompt: string;
+  fields: LinkedInCarouselFieldTemplate[];
+  createdAt: string;
+}
+
+export interface LinkedInCarouselTemplateItem {
+  id: string;
+  pageTemplateId: string;
+  mode: "single" | "repeat_ai";
+  label?: string;
+}
+
+export interface LinkedInCarouselTemplate {
+  id: string;
+  name: string;
+  description: string;
+  items: LinkedInCarouselTemplateItem[];
+  createdAt: string;
+}
+
 export interface LinkedInWorkspacePreferences {
   ideasLanguage: "fr" | "en";
   ideasLastGenerated: string | null;
@@ -92,6 +127,8 @@ export interface LinkedInWorkspacePreferences {
 export interface LinkedInWorkspaceData {
   styles: LinkedInStyle[];
   ideas: LinkedInIdea[];
+  carouselPageTemplates: LinkedInCarouselPageTemplate[];
+  carouselTemplates: LinkedInCarouselTemplate[];
   prospects: LinkedInProspect[];
   skeletons: ProspectionSkeleton[];
   preferences: LinkedInWorkspacePreferences;

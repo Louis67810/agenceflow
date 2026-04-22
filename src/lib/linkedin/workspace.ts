@@ -30,6 +30,8 @@ export const DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES: LinkedInWorkspacePreference
 export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
   styles: DEFAULT_STYLES,
   ideas: [],
+  carouselPageTemplates: [],
+  carouselTemplates: [],
   prospects: [],
   skeletons: [],
   preferences: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES,
@@ -87,6 +89,8 @@ function cloneDefaults(): LinkedInWorkspaceData {
   return {
     styles: [...DEFAULT_STYLES],
     ideas: [],
+    carouselPageTemplates: [],
+    carouselTemplates: [],
     prospects: [],
     skeletons: [],
     preferences: { ...DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES },
@@ -101,6 +105,8 @@ export function normalizeLinkedInWorkspaceData(
   return {
     styles: Array.isArray(data?.styles) && data.styles.length > 0 ? data.styles : defaults.styles,
     ideas: Array.isArray(data?.ideas) ? data.ideas : defaults.ideas,
+    carouselPageTemplates: Array.isArray(data?.carouselPageTemplates) ? data.carouselPageTemplates : defaults.carouselPageTemplates,
+    carouselTemplates: Array.isArray(data?.carouselTemplates) ? data.carouselTemplates : defaults.carouselTemplates,
     prospects: Array.isArray(data?.prospects) ? data.prospects : defaults.prospects,
     skeletons: Array.isArray(data?.skeletons) ? data.skeletons : defaults.skeletons,
     preferences: {
@@ -201,6 +207,8 @@ export function patchLinkedInWorkspaceCache(
 export function hasMeaningfulLinkedInWorkspaceData(data: LinkedInWorkspaceData): boolean {
   return (
     data.ideas.length > 0 ||
+    data.carouselPageTemplates.length > 0 ||
+    data.carouselTemplates.length > 0 ||
     data.prospects.length > 0 ||
     data.skeletons.length > 0 ||
     data.styles.length !== DEFAULT_STYLES.length ||
