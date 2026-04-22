@@ -625,7 +625,10 @@ export default function LinkedInStatsPage() {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: "#fbfbfb", overflow: "hidden", ...jk }}>
+    <div
+      onClick={() => setSortOpen(false)}
+      style={{ display: "flex", height: "100vh", background: "#fbfbfb", overflow: "hidden", ...jk }}
+    >
       <style jsx global>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-4px); }
@@ -702,8 +705,9 @@ export default function LinkedInStatsPage() {
             }}
             onDrop={uploadIsMedia ? handleMediaDrop : handleImportDrop}
             style={{
-              height: 102,
-              padding: "16px 12px",
+              minHeight: 118,
+              padding: "20px 12px",
+              boxSizing: "border-box",
               borderRadius: 9,
               border: uploadDragActive ? "1px dashed rgba(18,26,46,0.45)" : "1px dashed rgba(0,0,0,0.16)",
               background: uploadDragActive ? "#f1f3f5" : "#f6f6f6",
@@ -730,7 +734,7 @@ export default function LinkedInStatsPage() {
                 <span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", border: "1px solid #e1e4e8", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: sortShadow }}>
                   <Upload size={16} style={{ color: "#6f7887" }} />
                 </span>
-                <span style={{ fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.7)" }}>
+                <span style={{ fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>
                   {uploadIsMedia ? "Importer une photo ici :" : selectedPostNeedsCsv ? "Importer le CSV de ce post" : "Importer un post LinkedIn Ici"}
                 </span>
                 <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>
@@ -959,7 +963,12 @@ export default function LinkedInStatsPage() {
         ) : null}
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}>
+      <main
+        onClick={(event) => {
+          if (event.target === event.currentTarget) clearEditorSelection();
+        }}
+        style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}
+      >
         <section style={{ display: "none", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
           {[
             { label: "Posts publiés", value: publishedPosts.length, icon: <BarChart3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
@@ -985,21 +994,28 @@ export default function LinkedInStatsPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button
                 type="button"
-                onClick={() => setShowPendingCsvPosts((current) => !current)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSortOpen(false);
+                  setShowPendingCsvPosts((current) => !current);
+                }}
                 style={{ border: "1px solid rgba(18,26,46,0.12)", background: showPendingCsvPosts ? "#121a2e" : "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 600, color: showPendingCsvPosts ? "#fff" : "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
               >
                 À importer {pendingCsvPosts.length > 0 ? `(${pendingCsvPosts.length})` : ""}
               </button>
               <button
                 type="button"
-                onClick={() => setSortOpen((current) => !current)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSortOpen((current) => !current);
+                }}
                 style={{ border: "1px solid rgba(18,26,46,0.12)", background: "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
               >
                 {SORT_OPTIONS.find((option) => option.key === sortBy)?.label ?? "Plus récent"} <SlidersHorizontal size={15} style={{ color: "rgba(18,26,46,0.48)" }} />
               </button>
             </div>
             {sortOpen ? (
-              <div style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>
+              <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", top: 46, right: 0, zIndex: 5, width: 210, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6, animation: "fadeIn 0.16s ease-out" }}>
                 {SORT_OPTIONS.map((option) => (
                   <button
                     key={option.key}
@@ -1032,7 +1048,12 @@ export default function LinkedInStatsPage() {
             ) : null}
           </div>
 
-          <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 32 }}>
+          <div
+            onClick={(event) => {
+              if (event.target === event.currentTarget) clearEditorSelection();
+            }}
+            style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 32, minHeight: "55vh" }}
+          >
             {visiblePosts.length === 0 ? (
               <div style={{ padding: "70px 20px", textAlign: "center", color: "rgba(18,26,46,0.45)", fontFamily: '"Inter", sans-serif', fontSize: 16 }}>
                 {showPendingCsvPosts ? "Aucun post validé n'attend de CSV." : "Importe un export LinkedIn pour faire apparaître tes posts ici."}
@@ -1045,7 +1066,10 @@ export default function LinkedInStatsPage() {
                   <button
                     key={post.id}
                     type="button"
-                    onClick={() => selectPost(post)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      selectPost(post);
+                    }}
                     onMouseEnter={() => setHoveredPostId(post.id)}
                     onMouseLeave={() => setHoveredPostId((current) => (current === post.id ? null : current))}
                     style={{
@@ -1078,10 +1102,10 @@ export default function LinkedInStatsPage() {
                         {formatPreviewDate(post)}
                       </p>
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.reactions)} réactions <ReactionDots />
                     </div>
-                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 600, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
+                    <div style={{ minHeight: 46, borderRadius: 11, background: "rgba(0,0,0,0.05)", padding: "0 16px", display: "flex", alignItems: "center", fontFamily: '"Inter", sans-serif', fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.75)", whiteSpace: "nowrap" }}>
                       {formatNumber(analytics.impressions)} impressions
                     </div>
                   </button>
