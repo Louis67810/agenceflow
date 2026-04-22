@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, DragEvent, ReactNode } from "react";
-import { BarChart3, ChevronDown, Eye, Link2, MousePointerClick, Search, SlidersHorizontal, ThumbsUp, Upload, X } from "lucide-react";
+import { Activity, BarChart3, Calendar, ChevronDown, Eye, GitCompare, Info, Link2, MousePointerClick, Search, SlidersHorizontal, ThumbsUp, Upload, X } from "lucide-react";
 import {
   DEFAULT_STYLES,
   type LinkedInPost,
@@ -36,6 +36,9 @@ const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,
 type EditableAnalytics = Omit<LinkedInPostAnalytics, "importedAt" | "sourceFileName">;
 type PostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
 type SortKey = "date" | "impressions" | "reactions" | "comments" | "linkClicks";
+type StatsTab = "posts" | "data";
+type PeriodKey = "30" | "90" | "365" | "all";
+type DataMetricKey = "impressions" | "reactions" | "comments" | "engagement";
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "date", label: "Plus récent" },
@@ -43,6 +46,20 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "reactions", label: "Plus de réactions" },
   { key: "comments", label: "Plus de commentaires" },
   { key: "linkClicks", label: "Plus de clics sur le lien" },
+];
+
+const DATA_METRICS: Array<{ key: DataMetricKey; label: string }> = [
+  { key: "impressions", label: "Impressions" },
+  { key: "reactions", label: "Likes" },
+  { key: "comments", label: "Commentaires" },
+  { key: "engagement", label: "Engagement" },
+];
+
+const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string; days: number | null }> = [
+  { key: "30", label: "30 derniers jours", days: 30 },
+  { key: "90", label: "90 derniers jours", days: 90 },
+  { key: "365", label: "12 derniers mois", days: 365 },
+  { key: "all", label: "Toute la periode", days: null },
 ];
 
 const figmaInputStyle: CSSProperties = {
@@ -86,6 +103,23 @@ const loginButtonStyle: CSSProperties = {
   boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)",
   fontFamily: '"Plus Jakarta Sans", sans-serif',
 };
+
+const dataCardStyle: CSSProperties = {
+  border: "1px solid #e1e4e8",
+  borderRadius: 20,
+  background: "#fff",
+  boxShadow: cardShadow,
+  boxSizing: "border-box",
+};
+
+const dataMutedText: CSSProperties = {
+  fontFamily: '"Inter", sans-serif',
+  fontSize: 13,
+  fontWeight: 500,
+  color: "rgba(18,26,46,0.58)",
+};
+
+const formatChartColors = ["#0147ff", "#8fb0ff", "#dfe7ff", "#cfcfcf", "#aeb7c7", "#7c8799"];
 
 function emptyEditableAnalytics(): EditableAnalytics {
   return {
@@ -167,6 +201,76 @@ function getMetricTotal(posts: LinkedInPost[], key: "impressions" | "reactions" 
 
 function hasImportedAnalytics(post: LinkedInPost) {
   return Boolean(normalizeAnalytics(post.analytics).importedAt);
+}
+
+function getAnalyticsDate(post: LinkedInPost) {
+  const analytics = normalizeAnalytics(post.analytics);
+  const raw = analytics.publishedDate || post.publishedAt?.slice(0, 10) || post.createdAt?.slice(0, 10);
+  const date = new Date(`${raw}T${analytics.publishedTime || "12:00"}:00`);
+  return Number.isNaN(date.getTime()) ? new Date(post.createdAt) : date;
+}
+
+function getEngagementValue(post: LinkedInPost) {
+  const analytics = normalizeAnalytics(post.analytics);
+  return analytics.socialEngagement || analytics.reactions + analytics.comments + analytics.reposts + analytics.saves + analytics.sends + analytics.linkClicks;
+}
+
+function getDataMetricValue(post: LinkedInPost, key: DataMetricKey) {
+  const analytics = normalizeAnalytics(post.analytics);
+  if (key === "engagement") return getEngagementValue(post);
+  return analytics[key] ?? 0;
+}
+
+function getFormatLabel(format?: LinkedInPostAnalytics["format"]) {
+  const labels: Record<PostFormat, string> = {
+    text: "Texte",
+    image: "Image",
+    carousel: "Carrousel",
+    video: "Video",
+    poll: "Sondage",
+    document: "Document",
+    other: "Autre",
+  };
+  return format ? labels[format] ?? "Autre" : "Autre";
+}
+
+function extractHook(content: string) {
+  const lines = content.replace(/\r/g, "").split("\n");
+  const blocks: string[] = [];
+  let current: string[] = [];
+
+  for (const line of lines) {
+    const clean = line.trim();
+    if (!clean) {
+      if (current.length > 0) {
+        blocks.push(current.join(" "));
+        current = [];
+      }
+      continue;
+    }
+    current.push(clean);
+    if (current.join(" ").length > 180) break;
+  }
+
+  if (current.length > 0) blocks.push(current.join(" "));
+  const hook = blocks.slice(0, 2).join(" ").replace(/\s+/g, " ").trim();
+  if (!hook) return content.replace(/\s+/g, " ").trim().slice(0, 220);
+  return hook.length > 260 ? `${hook.slice(0, 260).trim()}...` : hook;
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function percentDelta(value: number, baseline: number) {
+  if (!baseline) return 0;
+  return ((value - baseline) / baseline) * 100;
+}
+
+function formatDelta(value: number) {
+  const rounded = Math.round(value);
+  return `${rounded >= 0 ? "+" : ""}${rounded}%`;
 }
 
 function buildPdfPreviewDataUrl(fileName: string) {
@@ -337,6 +441,14 @@ export default function LinkedInStatsPage() {
   const [linkOverlayOpen, setLinkOverlayOpen] = useState(false);
   const [linkSearch, setLinkSearch] = useState("");
   const [showPendingCsvPosts, setShowPendingCsvPosts] = useState(false);
+  const [activeTab, setActiveTab] = useState<StatsTab>("posts");
+  const [periodKey, setPeriodKey] = useState<PeriodKey>("30");
+  const [dataMetric, setDataMetric] = useState<DataMetricKey>("reactions");
+  const [dataOverlay, setDataOverlay] = useState<{ title: string; body: string } | null>(null);
+  const [hookQuery, setHookQuery] = useState("");
+  const [compareHookQuery, setCompareHookQuery] = useState("");
+  const [compareMode, setCompareMode] = useState(false);
+  const [typeEvolutionStyle, setTypeEvolutionStyle] = useState("");
 
   useEffect(() => {
     const loaded = loadLinkedInPosts();
@@ -401,6 +513,107 @@ export default function LinkedInStatsPage() {
   const totalComments = getMetricTotal(publishedPosts, "comments");
   const totalLinkClicks = getMetricTotal(publishedPosts, "linkClicks");
   const canSave = Boolean((selectedPostId || pendingImportedAnalytics) && (postContent.trim() || pendingImportedAnalytics) && selectedStyleId && editor.format);
+  const selectedPeriod = PERIOD_OPTIONS.find((period) => period.key === periodKey) ?? PERIOD_OPTIONS[0];
+  const analyticsPosts = useMemo(() => {
+    const periodDays = selectedPeriod.days;
+    if (!periodDays) return publishedPosts;
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - periodDays);
+    return publishedPosts.filter((post) => getAnalyticsDate(post) >= threshold);
+  }, [publishedPosts, selectedPeriod.days]);
+  const dataTotals = useMemo(() => ({
+    posts: analyticsPosts.length,
+    impressions: getMetricTotal(analyticsPosts, "impressions"),
+    reactions: getMetricTotal(analyticsPosts, "reactions"),
+    comments: getMetricTotal(analyticsPosts, "comments"),
+    linkClicks: getMetricTotal(analyticsPosts, "linkClicks"),
+    engagement: analyticsPosts.reduce((sum, post) => sum + getEngagementValue(post), 0),
+  }), [analyticsPosts]);
+  const timeline = useMemo(() => {
+    const byDay = new Map<string, { date: Date; value: number; posts: LinkedInPost[] }>();
+    for (const post of analyticsPosts) {
+      const date = getAnalyticsDate(post);
+      const key = date.toISOString().slice(0, 10);
+      const current = byDay.get(key) ?? { date, value: 0, posts: [] };
+      current.value += getDataMetricValue(post, dataMetric);
+      current.posts.push(post);
+      byDay.set(key, current);
+    }
+    return [...byDay.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [analyticsPosts, dataMetric]);
+  const formatDistribution = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const post of analyticsPosts) {
+      const label = getFormatLabel(normalizeAnalytics(post.analytics).format);
+      map.set(label, (map.get(label) ?? 0) + 1);
+    }
+    return [...map.entries()].map(([label, count]) => ({ label, count, percent: analyticsPosts.length ? Math.round((count / analyticsPosts.length) * 100) : 0 }));
+  }, [analyticsPosts]);
+  const heatmap = useMemo(() => {
+    const slots = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ total: 0, count: 0 })));
+    for (const post of analyticsPosts) {
+      const date = getAnalyticsDate(post);
+      const day = (date.getDay() + 6) % 7;
+      const hour = date.getHours();
+      slots[day][hour].total += getEngagementValue(post);
+      slots[day][hour].count += 1;
+    }
+    return slots.map((row) => row.map((slot) => slot.count ? slot.total / slot.count : 0));
+  }, [analyticsPosts]);
+  const bestTime = useMemo(() => {
+    const days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+    let best = { day: 0, hour: 11, value: 0 };
+    heatmap.forEach((row, day) => row.forEach((value, hour) => {
+      if (value > best.value) best = { day, hour, value };
+    }));
+    const avgEngagement = average(analyticsPosts.map(getEngagementValue));
+    return {
+      label: `${String(best.hour).padStart(2, "0")}h00`,
+      day: days[best.day],
+      delta: percentDelta(best.value, avgEngagement),
+    };
+  }, [analyticsPosts, heatmap]);
+  const hookStats = useMemo(() => {
+    const globalImpressions = average(analyticsPosts.map((post) => normalizeAnalytics(post.analytics).impressions));
+    const globalEngagement = average(analyticsPosts.map(getEngagementValue));
+    const globalComments = average(analyticsPosts.map((post) => normalizeAnalytics(post.analytics).comments));
+    const build = (query: string) => {
+      const clean = query.trim().toLowerCase();
+      const matches = clean
+        ? analyticsPosts.filter((post) => extractHook(post.content).toLowerCase().includes(clean))
+        : [];
+      const impressions = average(matches.map((post) => normalizeAnalytics(post.analytics).impressions));
+      const engagement = average(matches.map(getEngagementValue));
+      const comments = average(matches.map((post) => normalizeAnalytics(post.analytics).comments));
+      const styleCounts = new Map<string, number>();
+      matches.forEach((post) => {
+        const label = post.styleName || "Sans style";
+        styleCounts.set(label, (styleCounts.get(label) ?? 0) + 1);
+      });
+      const topStyle = [...styleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+      return {
+        query,
+        matches,
+        impressions,
+        engagement,
+        comments,
+        impressionDelta: percentDelta(impressions, globalImpressions),
+        engagementDelta: percentDelta(engagement, globalEngagement),
+        commentDelta: percentDelta(comments, globalComments),
+        topStyle: topStyle ? `${topStyle[0]} (${Math.round((topStyle[1] / Math.max(matches.length, 1)) * 100)}%)` : "Aucun",
+      };
+    };
+    return { primary: build(hookQuery), compare: build(compareHookQuery) };
+  }, [analyticsPosts, compareHookQuery, hookQuery]);
+  const recentActivity = useMemo(() => [...analyticsPosts]
+    .sort((a, b) => getAnalyticsDate(b).getTime() - getAnalyticsDate(a).getTime())
+    .slice(0, 4), [analyticsPosts]);
+  const typeEvolutionPosts = useMemo(() => {
+    const selected = typeEvolutionStyle || styles[0]?.id || "";
+    return analyticsPosts
+      .filter((post) => !selected || post.styleId === selected || post.styleName === styles.find((style) => style.id === selected)?.name)
+      .sort((a, b) => getAnalyticsDate(a).getTime() - getAnalyticsDate(b).getTime());
+  }, [analyticsPosts, styles, typeEvolutionStyle]);
 
   function persist(updatedPosts: LinkedInPost[]) {
     const normalized = normalizePosts(updatedPosts);
@@ -667,6 +880,69 @@ export default function LinkedInStatsPage() {
     document: "Document",
     other: "Autre",
   };
+  const timelineMax = Math.max(...timeline.map((item) => item.value), 1);
+  const timelinePoints = timeline.map((item, index) => {
+    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+    const y = 220 - (item.value / timelineMax) * 170;
+    return `${x},${y}`;
+  }).join(" ");
+  const typeMax = Math.max(...typeEvolutionPosts.map(getEngagementValue), 1);
+  const typePoints = typeEvolutionPosts.map((post, index) => {
+    const x = typeEvolutionPosts.length <= 1 ? 80 : 80 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 780;
+    const y = 210 - (getEngagementValue(post) / typeMax) * 150;
+    return `${x},${y}`;
+  }).join(" ");
+  const formatConic = (() => {
+    if (formatDistribution.length === 0) return "#eef1f5 0deg 360deg";
+    let cursor = 0;
+    return formatDistribution.map((item, index) => {
+      const start = cursor;
+      const end = cursor + item.percent * 3.6;
+      cursor = end;
+      return `${formatChartColors[index % formatChartColors.length]} ${start}deg ${end}deg`;
+    }).join(", ");
+  })();
+  const maxHeatValue = Math.max(...heatmap.flat(), 1);
+  const hourLabels = [0, 4, 8, 12, 16, 20];
+  const dayLabels = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."];
+
+  function renderHookPanel(stats: typeof hookStats.primary, accent: string) {
+    const hasQuery = stats.query.trim().length > 0;
+    const rows = [
+      { label: "Impressions moyennes", value: Math.round(stats.impressions), delta: stats.impressionDelta },
+      { label: "Engagement moyen", value: Math.round(stats.engagement), delta: stats.engagementDelta },
+      { label: "Commentaires moyens", value: Math.round(stats.comments), delta: stats.commentDelta },
+    ];
+
+    return (
+      <div style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, padding: 14, background: "#fbfcff" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+          <strong style={{ fontSize: 15, fontWeight: 700, color: "#121a2e" }}>{hasQuery ? `"${stats.query.trim()}"` : "Aucune accroche"}</strong>
+          <span style={{ ...dataMutedText, color: accent }}>{stats.matches.length} post{stats.matches.length > 1 ? "s" : ""}</span>
+        </div>
+        {hasQuery ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {rows.map((row) => (
+                <div key={row.label} style={{ borderRadius: 12, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", padding: 12 }}>
+                  <p style={{ margin: 0, ...dataMutedText, fontSize: 12 }}>{row.label}</p>
+                  <strong style={{ display: "block", marginTop: 7, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{formatNumber(row.value)}</strong>
+                  <span style={{ display: "block", marginTop: 5, fontSize: 12, fontWeight: 700, color: row.delta >= 0 ? "#168b64" : "#c53434" }}>
+                    {formatDelta(row.delta)} vs moyenne
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: "12px 0 0", ...dataMutedText }}>
+              Style le plus fréquent : <strong style={{ color: "#121a2e" }}>{stats.topStyle}</strong>
+            </p>
+          </>
+        ) : (
+          <p style={{ margin: 0, ...dataMutedText }}>Tape un mot pour analyser toutes les accroches qui le contiennent.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -696,33 +972,42 @@ export default function LinkedInStatsPage() {
         <div style={{ padding: "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
             <button
+              type="button"
+              onClick={() => setActiveTab("posts")}
               style={{
-                border: "1px solid rgba(0,0,0,0.12)",
+                border: activeTab === "posts" ? "1px solid rgba(0,0,0,0.12)" : 0,
                 borderRadius: 999,
-                background: "#fff",
+                background: activeTab === "posts" ? "#fff" : "transparent",
                 minHeight: 32,
                 padding: "0 18px",
                 color: "rgba(18,26,46,0.7)",
                 fontFamily: '"Inter", sans-serif',
                 fontSize: 13,
                 fontWeight: 500,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                boxShadow: activeTab === "posts" ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+                cursor: "pointer",
               }}
             >
               Posts
             </button>
             <button
-              disabled
+              type="button"
+              onClick={() => {
+                clearEditorSelection();
+                setActiveTab("data");
+              }}
               style={{
-                border: 0,
+                border: activeTab === "data" ? "1px solid rgba(0,0,0,0.12)" : 0,
                 borderRadius: 999,
-                background: "transparent",
+                background: activeTab === "data" ? "#fff" : "transparent",
                 minHeight: 32,
                 padding: "0 16px",
-                color: "rgba(18,26,46,0.45)",
+                color: activeTab === "data" ? "rgba(18,26,46,0.7)" : "rgba(18,26,46,0.45)",
                 fontFamily: '"Inter", sans-serif',
                 fontSize: 13,
                 fontWeight: 500,
+                boxShadow: activeTab === "data" ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+                cursor: "pointer",
               }}
             >
               Données
@@ -732,10 +1017,12 @@ export default function LinkedInStatsPage() {
 
         <div style={{ padding: "22px 26px 0" }}>
           <h1 style={{ margin: 0, fontSize: 22, lineHeight: "25px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.45px" }}>
-            Posts LinkedIn
+            {activeTab === "data" ? "Données LinkedIn" : "Posts LinkedIn"}
           </h1>
         </div>
 
+        {activeTab === "posts" ? (
+          <>
         <div style={{ padding: "28px 26px 0" }}>
           <label
             onDragOver={(event) => {
@@ -1007,6 +1294,39 @@ export default function LinkedInStatsPage() {
             </button>
           </div>
         ) : null}
+          </>
+        ) : (
+          <div style={{ padding: "28px 26px 24px", display: "flex", flexDirection: "column", gap: 18, overflowY: "auto", minHeight: 0 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#6f7887", fontFamily: '"Inter", sans-serif' }}>Période analysée</span>
+              <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <Calendar size={16} style={{ position: "absolute", left: 14, color: "#6f7887" }} />
+                <select value={periodKey} onChange={(event) => setPeriodKey(event.target.value as PeriodKey)} style={{ ...figmaInputStyle, paddingLeft: 40, appearance: "none" }}>
+                  {PERIOD_OPTIONS.map((period) => <option key={period.key} value={period.key}>{period.label}</option>)}
+                </select>
+                <ChevronDown size={15} style={{ position: "absolute", right: 12, color: "#6f7887", pointerEvents: "none" }} />
+              </span>
+            </label>
+
+            <div style={{ height: 1, background: "#e9ecef" }} />
+
+            {[
+              { label: "Posts analysés", value: dataTotals.posts, icon: <BarChart3 size={17} style={{ color: "#6f7887" }} />, delta: `${selectedPeriod.label}` },
+              { label: "Impressions", value: formatNumber(dataTotals.impressions), icon: <Eye size={17} style={{ color: "#6f7887" }} />, delta: `${Math.round(average(analyticsPosts.map((post) => normalizeAnalytics(post.analytics).impressions)))} moy.` },
+              { label: "Engagement", value: formatNumber(dataTotals.engagement), icon: <Activity size={17} style={{ color: "#6f7887" }} />, delta: `${Math.round(average(analyticsPosts.map(getEngagementValue)))} moy.` },
+              { label: "Clics lien", value: formatNumber(dataTotals.linkClicks), icon: <MousePointerClick size={17} style={{ color: "#6f7887" }} />, delta: `${dataTotals.comments} commentaires` },
+            ].map((card) => (
+              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${card.value} sur ${selectedPeriod.label}. Ces données viennent uniquement des exports LinkedIn importés.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 9, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                  {card.icon}
+                </div>
+                <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
+                <strong style={{ display: "block", marginTop: 9, fontSize: 22, fontWeight: 600, color: "#121a2e", lineHeight: 1 }}>{card.value}</strong>
+                <span style={{ display: "block", marginTop: 8, fontSize: 12, color: "#168b64", fontWeight: 600 }}>{card.delta}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </aside>
 
       <main
@@ -1015,6 +1335,214 @@ export default function LinkedInStatsPage() {
         }}
         style={{ flex: 1, minWidth: 0, padding: "28px 30px 44px", overflowY: "auto" }}
       >
+        {activeTab === "data" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+            <section style={{ ...dataCardStyle, padding: "24px 28px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, marginBottom: 16 }}>
+                <h2 style={{ margin: 0, fontSize: 22, lineHeight: "26px", fontWeight: 600, color: "#121a2e", letterSpacing: "-0.35px" }}>
+                  Evolution de l'engagement
+                </h2>
+                <label style={{ position: "relative", minWidth: 170 }}>
+                  <select value={dataMetric} onChange={(event) => setDataMetric(event.target.value as DataMetricKey)} style={{ ...figmaInputStyle, minHeight: 42, paddingLeft: 42, appearance: "none" }}>
+                    {DATA_METRICS.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}
+                  </select>
+                  <Activity size={15} style={{ position: "absolute", left: 14, top: 13, color: "#6f7887" }} />
+                  <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 13, color: "#6f7887", pointerEvents: "none" }} />
+                </label>
+              </div>
+              {timeline.length === 0 ? (
+                <div style={{ minHeight: 270, borderRadius: 16, background: "#f7f8fa", display: "flex", alignItems: "center", justifyContent: "center", ...dataMutedText }}>
+                  Importe au moins un CSV LinkedIn sauvegarde pour afficher l'evolution.
+                </div>
+              ) : (
+                <svg viewBox="0 0 920 270" preserveAspectRatio="none" style={{ width: "100%", height: 285, display: "block" }}>
+                  {[0, 1, 2, 3, 4].map((line) => (
+                    <line key={line} x1="62" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
+                  ))}
+                  {[0, 1, 2, 3, 4].map((line) => {
+                    const value = Math.round(timelineMax - (timelineMax / 4) * line);
+                    return <text key={line} x="12" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter">{formatNumber(value)}</text>;
+                  })}
+                  <defs>
+                    <linearGradient id="linkedinStatsLineFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4e7dfa" stopOpacity="0.18" />
+                      <stop offset="100%" stopColor="#4e7dfa" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  {timelinePoints ? (
+                    <>
+                      <polyline points={`80,230 ${timelinePoints} 860,230`} fill="url(#linkedinStatsLineFill)" stroke="none" />
+                      <polyline points={timelinePoints} fill="none" stroke="#4e7dfa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                    </>
+                  ) : null}
+                  {timeline.map((item, index) => {
+                    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+                    const y = 220 - (item.value / timelineMax) * 170;
+                    return (
+                      <g key={item.date.toISOString()} onClick={() => setDataOverlay({ title: item.date.toLocaleDateString("fr-FR"), body: `${formatNumber(item.value)} ${DATA_METRICS.find((metric) => metric.key === dataMetric)?.label.toLowerCase()} sur ${item.posts.length} post(s).` })} style={{ cursor: "pointer" }}>
+                        <line x1={x} x2={x} y1="35" y2="228" stroke="rgba(18,26,46,0.08)" strokeDasharray="3 4" />
+                        <rect x={x - 11} y={y - 11} width="22" height="22" rx="5" fill="#cfcfcf" />
+                        <title>{`${item.date.toLocaleDateString("fr-FR")} - ${formatNumber(item.value)}`}</title>
+                      </g>
+                    );
+                  })}
+                  {timeline.map((item, index) => {
+                    if (index % Math.max(Math.ceil(timeline.length / 6), 1) !== 0) return null;
+                    const x = timeline.length <= 1 ? 80 : 80 + (index / Math.max(timeline.length - 1, 1)) * 780;
+                    return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="260" fill="rgba(18,26,46,0.54)" fontSize="12" fontFamily="Inter">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
+                  })}
+                </svg>
+              )}
+            </section>
+
+            <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 22 }}>
+              <article style={{ ...dataCardStyle, padding: 24 }}>
+                <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Repartition par format</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "168px 1fr", gap: 22, alignItems: "center" }}>
+                  <div style={{ width: 168, height: 168, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
+                    <div style={{ position: "absolute", inset: 43, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+                      <span style={{ ...dataMutedText, fontSize: 13 }}>Total</span>
+                      <strong style={{ fontSize: 22, color: "#121a2e" }}>{analyticsPosts.length}</strong>
+                      <span style={{ ...dataMutedText, fontSize: 12 }}>posts</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {(formatDistribution.length ? formatDistribution : [{ label: "Aucune donnee", count: 0, percent: 0 }]).map((item, index) => (
+                      <div key={item.label} style={{ display: "grid", gridTemplateColumns: "14px 1fr auto", alignItems: "center", gap: 10 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 4, background: formatChartColors[index % formatChartColors.length] }} />
+                        <span style={{ ...dataMutedText }}>{item.label}</span>
+                        <strong style={{ fontSize: 14, fontWeight: 700, color: "#121a2e" }}>{item.percent}%</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </article>
+
+              <article style={{ ...dataCardStyle, padding: 24 }}>
+                <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Performances par jour</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 8 }}>
+                  {dayLabels.map((day, dayIndex) => (
+                    <div key={day} style={{ display: "contents" }}>
+                      <span style={{ ...dataMutedText, fontSize: 12, alignSelf: "center" }}>{day}</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(24, 1fr)", gap: 4 }}>
+                        {heatmap[dayIndex].map((value, hour) => (
+                          <button
+                            key={`${day}-${hour}`}
+                            type="button"
+                            onClick={() => setDataOverlay({ title: `${day} ${String(hour).padStart(2, "0")}h`, body: `Engagement moyen : ${Math.round(value)}. Plus la case est bleue, plus les posts de ce créneau performent.` })}
+                            style={{ height: 14, border: 0, borderRadius: 3, background: `rgba(1,71,255,${0.06 + (value / maxHeatValue) * 0.7})`, cursor: "pointer" }}
+                            aria-label={`${day} ${hour}h`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 8, marginTop: 12 }}>
+                  <span />
+                  <div style={{ display: "flex", justifyContent: "space-between", ...dataMutedText, fontSize: 12 }}>
+                    {hourLabels.map((hour) => <span key={hour}>{String(hour).padStart(2, "0")}h</span>)}
+                  </div>
+                </div>
+              </article>
+
+              <article style={{ ...dataCardStyle, padding: 24, display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: 234 }}>
+                <div>
+                  <h3 style={{ margin: "0 0 52px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Meilleur moment pour publier</h3>
+                  <strong style={{ display: "block", fontSize: 34, fontWeight: 500, color: "#121a2e", letterSpacing: "-0.6px" }}>{bestTime.label}</strong>
+                  <p style={{ margin: "6px 0 14px", ...dataMutedText }}>{bestTime.day}</p>
+                  <span style={{ display: "inline-flex", borderRadius: 999, background: "#f5faf7", border: "1px solid #dcefe5", padding: "8px 12px", fontSize: 12, fontWeight: 700, color: "#168b64" }}>
+                    {formatDelta(bestTime.delta)} plus d'engagement
+                  </span>
+                </div>
+                <button type="button" onClick={() => setDataOverlay({ title: "Meilleur moment pour publier", body: `Le meilleur créneau détecté est ${bestTime.day} à ${bestTime.label}. Calcul basé sur l'engagement moyen des posts importés.` })} style={{ alignSelf: "flex-start", minHeight: 42, borderRadius: 10, border: "1px solid #e1e4e8", background: "#fff", padding: "0 18px", fontSize: 14, fontWeight: 700, color: "#121a2e", cursor: "pointer" }}>
+                  Voir plus d'infos
+                </button>
+              </article>
+            </section>
+
+            <section style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 22 }}>
+              <article style={{ ...dataCardStyle, padding: 24 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, marginBottom: 14 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Comparaison d'accroches</h3>
+                    <p style={{ margin: "7px 0 0", ...dataMutedText }}>Recherche un mot dans les premieres lignes de tes posts.</p>
+                  </div>
+                  <button type="button" onClick={() => setCompareMode((current) => !current)} style={{ minHeight: 40, borderRadius: 10, border: "1px solid #e1e4e8", background: "#fff", padding: "0 14px", fontSize: 13, fontWeight: 700, color: "#121a2e", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                    <GitCompare size={15} /> Comparer
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: compareMode ? "1fr 1fr" : "1fr", gap: 12, marginBottom: 14 }}>
+                  <label style={{ minHeight: 44, borderRadius: 12, border: "1px solid #e1e4e8", background: "#f8f9fb", display: "flex", alignItems: "center", gap: 10, padding: "0 12px" }}>
+                    <Search size={16} style={{ color: "#6f7887" }} />
+                    <input value={hookQuery} onChange={(event) => setHookQuery(event.target.value)} placeholder="Ex : prospect, erreur, croissance..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontFamily: '"Inter", sans-serif', fontSize: 14, color: "#121a2e" }} />
+                  </label>
+                  {compareMode ? (
+                    <label style={{ minHeight: 44, borderRadius: 12, border: "1px solid #e1e4e8", background: "#f8f9fb", display: "flex", alignItems: "center", gap: 10, padding: "0 12px" }}>
+                      <Search size={16} style={{ color: "#6f7887" }} />
+                      <input value={compareHookQuery} onChange={(event) => setCompareHookQuery(event.target.value)} placeholder="Mot a comparer..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontFamily: '"Inter", sans-serif', fontSize: 14, color: "#121a2e" }} />
+                    </label>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {renderHookPanel(hookStats.primary, "#0147ff")}
+                  {compareMode ? renderHookPanel(hookStats.compare, "#7c3aed") : null}
+                </div>
+              </article>
+
+              <article style={{ ...dataCardStyle, padding: 24 }}>
+                <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Activite recente</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {recentActivity.length === 0 ? (
+                    <p style={{ margin: 0, ...dataMutedText }}>Aucun post importé pour l'instant.</p>
+                  ) : recentActivity.map((post) => {
+                    const analytics = normalizeAnalytics(post.analytics);
+                    return (
+                      <button key={post.id} type="button" onClick={() => { setActiveTab("posts"); selectPost(post); }} style={{ border: 0, borderBottom: "1px solid rgba(18,26,46,0.06)", background: "transparent", padding: "0 0 12px", display: "grid", gridTemplateColumns: "44px 1fr auto auto", alignItems: "center", gap: 12, textAlign: "left", cursor: "pointer" }}>
+                        <span style={{ width: 36, height: 40, borderRadius: 5, background: analytics.mediaPreviewUrl ? `url(${analytics.mediaPreviewUrl}) center / cover` : "#ccc", border: "3px solid #fff", boxShadow: previewShadow }} />
+                        <strong style={{ minWidth: 0, fontSize: 14, fontWeight: 600, color: "#121a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{buildPostTitle(post)}</strong>
+                        <span style={{ ...dataMutedText, whiteSpace: "nowrap" }}>{getAnalyticsDate(post).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#121a2e", whiteSpace: "nowrap" }}>{formatNumber(analytics.reactions)} reactions</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={() => setActiveTab("posts")} style={{ marginTop: 16, border: 0, background: "transparent", color: "#0147ff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Voir tous les posts →
+                </button>
+              </article>
+            </section>
+
+            <section style={{ ...dataCardStyle, padding: "26px 28px", minHeight: 360 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, marginBottom: 20 }}>
+                <h3 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: "#121a2e" }}>Evolution par type</h3>
+                <label style={{ position: "relative", minWidth: 190 }}>
+                  <select value={typeEvolutionStyle} onChange={(event) => setTypeEvolutionStyle(event.target.value)} style={{ ...figmaInputStyle, appearance: "none" }}>
+                    <option value="">Tous les styles</option>
+                    {styles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+                  </select>
+                  <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 13, color: "#6f7887", pointerEvents: "none" }} />
+                </label>
+              </div>
+              {typeEvolutionPosts.length === 0 ? (
+                <div style={{ minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, background: "#f7f8fa", ...dataMutedText }}>
+                  Aucun post pour ce style sur la periode choisie.
+                </div>
+              ) : (
+                <svg viewBox="0 0 920 260" preserveAspectRatio="none" style={{ width: "100%", height: 270, display: "block" }}>
+                  {[0, 1, 2, 3].map((line) => <line key={line} x1="60" x2="890" y1={55 + line * 46} y2={55 + line * 46} stroke="rgba(18,26,46,0.06)" />)}
+                  <polyline points={typePoints} fill="none" stroke="#4e7dfa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  {typeEvolutionPosts.map((post, index) => {
+                    const x = typeEvolutionPosts.length <= 1 ? 80 : 80 + (index / Math.max(typeEvolutionPosts.length - 1, 1)) * 780;
+                    const y = 210 - (getEngagementValue(post) / typeMax) * 150;
+                    return <rect key={post.id} x={x - 13} y={y - 13} width="26" height="26" rx="5" fill="#cfcfcf" style={{ cursor: "pointer" }} onClick={() => { setActiveTab("posts"); selectPost(post); }} />;
+                  })}
+                </svg>
+              )}
+            </section>
+          </div>
+        ) : (
+          <>
         <section style={{ display: "none", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginBottom: 42 }}>
           {[
             { label: "Posts publiés", value: publishedPosts.length, icon: <BarChart3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
@@ -1160,7 +1688,32 @@ export default function LinkedInStatsPage() {
             )}
           </div>
         </section>
+          </>
+        )}
       </main>
+
+      {dataOverlay ? (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 35, background: "rgba(18,26,46,0.16)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          onClick={() => setDataOverlay(null)}
+        >
+          <div
+            style={{ width: "min(460px, 100%)", borderRadius: 20, background: "#fff", border: "1px solid #e1e4e8", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 22 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: "#f2f5ff", color: "#0147ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Info size={18} />
+              </div>
+              <button type="button" onClick={() => setDataOverlay(null)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid #e1e4e8", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} aria-label="Fermer">
+                <X size={16} style={{ color: "#6f7887" }} />
+              </button>
+            </div>
+            <h3 style={{ margin: "18px 0 8px", fontSize: 20, fontWeight: 700, color: "#121a2e" }}>{dataOverlay.title}</h3>
+            <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 14, lineHeight: 1.65, color: "rgba(18,26,46,0.68)" }}>{dataOverlay.body}</p>
+          </div>
+        </div>
+      ) : null}
 
       {linkOverlayOpen ? (
         <div style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setLinkOverlayOpen(false)}>
