@@ -646,7 +646,7 @@ export default function LinkedInStatsPage() {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          overflowY: "auto",
+          overflow: "hidden",
         }}
       >
         <div style={{ padding: "28px 26px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -765,7 +765,7 @@ export default function LinkedInStatsPage() {
         </div>
 
         {!editorActive ? (
-          <div style={{ padding: "24px 26px 0", display: "flex", flexDirection: "column", gap: 13 }}>
+          <div style={{ padding: "24px 26px 24px", display: "flex", flexDirection: "column", gap: 13, overflowY: "auto", minHeight: 0 }}>
             {metricCards.map((card) => (
               <article key={card.label} style={{ minHeight: 96, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
@@ -777,7 +777,7 @@ export default function LinkedInStatsPage() {
             ))}
           </div>
         ) : (
-          <div style={{ padding: "30px 26px 100px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: "30px 26px 24px", display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", minHeight: 0, flex: 1 }}>
             <Field label="Format du post *">
               <div style={{ position: "relative" }}>
                 <button type="button" onClick={() => setFormatOpen((current) => !current)} style={{ ...figmaInputStyle, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
@@ -950,7 +950,7 @@ export default function LinkedInStatsPage() {
         )}
 
         {editorActive ? (
-          <div style={{ position: "sticky", bottom: 0, padding: "12px 20px 16px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ flexShrink: 0, padding: "12px 20px 18px", background: "#fff", boxShadow: "0px -14px 28px rgba(255,255,255,0.9)", display: "flex", flexDirection: "column", gap: 10 }}>
             {pendingImportedAnalytics ? (
               <button type="button" onClick={() => setLinkOverlayOpen(true)} style={{ minHeight: 42, borderRadius: 10, border: "1px solid #e1e4e8", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <Link2 size={15} /> Lier a un post existant
