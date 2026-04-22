@@ -134,6 +134,8 @@ export default function PostsPage() {
   const [postsView, setPostsView] = useState<PostsView>("draft");
   const [draftMedia, setDraftMedia] = useState<{ url: string; kind: "image" | "pdf"; fileName: string; bytes: number } | null>(null);
   const [manualEditorStarted, setManualEditorStarted] = useState(false);
+  const [editorHistory, setEditorHistory] = useState<Array<{ id: string; label: string; before: string; after: string; createdAt: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({
@@ -361,6 +363,8 @@ export default function PostsPage() {
     setScheduleDate("");
     setDraftMedia(null);
     setManualEditorStarted(false);
+    setEditorHistory([]);
+    setChatInput("");
   }
 
   function isoToLocalInput(iso?: string) {
@@ -393,6 +397,8 @@ export default function PostsPage() {
       bytes: analytics.mediaStorageBytes ?? 0,
     } : null);
     setManualEditorStarted(true);
+    setEditorHistory([]);
+    setChatInput("");
   }
 
   function startManualPost() {
@@ -403,7 +409,15 @@ export default function PostsPage() {
     setPostType("post");
     setGenerationError("");
     setDraftMedia(null);
+    setEditorHistory([]);
     setManualEditorStarted(true);
+  }
+
+  function pushEditorHistory(entry: { label: string; before: string; after: string }) {
+    setEditorHistory((current) => [
+      { id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...entry },
+      ...current,
+    ].slice(0, 30));
   }
 
   function persistCarouselWorkspace(nextPages = carouselPageTemplates, nextTemplates = carouselTemplates) {
@@ -558,6 +572,35 @@ export default function PostsPage() {
       setGenerationError("");
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Image impossible à charger.");
+    }
+  }
+
+  async function runEditorChat() {
+    const instruction = chatInput.trim();
+    if (!instruction || !generatedContent.trim()) return;
+    const before = generatedContent;
+    setChatInput("");
+    try {
+      const res = await fetch("/api/linkedin/transform-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: generatedContent,
+          fullText: generatedContent,
+          instruction: instruction.startsWith("/")
+            ? `Applique cette commande au post LinkedIn complet : ${instruction}`
+            : `Modifie le post LinkedIn complet selon cette demande : ${instruction}`,
+          contextLabel: "post LinkedIn",
+          openrouterApiKey: settings?.openrouterApiKey || undefined,
+          model: settings?.model,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.text) throw new Error(data.error || "Transformation impossible");
+      setGeneratedContent(data.text);
+      pushEditorHistory({ label: instruction, before, after: data.text });
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Modification impossible.");
     }
   }
 
@@ -857,7 +900,7 @@ export default function PostsPage() {
           <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>Créer un post</h2>
 
           {/* Source tabs */}
-          <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+          {!rightEditorVisible && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
             {([
               { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
               { id: "url", icon: <Link2 size={12} />, label: "URL" },
@@ -873,10 +916,55 @@ export default function PostsPage() {
                 {t.icon} {t.label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
 
         <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {rightEditorVisible ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Style du post</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {styles.map((style) => {
+                    const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
+                    const active = selectedStyleId === style.id;
+                    return (
+                      <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tag.border}` : inactiveStyleTag.border, background: active ? tag.bg : inactiveStyleTag.background, color: active ? tag.color : inactiveStyleTag.color, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                        {style.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
+                  <Clock size={10} /> Date de programmation
+                </label>
+                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
+              </div>
+              <label style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 12, background: "#f7f7f7", minHeight: 58, padding: 10, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                <ImageIcon size={16} style={{ color: "rgba(18,26,46,0.42)" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(18,26,46,0.58)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draftMedia ? draftMedia.fileName : "Ajouter une image"}</span>
+                <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleDraftMedia(file);
+                  event.currentTarget.value = "";
+                }} />
+              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <ClientBlueButton type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }} disabled={!generatedContent.trim()}>
+                  Sauvegarder
+                </ClientBlueButton>
+                <button type="button" onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate || !generatedContent.trim()} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: scheduleDate && generatedContent.trim() ? 1 : 0.45 }}>
+                  Programmer
+                </button>
+              </div>
+              <button type="button" onClick={resetEditor} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Fermer l'éditeur
+              </button>
+            </div>
+          ) : (
+          <>
           {/* Source input */}
           {sourceTab === "idea" && (
             <div>
@@ -945,39 +1033,6 @@ export default function PostsPage() {
                 );
               })}
             </div>
-          </div>
-
-          {/* Type */}
-          <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Type de contenu</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              {(["post", "carousel"] as const).map(t => (
-                <button key={t} onClick={() => setPostType(t)} style={{
-                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px 0",
-                  fontSize: 12, fontWeight: 600, borderRadius: 9, cursor: "pointer", border: "1px solid",
-                  fontFamily: '"Plus Jakarta Sans", sans-serif',
-                  ...(postType === t ? { background: "#e8edff", borderColor: "#0147ff", color: "#0147ff" } : { background: "#f6f6f6", borderColor: "rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
-                }}>
-                  {t === "post" ? <Edit3 size={12} /> : <LayoutTemplate size={12} />}
-                  {t === "post" ? "Post" : "Carrousel"}
-                </button>
-              ))}
-            </div>
-            {postType === "carousel" && (
-              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)" }}>Slides :</span>
-                  <input type="number" min={3} max={20} value={carouselSlides} onChange={e => setCarouselSlides(Number(e.target.value))}
-                    style={{ width: 64, padding: "5px 8px", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 7, fontSize: 13, textAlign: "center", background: "#f6f6f6", outline: "none", color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, background: "#e8edff", border: "1px solid #c7d3ff", borderRadius: 9, padding: "8px 12px" }}>
-                  <Info size={12} style={{ color: "#0147ff", marginTop: 1, flexShrink: 0 }} />
-                  <p style={{ fontSize: 12, color: "#073e63", margin: 0, lineHeight: 1.5 }}>
-                    Le contenu de chaque slide suivra le template défini dans les <strong>Paramètres LinkedIn</strong> (TITRE, SOUS-TITRE, TEXTE, VISUEL...)
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Generate button */}
@@ -1092,6 +1147,8 @@ export default function PostsPage() {
               )}
             </div>
           )}
+          </>
+          )}
         </div>
       </div>
 
@@ -1145,7 +1202,16 @@ export default function PostsPage() {
           </div>
 
           {rightEditorVisible ? (
-            <div style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 760px) 320px", gap: 18, alignItems: "start" }}>
+            <div
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files?.[0];
+                if (file) void handleDraftMedia(file);
+              }}
+              style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4.4px rgba(0,0,0,0.05)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 760 }}
+            >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{editingPostId ? "Modifier le brouillon" : "Nouveau brouillon manuel"}</h3>
@@ -1155,86 +1221,6 @@ export default function PostsPage() {
                   <X size={16} />
                 </button>
               </div>
-
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed", width: "fit-content" }}>
-                {([
-                  ["post", "Texte", <Edit3 size={12} key="text" />],
-                  ["carousel", "Carrousel", <LayoutTemplate size={12} key="carousel" />],
-                ] as const).map(([type, label, icon]) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setPostType(type)}
-                    style={{ minHeight: 30, padding: "0 13px", borderRadius: 999, border: 0, background: postType === type ? "#fff" : "transparent", boxShadow: postType === type ? "0px 1px 4px rgba(0,0,0,0.08)" : "none", color: postType === type ? "#121a2e" : "rgba(18,26,46,0.5)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", gap: 6 }}
-                  >
-                    {icon}
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>
-                  Style du post
-                </label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                  {styles.map((style) => {
-                    const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
-                    const active = selectedStyleId === style.id;
-                    return (
-                      <button key={style.id} type="button" onClick={() => setSelectedStyleId(style.id)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tag.border}` : inactiveStyleTag.border, background: active ? tag.bg : inactiveStyleTag.background, color: active ? tag.color : inactiveStyleTag.color, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                        {style.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {postType === "carousel" ? (
-                <div style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.05)", padding: 16, display: "grid", gridTemplateColumns: "150px minmax(0, 1fr)", gap: 16, maxWidth: 760 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 430, overflowY: "auto", paddingRight: 4 }}>
-                    {generatedSlides.length === 0 ? (
-                      <button type="button" onClick={() => { setGeneratedSlides(["TITRE:\n\nSOUS-TITRE:\n\nTEXTE:\n\nVISUEL:"]); setActiveSlide(0); }} style={{ minHeight: 46, borderRadius: 12, border: "1px dashed rgba(18,26,46,0.18)", background: "#f7f7f7", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                        + Créer une slide
-                      </button>
-                    ) : generatedSlides.map((slide, index) => (
-                      <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ border: activeSlide === index ? "1px solid rgba(1,71,255,0.35)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 12, background: activeSlide === index ? "#f4f7ff" : "#fff", padding: 10, textAlign: "left", cursor: "pointer", boxShadow: activeSlide === index ? "0 8px 20px rgba(1,71,255,0.08)" : "none" }}>
-                        <strong style={{ display: "block", fontSize: 12, color: "#121a2e", marginBottom: 5 }}>Slide {index + 1}</strong>
-                        <span style={{ display: "block", fontSize: 11, lineHeight: 1.35, color: "rgba(18,26,46,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {slide.replace(/\s+/g, " ").slice(0, 70)}...
-                        </span>
-                      </button>
-                    ))}
-                    {generatedSlides.length > 0 && (
-                      <button type="button" onClick={() => { setGeneratedSlides([...generatedSlides, "TITRE:\n\nSOUS-TITRE:\n\nTEXTE:\n\nVISUEL:"]); setActiveSlide(generatedSlides.length); }} style={{ minHeight: 38, borderRadius: 10, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", color: "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                        + Ajouter
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-                      <div>
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#121a2e" }}>Slide {activeSlide + 1}</p>
-                        <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Modifie le contenu généré avant export Figma.</p>
-                      </div>
-                      <button type="button" onClick={downloadCurrentCarousel} style={{ minHeight: 36, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                        <Download size={13} /> Télécharger
-                      </button>
-                    </div>
-                    <textarea
-                      rows={18}
-                      value={generatedSlides[activeSlide] ?? ""}
-                      onChange={(event) => {
-                        const next = [...generatedSlides];
-                        next[activeSlide] = event.target.value;
-                        setGeneratedSlides(next);
-                      }}
-                      placeholder="Contenu de la slide..."
-                      style={{ ...inp, minHeight: 390, background: "#fff", lineHeight: 1.55, fontSize: 14, resize: "vertical", whiteSpace: "pre-wrap" }}
-                    />
-                  </div>
-                </div>
-              ) : (
               <div style={{ width: "100%", maxWidth: 552, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.05)", padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg,#dbeafe,#eef2ff)", flexShrink: 0 }} />
@@ -1250,41 +1236,51 @@ export default function PostsPage() {
                   placeholder="Écris ton post ici..."
                   contextLabel="post LinkedIn"
                   showGlobalAction={false}
+                  autoFit
+                  showWordCount
+                  onHistory={pushEditorHistory}
                   apiKey={settings?.openrouterApiKey || undefined}
                   model={settings?.model}
-                  style={{ ...inp, minHeight: 390, background: "#fff", border: "none", lineHeight: 1.55, fontSize: 14, padding: 0, resize: "vertical", whiteSpace: "pre-wrap" }}
+                  style={{ ...inp, minHeight: 42, background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: 0, resize: "none", whiteSpace: "pre-wrap", fontFamily: "Arial, Helvetica, sans-serif" }}
                 />
               </div>
-              )}
-
-              <label style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 14, background: "#f7f7f7", minHeight: draftMedia ? 92 : 64, padding: 12, display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
-                {draftMedia ? (
-                  <>
-                    <span style={{ width: 72, height: 76, borderRadius: 10, background: `url(${draftMedia.url}) center / cover`, flexShrink: 0, boxShadow: "0 10px 22px rgba(18,26,46,0.12)" }} />
-                    <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#121a2e" }}>Image du brouillon</span>
-                      <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draftMedia.fileName}</span>
-                    </span>
-                  </>
-                ) : (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(18,26,46,0.58)" }}>Ajouter une image ou un PDF</span>
-                )}
-                <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleDraftMedia(file);
-                  event.currentTarget.value = "";
-                }} />
-              </label>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "center" }}>
-                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, minHeight: 46, fontSize: 14 }} />
-                <button type="button" onClick={() => handleSave("draft")} disabled={saving || (postType === "carousel" ? generatedSlides.length === 0 : !generatedContent.trim())} style={{ minHeight: 46, padding: "0 18px", borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                  Sauvegarder
-                </button>
-                <ClientBlueButton compact type="button" onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate || (postType === "carousel" ? generatedSlides.length === 0 : !generatedContent.trim())}>
-                  Programmer
-                </ClientBlueButton>
+              {draftMedia && <div style={{ width: "100%", maxWidth: 552, height: 240, borderRadius: 14, background: `url(${draftMedia.url}) center / cover`, boxShadow: "0 10px 22px rgba(18,26,46,0.12)" }} />}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 10 }}>
+                <label style={{ width: 34, height: 34, borderRadius: 10, background: "#f6f6f6", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", cursor: "pointer" }}>
+                  <ImageIcon size={15} />
+                  <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleDraftMedia(file);
+                    event.currentTarget.value = "";
+                  }} />
+                </label>
+                <span style={{ fontSize: 12, color: "rgba(18,26,46,0.42)" }}>Glisse une image ici ou clique sur l’icône.</span>
               </div>
+              <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runEditorChat(); }} placeholder="Parle à l’IA ou tape / pour une commande..." style={{ ...inp, minHeight: 42, background: "#fff", flex: 1 }} />
+                  <button type="button" onClick={() => void runEditorChat()} style={{ ...btnGrad, padding: "0 14px", minHeight: 42, fontSize: 12 }}>Envoyer</button>
+                </div>
+                {chatInput.startsWith("/") && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {["/corriger", "/hook", "/open-loop", "/condenser", "/développer", "/citation"].map((cmd) => (
+                      <button key={cmd} type="button" onClick={() => setChatInput(cmd + " ")} style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 999, background: "#fff", padding: "6px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{cmd}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <aside style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#121a2e" }}>Historique</p>
+              {editorHistory.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les modifications IA apparaîtront ici. Tu pourras restaurer une ancienne version.</p>
+              ) : editorHistory.map((entry) => (
+                <button key={entry.id} type="button" onClick={() => setGeneratedContent(entry.after)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 13, background: "#f8f8f8", padding: 10, textAlign: "left", cursor: "pointer" }}>
+                  <strong style={{ display: "block", fontSize: 12, color: "#121a2e", marginBottom: 5 }}>{entry.label}</strong>
+                  <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{entry.after}</span>
+                </button>
+              ))}
+            </aside>
             </div>
           ) : null}
 

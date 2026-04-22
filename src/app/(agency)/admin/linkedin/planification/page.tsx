@@ -378,7 +378,7 @@ export default function LinkedInPlanificationPage() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginBottom: 8, minWidth: 0 }}>
             {DAYS.map((day) => (
               <div key={day} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.4)", padding: "8px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 {day}
@@ -386,7 +386,7 @@ export default function LinkedInPlanificationPage() {
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridTemplateRows: `repeat(${totalCells / 7}, minmax(0, 1fr))`, gap: 4, flex: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gridTemplateRows: `repeat(${totalCells / 7}, minmax(0, 1fr))`, gap: 4, flex: 1, minWidth: 0 }}>
             {Array.from({ length: totalCells }).map((_, index) => {
               const dayNumber = index - firstDay + 1;
               const isValid = dayNumber >= 1 && dayNumber <= daysInMonth;
@@ -426,6 +426,8 @@ export default function LinkedInPlanificationPage() {
                     background: isSelected ? "#e8edff" : isToday ? "rgba(1,71,255,0.04)" : "#fff",
                     cursor: "pointer",
                     fontFamily: '"Plus Jakarta Sans", sans-serif',
+                    minWidth: 0,
+                    width: "100%",
                   }}
                 >
                   <span

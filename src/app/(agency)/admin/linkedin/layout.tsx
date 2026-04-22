@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Settings, X, Eye, EyeOff, Check, ChevronDown, ChevronRight, RefreshCw, DatabaseZap } from "lucide-react";
 import { clearLinkedInPostsLocal, loadLinkedInPosts, saveLinkedInPosts } from "@/lib/linkedin/posts";
 import {
@@ -84,6 +85,7 @@ function InlineToggle({
 }
 
 export default function LinkedInLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<LinkedInSettings>(DEFAULT_SETTINGS);
   const [showKey, setShowKey] = useState(false);
@@ -302,6 +304,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
     setSettings((current) => ({ ...current, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }));
 
   const hasApiKey = settings.openrouterApiKey.trim().length > 0;
+  const isPostsPage = pathname.includes("/admin/linkedin/posts");
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -338,7 +341,9 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
               <div>
                 <h2 className="font-semibold text-gray-900 text-lg">Parametres LinkedIn IA</h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Connexion OpenRouter, modeles et configuration prospection
+                  {isPostsPage
+                    ? "Modeles et prompts utilises pour les posts LinkedIn"
+                    : "Connexion OpenRouter, modeles et configuration prospection"}
                 </p>
               </div>
               <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
@@ -431,7 +436,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                 </div>
               </div>
 
-              <div className="border-t border-gray-100 pt-6">
+              {!isPostsPage && <div className="border-t border-gray-100 pt-6">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
                   <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
                     <span className="text-white text-[9px] font-bold">DM</span>
@@ -563,9 +568,9 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
-              <div className="border-t border-gray-100 pt-6">
+              {!isPostsPage && <div className="border-t border-gray-100 pt-6">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
                   <div className="w-5 h-5 bg-yellow-400 rounded flex items-center justify-center">
                     <span className="text-white text-[9px] font-bold">AT</span>
@@ -619,7 +624,7 @@ export default function LinkedInLayout({ children }: { children: React.ReactNode
                     />
                   </div>
                 </div>
-              </div>
+              </div>}
 
               <div className="border-t border-gray-100 pt-6">
                 <div className="flex items-center justify-between mb-3">
