@@ -597,7 +597,7 @@ export default function PostsPage() {
       return {
         id: FREE_CAROUSEL_PAGE_ID,
         name: "Libre",
-        description: "Page libre ajoutÃ©e manuellement, ignorÃ©e par l'IA.",
+        description: "Page libre ajoutée manuellement, ignorée par l'IA.",
         fields: [],
         pagePrompt: "",
         imagePrompt: "",
@@ -610,7 +610,7 @@ export default function PostsPage() {
   function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string) {
     const slides = template.items.flatMap((item, itemIndex) => {
       if (item.pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
-        return [`PAGE LIBRE ${itemIndex + 1}\n\nImage manuelle Ã  ajouter aprÃ¨s gÃ©nÃ©ration.`];
+        return [`PAGE LIBRE ${itemIndex + 1}\n\nImage manuelle à ajouter après génération.`];
       }
       const page = resolveCarouselPage(item.pageTemplateId);
       if (!page) return [];
@@ -618,12 +618,12 @@ export default function PostsPage() {
       return Array.from({ length: count }).map((_, repeatIndex) => {
         const suffix = item.mode === "repeat_ai" ? ` ${repeatIndex + 1}` : "";
         const fields = page.fields.length > 0
-          ? page.fields.map((field) => `${field.label.toUpperCase()}:\n${field.defaultValue || field.aiPrompt || "Ã€ remplir par l'IA."}`).join("\n\n")
-          : `TEXTE:\n${page.pagePrompt || "Contenu Ã  gÃ©nÃ©rer."}`;
-        return `${page.name}${suffix}\n\n${fields}\n\nCONTEXTE:\n${prompt || "Aucun prompt de dÃ©part."}`;
+          ? page.fields.map((field) => `${field.label.toUpperCase()}:\n${field.defaultValue || field.aiPrompt || "À remplir par l'IA."}`).join("\n\n")
+          : `TEXTE:\n${page.pagePrompt || "Contenu à générer."}`;
+        return `${page.name}${suffix}\n\n${fields}\n\nCONTEXTE:\n${prompt || "Aucun prompt de départ."}`;
       });
     });
-    return slides.length > 0 ? slides : ["Carrousel vide\n\nAjoute des pages au template avant de gÃ©nÃ©rer."];
+    return slides.length > 0 ? slides : ["Carrousel vide\n\nAjoute des pages au template avant de générer."];
   }
 
   function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
@@ -650,11 +650,11 @@ export default function PostsPage() {
     setCarouselGenerationChat((current) => [
       ...current,
       { id: crypto.randomUUID(), role: "user", content: prompt },
-      { id: crypto.randomUUID(), role: "assistant", content: `J'ai prÃ©parÃ© ${nextSlides.length} slides avec le template "${template.name}".` },
+      { id: crypto.randomUUID(), role: "assistant", content: `J'ai préparé ${nextSlides.length} slides avec le template "${template.name}".` },
     ]);
     setCarouselGenerationHistory((current) => [
       { id: crypto.randomUUID(), label: prompt.slice(0, 60) || "Modification", slides: nextSlides, createdAt: new Date().toISOString() },
-      { id: crypto.randomUUID(), label: "Version prÃ©cÃ©dente", slides: before, createdAt: new Date().toISOString() },
+      { id: crypto.randomUUID(), label: "Version précédente", slides: before, createdAt: new Date().toISOString() },
       ...current,
     ].slice(0, 20));
     setCarouselGenerationPrompt("");
