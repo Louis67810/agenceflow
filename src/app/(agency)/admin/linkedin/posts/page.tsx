@@ -8,6 +8,7 @@ import {
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
   ThumbsUp, MessageCircle, Eye, Calendar,
   BarChart2, Clock, Layers, Info, FileText, Image as ImageIcon,
+  Search, Send, History, ArrowLeft, Sparkles, Repeat2,
 } from "lucide-react";
 import type { LinkedInCarouselPageTemplate, LinkedInCarouselTemplate, LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
 import { DEFAULT_STYLES } from "@/types/linkedin";
@@ -39,6 +40,9 @@ type SourceTab = "idea" | "url" | "youtube" | "manual";
 type PostsView = "draft" | "scheduled";
 type PostsMode = "post" | "carousel";
 type CarouselStudioTab = "pages" | "templates";
+type CarouselStudioMode = "builder" | "generate";
+
+const FREE_CAROUSEL_PAGE_ID = "__free_carousel_page__";
 
 async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes: number; kind: "image" | "pdf" }> {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
@@ -112,8 +116,17 @@ export default function PostsPage() {
   const [postType, setPostType] = useState<"post" | "carousel">("post");
   const [carouselSlides, setCarouselSlides] = useState(5);
   const [carouselStudioTab, setCarouselStudioTab] = useState<CarouselStudioTab>("pages");
+  const [carouselStudioMode, setCarouselStudioMode] = useState<CarouselStudioMode>("builder");
   const [selectedCarouselPageId, setSelectedCarouselPageId] = useState("");
   const [selectedCarouselTemplateId, setSelectedCarouselTemplateId] = useState("");
+  const [selectedCarouselTemplateItemId, setSelectedCarouselTemplateItemId] = useState("");
+  const [showCarouselPagePicker, setShowCarouselPagePicker] = useState(false);
+  const [carouselPageSearch, setCarouselPageSearch] = useState("");
+  const [carouselGenerationTemplateId, setCarouselGenerationTemplateId] = useState("");
+  const [carouselGenerationPrompt, setCarouselGenerationPrompt] = useState("");
+  const [carouselGenerationChat, setCarouselGenerationChat] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([]);
+  const [carouselGenerationHistory, setCarouselGenerationHistory] = useState<Array<{ id: string; label: string; slides: string[]; createdAt: string }>>([]);
+  const [showCarouselHistory, setShowCarouselHistory] = useState(false);
   const [newCarouselPageName, setNewCarouselPageName] = useState("");
   const [newCarouselTemplateName, setNewCarouselTemplateName] = useState("");
   const [sourceInput, setSourceInput] = useState("");
@@ -511,12 +524,11 @@ export default function PostsPage() {
 
   function createCarouselTemplate() {
     const name = newCarouselTemplateName.trim() || `Template carrousel ${carouselTemplates.length + 1}`;
-    const firstPage = carouselPageTemplates[0];
     const template: LinkedInCarouselTemplate = {
       id: crypto.randomUUID(),
       name,
       description: "Regroupement de pages utilisé par l'IA pour composer un carrousel.",
-      items: firstPage ? [{ id: crypto.randomUUID(), pageTemplateId: firstPage.id, mode: "single" }] : [],
+      items: [],
       createdAt: new Date().toISOString(),
     };
     const nextTemplates = [template, ...carouselTemplates];
@@ -538,11 +550,15 @@ export default function PostsPage() {
 
   function addPageToCarouselTemplate(templateId: string, pageTemplateId: string) {
     if (!pageTemplateId) return;
+    const itemId = crypto.randomUUID();
     const nextTemplates = carouselTemplates.map((template) => template.id === templateId ? {
       ...template,
-      items: [...template.items, { id: crypto.randomUUID(), pageTemplateId, mode: "single" as const }],
+      items: [...template.items, { id: itemId, pageTemplateId, mode: "single" as const }],
     } : template);
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+    setSelectedCarouselTemplateItemId(itemId);
+    setShowCarouselPagePicker(false);
+    setCarouselPageSearch("");
   }
 
   function removePageFromCarouselTemplate(templateId: string, itemId: string) {
@@ -551,6 +567,97 @@ export default function PostsPage() {
       items: template.items.filter((item) => item.id !== itemId),
     } : template);
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+    if (selectedCarouselTemplateItemId === itemId) setSelectedCarouselTemplateItemId("");
+  }
+
+  function updateCarouselTemplateItem(templateId: string, itemId: string, patch: Partial<LinkedInCarouselTemplate["items"][number]>) {
+    const nextTemplates = carouselTemplates.map((template) => template.id === templateId ? {
+      ...template,
+      items: template.items.map((item) => item.id === itemId ? { ...item, ...patch } : item),
+    } : template);
+    persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+  }
+
+  function moveCarouselTemplateItem(templateId: string, itemId: string, direction: -1 | 1) {
+    const nextTemplates = carouselTemplates.map((template) => {
+      if (template.id !== templateId) return template;
+      const index = template.items.findIndex((item) => item.id === itemId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= template.items.length) return template;
+      const items = [...template.items];
+      const [item] = items.splice(index, 1);
+      items.splice(nextIndex, 0, item);
+      return { ...template, items };
+    });
+    persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+  }
+
+  function resolveCarouselPage(pageTemplateId: string): LinkedInCarouselPageTemplate | null {
+    if (pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
+      return {
+        id: FREE_CAROUSEL_PAGE_ID,
+        name: "Libre",
+        description: "Page libre ajoutÃ©e manuellement, ignorÃ©e par l'IA.",
+        fields: [],
+        pagePrompt: "",
+        imagePrompt: "",
+        createdAt: "",
+      };
+    }
+    return carouselPageTemplates.find((entry) => entry.id === pageTemplateId) ?? null;
+  }
+
+  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string) {
+    const slides = template.items.flatMap((item, itemIndex) => {
+      if (item.pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
+        return [`PAGE LIBRE ${itemIndex + 1}\n\nImage manuelle Ã  ajouter aprÃ¨s gÃ©nÃ©ration.`];
+      }
+      const page = resolveCarouselPage(item.pageTemplateId);
+      if (!page) return [];
+      const count = item.mode === "repeat_ai" ? 3 : 1;
+      return Array.from({ length: count }).map((_, repeatIndex) => {
+        const suffix = item.mode === "repeat_ai" ? ` ${repeatIndex + 1}` : "";
+        const fields = page.fields.length > 0
+          ? page.fields.map((field) => `${field.label.toUpperCase()}:\n${field.defaultValue || field.aiPrompt || "Ã€ remplir par l'IA."}`).join("\n\n")
+          : `TEXTE:\n${page.pagePrompt || "Contenu Ã  gÃ©nÃ©rer."}`;
+        return `${page.name}${suffix}\n\n${fields}\n\nCONTEXTE:\n${prompt || "Aucun prompt de dÃ©part."}`;
+      });
+    });
+    return slides.length > 0 ? slides : ["Carrousel vide\n\nAjoute des pages au template avant de gÃ©nÃ©rer."];
+  }
+
+  function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
+    const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
+    setCarouselStudioMode("generate");
+    if (selected) {
+      setCarouselGenerationTemplateId(selected.id);
+      setSelectedCarouselTemplateId(selected.id);
+      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt);
+      setGeneratedSlides(slides);
+      setActiveSlide(0);
+      setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
+    }
+  }
+
+  function runCarouselGenerationChat() {
+    const prompt = carouselGenerationPrompt.trim();
+    const template = carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId);
+    if (!prompt || !template) return;
+    const before = generatedSlides;
+    const nextSlides = buildCarouselSlidesFromTemplate(template, prompt);
+    setGeneratedSlides(nextSlides);
+    setActiveSlide(0);
+    setCarouselGenerationChat((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content: prompt },
+      { id: crypto.randomUUID(), role: "assistant", content: `J'ai prÃ©parÃ© ${nextSlides.length} slides avec le template "${template.name}".` },
+    ]);
+    setCarouselGenerationHistory((current) => [
+      { id: crypto.randomUUID(), label: prompt.slice(0, 60) || "Modification", slides: nextSlides, createdAt: new Date().toISOString() },
+      { id: crypto.randomUUID(), label: "Version prÃ©cÃ©dente", slides: before, createdAt: new Date().toISOString() },
+      ...current,
+    ].slice(0, 20));
+    setCarouselGenerationPrompt("");
   }
 
   function downloadCurrentCarousel() {
@@ -681,6 +788,10 @@ export default function PostsPage() {
   };
   const selectedCarouselPage = carouselPageTemplates.find((page) => page.id === selectedCarouselPageId) ?? carouselPageTemplates[0] ?? null;
   const selectedCarouselTemplate = carouselTemplates.find((template) => template.id === selectedCarouselTemplateId) ?? carouselTemplates[0] ?? null;
+  const selectedCarouselTemplateItem = selectedCarouselTemplate?.items.find((item) => item.id === selectedCarouselTemplateItemId) ?? null;
+  const selectedTemplateItemPage = selectedCarouselTemplateItem ? resolveCarouselPage(selectedCarouselTemplateItem.pageTemplateId) : null;
+  const carouselPickerPages = [resolveCarouselPage(FREE_CAROUSEL_PAGE_ID), ...carouselPageTemplates].filter(Boolean) as LinkedInCarouselPageTemplate[];
+  const filteredCarouselPickerPages = carouselPickerPages.filter((page) => `${page.name} ${page.description}`.toLowerCase().includes(carouselPageSearch.toLowerCase()));
   const carouselStudioView = (
     <>
       <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0 }}>
@@ -700,7 +811,45 @@ export default function PostsPage() {
             <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Construis les pages Figma, puis assemble-les en templates IA.</p>
           </div>
         </div>
-        {carouselStudioTab === "pages" ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button type="button" onClick={() => {
+          const template = carouselTemplates.find((entry) => entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
+          if (carouselStudioMode === "builder" && template) startCarouselGeneration(template);
+          else setCarouselStudioMode("builder");
+        }} disabled={carouselTemplates.length === 0} style={{ minHeight: 38, padding: "0 14px", borderRadius: 999, border: carouselStudioMode === "generate" ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: carouselStudioMode === "generate" ? "#121a2e" : "#fff", color: carouselStudioMode === "generate" ? "#fff" : "#121a2e", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 850, cursor: carouselTemplates.length ? "pointer" : "not-allowed", opacity: carouselTemplates.length ? 1 : 0.45, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+          <Sparkles size={14} /> Studio génération
+        </button>
+        {carouselStudioMode === "generate" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 300px", gap: 18, minHeight: "calc(100vh - 170px)" }}>
+            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Paramètres</p>
+              <select value={carouselGenerationTemplateId} onChange={(event) => { const template = carouselTemplates.find((entry) => entry.id === event.target.value); setCarouselGenerationTemplateId(event.target.value); if (template) startCarouselGeneration(template); }} style={inp}>
+                <option value="">Choisir un template</option>
+                {carouselTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: "rgba(18,26,46,0.45)" }}>Les pages “Libre” sont manuelles et ignorées par le prompt IA.</p>
+            </aside>
+            <main style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, minWidth: 0 }}>
+              <div style={{ width: "min(620px, 100%)", minHeight: 520, borderRadius: 30, background: "#d1d1d1", border: "5px solid #fff", boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.05)", padding: 26, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                {generatedSlides.length > 0 ? (
+                  <SmartSelectionTextarea rows={10} value={generatedSlides[activeSlide] ?? ""} onChange={(value) => { const nextSlides = [...generatedSlides]; nextSlides[activeSlide] = value; setGeneratedSlides(nextSlides); }} contextLabel="slide de carrousel LinkedIn" showGlobalAction={false} autoFit apiKey={settings?.openrouterApiKey || undefined} model={settings?.model} style={{ width: "100%", minHeight: 120, background: "transparent", border: 0, outline: "none", resize: "none", fontSize: 18, lineHeight: 1.55, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "rgba(18,26,46,0.42)" }}><LayoutTemplate size={34} /><p style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>Sélectionne un template</p></div>
+                )}
+              </div>
+              {generatedSlides.length > 0 && <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 12px", borderRadius: 999, background: "#303030", boxShadow: "0 12px 28px rgba(0,0,0,0.18)" }}>{generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ width: activeSlide === index ? 9 : 7, height: activeSlide === index ? 9 : 7, borderRadius: 999, border: 0, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.35)", cursor: "pointer", padding: 0 }} />)}</div>}
+              <div style={{ width: "min(820px, 100%)", minHeight: 54, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", gap: 10 }}>
+                <Plus size={16} />
+                <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Demande une modification ou génère le carrousel..." style={{ flex: 1, border: 0, outline: "none", fontSize: 13, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
+                <button type="button" onClick={runCarouselGenerationChat} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #121a2e", background: "#121a2e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={16} /></button>
+              </div>
+            </main>
+            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><p style={{ margin: 0, fontSize: 15, fontWeight: 850 }}>{showCarouselHistory ? "Historique" : "Chat"}</p><button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 34, height: 34, borderRadius: 999, border: showCarouselHistory ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: showCarouselHistory ? "#121a2e" : "#fff", color: showCarouselHistory ? "#fff" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><History size={15} /></button></div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 9 }}>{showCarouselHistory ? (carouselGenerationHistory.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Aucune version.</p> : carouselGenerationHistory.map((entry) => <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(entry.slides); setActiveSlide(0); }} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 14, background: "#f8f8f8", padding: 11, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 12 }}>{entry.label}</strong><span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{entry.slides.length} slides</span></button>)) : (carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les demandes de modification apparaîtront ici.</p> : carouselGenerationChat.map((message) => <div key={message.id} style={{ alignSelf: message.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%", borderRadius: 14, padding: "9px 11px", background: message.role === "user" ? "#121a2e" : "#f3f3f3", color: message.role === "user" ? "#fff" : "#121a2e", fontSize: 12, lineHeight: 1.45 }}>{message.content}</div>))}</div>
+            </aside>
+          </div>
+        ) : carouselStudioTab === "pages" ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input value={newCarouselPageName} onChange={(event) => setNewCarouselPageName(event.target.value)} placeholder="Nom de page..." style={{ ...inp, width: 230, minHeight: 38 }} />
             <ClientBlueButton compact type="button" onClick={createCarouselPageTemplate} icon={<Plus size={14} />}>Créer une page</ClientBlueButton>
@@ -711,6 +860,7 @@ export default function PostsPage() {
             <ClientBlueButton compact type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />}>Créer un template</ClientBlueButton>
           </div>
         )}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
