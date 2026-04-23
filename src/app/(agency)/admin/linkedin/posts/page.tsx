@@ -797,227 +797,67 @@ export default function PostsPage() {
       <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed" }}>
-            {([
-              ["pages", "Pages", carouselPageTemplates.length],
-              ["templates", "Templates", carouselTemplates.length],
-            ] as const).map(([tab, label, count]) => (
-              <button key={tab} type="button" onClick={() => setCarouselStudioTab(tab)} style={{ minHeight: 30, padding: "0 13px", borderRadius: 999, border: 0, background: carouselStudioTab === tab ? "#fff" : "transparent", boxShadow: carouselStudioTab === tab ? "0px 1px 4px rgba(0,0,0,0.08)" : "none", color: carouselStudioTab === tab ? "#121a2e" : "rgba(18,26,46,0.5)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                {label} ({count})
+            {(["pages", "templates"] as const).map((tab) => (
+              <button key={tab} type="button" onClick={() => { setCarouselStudioMode("builder"); setCarouselStudioTab(tab); }} style={{ minHeight: 30, padding: "0 13px", borderRadius: 999, border: 0, background: carouselStudioMode === "builder" && carouselStudioTab === tab ? "#fff" : "transparent", boxShadow: carouselStudioMode === "builder" && carouselStudioTab === tab ? "0px 1px 4px rgba(0,0,0,0.08)" : "none", color: carouselStudioMode === "builder" && carouselStudioTab === tab ? "#121a2e" : "rgba(18,26,46,0.5)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                {tab === "pages" ? `Pages (${carouselPageTemplates.length})` : `Templates (${carouselTemplates.length})`}
               </button>
             ))}
           </div>
           <div>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#121a2e" }}>Studio carrousel</p>
-            <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Construis les pages Figma, puis assemble-les en templates IA.</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Construis les pages Figma, assemble-les en templates, puis g�n�re.</p>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button type="button" onClick={() => {
-          const template = carouselTemplates.find((entry) => entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
-          if (carouselStudioMode === "builder" && template) startCarouselGeneration(template);
-          else setCarouselStudioMode("builder");
-        }} disabled={carouselTemplates.length === 0} style={{ minHeight: 38, padding: "0 14px", borderRadius: 999, border: carouselStudioMode === "generate" ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: carouselStudioMode === "generate" ? "#121a2e" : "#fff", color: carouselStudioMode === "generate" ? "#fff" : "#121a2e", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 850, cursor: carouselTemplates.length ? "pointer" : "not-allowed", opacity: carouselTemplates.length ? 1 : 0.45, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-          <Sparkles size={14} /> Studio génération
-        </button>
+          <button type="button" onClick={() => { const template = carouselTemplates.find((entry) => entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0]; if (carouselStudioMode === "builder" && template) startCarouselGeneration(template); else setCarouselStudioMode("builder"); }} disabled={carouselTemplates.length === 0} style={{ minHeight: 38, padding: "0 14px", borderRadius: 999, border: carouselStudioMode === "generate" ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: carouselStudioMode === "generate" ? "#121a2e" : "#fff", color: carouselStudioMode === "generate" ? "#fff" : "#121a2e", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 850, cursor: carouselTemplates.length ? "pointer" : "not-allowed", opacity: carouselTemplates.length ? 1 : 0.45, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+            <Sparkles size={14} /> Studio g�n�ration
+          </button>
+          {carouselStudioMode === "builder" && carouselStudioTab === "pages" && <><input value={newCarouselPageName} onChange={(event) => setNewCarouselPageName(event.target.value)} placeholder="Nom de page..." style={{ ...inp, width: 210, minHeight: 38 }} /><ClientBlueButton compact type="button" onClick={createCarouselPageTemplate} icon={<Plus size={14} />}>Cr�er une page</ClientBlueButton></>}
+          {carouselStudioMode === "builder" && carouselStudioTab === "templates" && <button type="button" onClick={createCarouselTemplate} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 12px rgba(18,26,46,0.06)" }} title="Nouveau template"><Plus size={17} /></button>}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: "hidden", position: "relative", padding: carouselStudioMode === "generate" ? 0 : 24 }}>
         {carouselStudioMode === "generate" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 300px", gap: 18, minHeight: "calc(100vh - 170px)" }}>
-            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Paramètres</p>
+          <div style={{ height: "100%", display: "grid", gridTemplateColumns: "310px minmax(0,1fr) 320px", background: "#fbfbfb" }}>
+            <aside style={{ borderRight: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Param�tres</p>
               <select value={carouselGenerationTemplateId} onChange={(event) => { const template = carouselTemplates.find((entry) => entry.id === event.target.value); setCarouselGenerationTemplateId(event.target.value); if (template) startCarouselGeneration(template); }} style={inp}>
                 <option value="">Choisir un template</option>
                 {carouselTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
               </select>
-              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: "rgba(18,26,46,0.45)" }}>Les pages “Libre” sont manuelles et ignorées par le prompt IA.</p>
+              <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.55 }}>Les pages �Libre� restent manuelles et ne sont pas incluses dans le brief IA.</p>
             </aside>
-            <main style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, minWidth: 0 }}>
-              <div style={{ width: "min(620px, 100%)", minHeight: 520, borderRadius: 30, background: "#d1d1d1", border: "5px solid #fff", boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.05)", padding: 26, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                {generatedSlides.length > 0 ? (
+            <main style={{ overflowY: "auto", padding: "30px 36px", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+              {generatedSlides.length === 0 ? <div style={{ minHeight: 420, width: "min(620px, 100%)", borderRadius: 28, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "rgba(18,26,46,0.42)" }}><LayoutTemplate size={34} /><p style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>S�lectionne un template pour d�marrer</p></div> : <>
+                <div style={{ width: "min(620px, 100%)", minHeight: 520, borderRadius: 30, background: "#d1d1d1", border: "5px solid #fff", boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.05)", padding: 26, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   <SmartSelectionTextarea rows={10} value={generatedSlides[activeSlide] ?? ""} onChange={(value) => { const nextSlides = [...generatedSlides]; nextSlides[activeSlide] = value; setGeneratedSlides(nextSlides); }} contextLabel="slide de carrousel LinkedIn" showGlobalAction={false} autoFit apiKey={settings?.openrouterApiKey || undefined} model={settings?.model} style={{ width: "100%", minHeight: 120, background: "transparent", border: 0, outline: "none", resize: "none", fontSize: 18, lineHeight: 1.55, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "rgba(18,26,46,0.42)" }}><LayoutTemplate size={34} /><p style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>Sélectionne un template</p></div>
-                )}
-              </div>
-              {generatedSlides.length > 0 && <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 12px", borderRadius: 999, background: "#303030", boxShadow: "0 12px 28px rgba(0,0,0,0.18)" }}>{generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ width: activeSlide === index ? 9 : 7, height: activeSlide === index ? 9 : 7, borderRadius: 999, border: 0, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.35)", cursor: "pointer", padding: 0 }} />)}</div>}
-              <div style={{ width: "min(820px, 100%)", minHeight: 54, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", gap: 10 }}>
-                <Plus size={16} />
-                <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Demande une modification ou génère le carrousel..." style={{ flex: 1, border: 0, outline: "none", fontSize: 13, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
-                <button type="button" onClick={runCarouselGenerationChat} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #121a2e", background: "#121a2e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={16} /></button>
-              </div>
+                </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 12px", borderRadius: 999, background: "#303030", boxShadow: "0 12px 28px rgba(0,0,0,0.18)" }}>{generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ width: activeSlide === index ? 9 : 7, height: activeSlide === index ? 9 : 7, borderRadius: 999, border: 0, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.35)", cursor: "pointer", padding: 0 }} />)}</div>
+                <div style={{ width: "min(860px, 100%)", minHeight: 54, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 42px rgba(18,26,46,0.08)", padding: "8px 10px 8px 18px", display: "flex", alignItems: "center", gap: 10 }}><Plus size={16} /><input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Analyser les posts LinkedIn, modifier cette slide, raccourcir..." style={{ flex: 1, border: 0, outline: "none", fontSize: 13, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} /><button type="button" onClick={runCarouselGenerationChat} style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #121a2e", background: "#121a2e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={16} /></button></div>
+              </>}
             </main>
-            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12, overflow: "hidden" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><p style={{ margin: 0, fontSize: 15, fontWeight: 850 }}>{showCarouselHistory ? "Historique" : "Chat"}</p><button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 34, height: 34, borderRadius: 999, border: showCarouselHistory ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: showCarouselHistory ? "#121a2e" : "#fff", color: showCarouselHistory ? "#fff" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><History size={15} /></button></div>
-              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 9 }}>{showCarouselHistory ? (carouselGenerationHistory.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Aucune version.</p> : carouselGenerationHistory.map((entry) => <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(entry.slides); setActiveSlide(0); }} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 14, background: "#f8f8f8", padding: 11, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 12 }}>{entry.label}</strong><span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{entry.slides.length} slides</span></button>)) : (carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les demandes de modification apparaîtront ici.</p> : carouselGenerationChat.map((message) => <div key={message.id} style={{ alignSelf: message.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%", borderRadius: 14, padding: "9px 11px", background: message.role === "user" ? "#121a2e" : "#f3f3f3", color: message.role === "user" ? "#fff" : "#121a2e", fontSize: 12, lineHeight: 1.45 }}>{message.content}</div>))}</div>
+            <aside style={{ borderLeft: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 18, display: "flex", flexDirection: "column", gap: 12, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>{showCarouselHistory ? "Historique" : "Chat"}</p><button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 34, height: 34, borderRadius: 999, border: showCarouselHistory ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.12)", background: showCarouselHistory ? "#121a2e" : "#fff", color: showCarouselHistory ? "#fff" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><History size={15} /></button></div>
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 9 }}>{showCarouselHistory ? (carouselGenerationHistory.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Aucune version enregistr�e.</p> : carouselGenerationHistory.map((entry) => <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(entry.slides); setActiveSlide(0); }} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 14, background: "#f8f8f8", padding: 11, textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", fontSize: 12, color: "#121a2e" }}>{entry.label}</strong><span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{entry.slides.length} slides</span></button>)) : (carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les demandes de modification appara�tront ici. Tu peux aussi s�lectionner du texte dans une slide.</p> : carouselGenerationChat.map((message) => <div key={message.id} style={{ alignSelf: message.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%", borderRadius: 14, padding: "9px 11px", background: message.role === "user" ? "#121a2e" : "#f3f3f3", color: message.role === "user" ? "#fff" : "#121a2e", fontSize: 12, lineHeight: 1.45 }}>{message.content}</div>))}</div>
             </aside>
           </div>
         ) : carouselStudioTab === "pages" ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input value={newCarouselPageName} onChange={(event) => setNewCarouselPageName(event.target.value)} placeholder="Nom de page..." style={{ ...inp, width: 230, minHeight: 38 }} />
-            <ClientBlueButton compact type="button" onClick={createCarouselPageTemplate} icon={<Plus size={14} />}>Créer une page</ClientBlueButton>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 24 }}>
+            {carouselPageTemplates.map((page) => <button key={page.id} type="button" onClick={() => setSelectedCarouselPageId(page.id)} style={{ minHeight: 206, borderRadius: 18, border: "1px solid rgba(18,26,46,0.09)", background: "#fff", boxShadow: "0 16px 32px rgba(18,26,46,0.05)", padding: 22, cursor: "pointer", textAlign: "center", fontFamily: '"Plus Jakarta Sans", sans-serif' }}><span style={{ width: 112, height: 112, borderRadius: 14, background: "#d1d1d1", border: "4px solid #fff", boxShadow: "0 16px 32px rgba(18,26,46,0.12)", display: "block", margin: "0 auto 18px" }} /><strong style={{ display: "block", fontSize: 15, color: "#121a2e" }}>{page.name}</strong></button>)}
+            <button type="button" onClick={createCarouselPageTemplate} style={{ minHeight: 206, borderRadius: 18, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", color: "#121a2e", fontSize: 15, fontWeight: 850, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}><Plus size={22} /> Ajouter une page</button>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input value={newCarouselTemplateName} onChange={(event) => setNewCarouselTemplateName(event.target.value)} placeholder="Nom du template..." style={{ ...inp, width: 230, minHeight: 38 }} />
-            <ClientBlueButton compact type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />}>Créer un template</ClientBlueButton>
+          <div style={{ height: "100%", display: "grid", gridTemplateColumns: "320px minmax(0, 1fr) 300px", gap: 18, overflow: "hidden" }}>
+            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>{selectedCarouselTemplateItem && selectedTemplateItemPage ? <><p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Param�tres de page</p><input value={selectedCarouselTemplateItem.label ?? selectedTemplateItemPage.name} onChange={(event) => updateCarouselTemplateItem(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, { label: event.target.value })} style={inp} /><button type="button" onClick={() => updateCarouselTemplateItem(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, { mode: selectedCarouselTemplateItem.mode === "single" ? "repeat_ai" : "single" })} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: selectedCarouselTemplateItem.mode === "repeat_ai" ? "#e8edff" : "#fff", color: selectedCarouselTemplateItem.mode === "repeat_ai" ? "#0147ff" : "#121a2e", fontSize: 12, fontWeight: 850, cursor: "pointer" }}>{selectedCarouselTemplateItem.mode === "repeat_ai" ? "Illimit� IA activ�" : "G�n�rer une seule page"}</button></> : selectedCarouselTemplate ? <><p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Param�tres du template</p><input value={selectedCarouselTemplate.name} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { name: event.target.value })} style={inp} /><textarea value={selectedCarouselTemplate.description} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { description: event.target.value })} rows={4} style={{ ...inp, resize: "vertical" }} /></> : <p style={{ margin: 0, fontSize: 13, color: "rgba(18,26,46,0.45)" }}>S�lectionne ou cr�e un template.</p>}</aside>
+            <main style={{ borderRadius: 22, background: "#fff", padding: 18, overflow: "hidden", display: "flex", alignItems: "center", gap: 28 }}>{!selectedCarouselTemplate ? <div style={{ flex: 1, textAlign: "center", color: "rgba(18,26,46,0.42)" }}>Aucun template s�lectionn�</div> : selectedCarouselTemplate.items.length === 0 ? <button type="button" onClick={() => setShowCarouselPagePicker(true)} style={{ flex: 1, minHeight: 400, border: "1px dashed rgba(18,26,46,0.16)", borderRadius: 22, background: "#f8f8f8", color: "rgba(18,26,46,0.45)", fontSize: 15, fontWeight: 850, cursor: "pointer" }}><Plus size={24} /> Ajouter une page</button> : <div style={{ display: "flex", gap: 28, overflowX: "auto", width: "100%", padding: "24px 8px" }}>{selectedCarouselTemplate.items.map((item, index) => { const page = resolveCarouselPage(item.pageTemplateId); const active = selectedCarouselTemplateItemId === item.id; return <button key={item.id} type="button" onClick={() => setSelectedCarouselTemplateItemId(item.id)} style={{ minWidth: active ? 260 : 210, height: active ? 330 : 260, borderRadius: 28, border: active ? "2px solid #2d6efd" : "5px solid #fff", background: "#d1d1d1", boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.05)", cursor: "pointer", position: "relative" }}><span style={{ position: "absolute", top: 12, left: 14, fontSize: 12, fontWeight: 850 }}>{index + 1}</span><span style={{ position: "absolute", left: 18, right: 18, bottom: 22, fontSize: 14, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label || page?.name || "Page"}</span>{item.mode === "repeat_ai" && <span style={{ position: "absolute", top: 12, right: 14, borderRadius: 999, background: "#121a2e", color: "#fff", padding: "4px 7px", fontSize: 10, fontWeight: 850 }}>Illimit�</span>}</button>; })}<button type="button" onClick={() => setShowCarouselPagePicker(true)} style={{ minWidth: 200, height: 260, borderRadius: 22, border: "1px dashed rgba(18,26,46,0.16)", background: "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, fontSize: 15, fontWeight: 850, cursor: "pointer" }}><Plus size={22} /> Ajouter une page</button></div>}</main>
+            <aside style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}><p style={{ margin: 0, fontSize: 15, fontWeight: 850, color: "#121a2e" }}>Templates</p>{carouselTemplates.length === 0 ? <button type="button" onClick={createCarouselTemplate} style={{ minHeight: 150, borderRadius: 18, border: "1px dashed rgba(18,26,46,0.16)", background: "#f8f8f8", cursor: "pointer" }}><Plus size={18} /> Nouveau template</button> : carouselTemplates.map((template) => <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ border: selectedCarouselTemplate?.id === template.id ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", padding: 14, textAlign: "left", cursor: "pointer", boxShadow: "0 16px 32px rgba(18,26,46,0.05)" }}><span style={{ width: 70, height: 70, borderRadius: 13, background: "#d1d1d1", border: "4px solid #fff", boxShadow: "10px 10px 0 #d7d7d7, -10px 10px 0 #d7d7d7", display: "block", margin: "0 auto 14px" }} /><strong style={{ display: "block", fontSize: 14 }}>{template.name}</strong><span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{template.items.length} pages</span></button>)}</aside>
           </div>
         )}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-        {carouselStudioTab === "pages" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 18, alignItems: "start" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
-              {carouselPageTemplates.length === 0 ? (
-                <div style={{ gridColumn: "1 / -1", minHeight: 220, border: "1px dashed rgba(18,26,46,0.16)", borderRadius: 20, background: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "rgba(18,26,46,0.45)" }}>
-                  <FileText size={32} />
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Aucune page créée</p>
-                  <p style={{ margin: 0, fontSize: 12 }}>Crée une page “Contexte”, “Erreur”, “CTA”, puis connecte-la à Figma.</p>
-                </div>
-              ) : carouselPageTemplates.map((page) => {
-                const active = selectedCarouselPage?.id === page.id;
-                return (
-                  <button key={page.id} type="button" onClick={() => setSelectedCarouselPageId(page.id)} style={{ textAlign: "left", border: active ? "1px solid rgba(1,71,255,0.35)" : "1px solid rgba(18,26,46,0.09)", borderRadius: 18, background: active ? "#f7f9ff" : "#fff", padding: 16, minHeight: 170, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 14, cursor: "pointer", boxShadow: active ? "0 18px 36px rgba(1,71,255,0.08)" : "0 16px 32px rgba(18,26,46,0.05)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                    <span>
-                      <span style={{ width: 42, height: 42, borderRadius: 12, background: "#f1f1f1", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", marginBottom: 14 }}><FileText size={18} /></span>
-                      <strong style={{ display: "block", fontSize: 16, fontWeight: 800, color: "#121a2e", marginBottom: 6 }}>{page.name}</strong>
-                      <span style={{ fontSize: 12, lineHeight: 1.5, color: "rgba(18,26,46,0.48)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{page.description || "Page de carrousel prête à paramétrer."}</span>
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.5)" }}>{page.fields.length} champs</span>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: page.figmaNodeId ? "#168b64" : "rgba(18,26,46,0.38)" }}>{page.figmaNodeId ? "Figma lié" : "Figma à lier"}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <aside style={{ position: "sticky", top: 0, border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-              {selectedCarouselPage ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#121a2e" }}>Paramètres de page</p>
-                      <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Champs modifiables et prompts IA.</p>
-                    </div>
-                    <button type="button" onClick={() => deleteCarouselPageTemplate(selectedCarouselPage.id)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={14} /></button>
-                  </div>
-                  <input value={selectedCarouselPage.name} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { name: event.target.value })} style={{ ...inp, fontSize: 14 }} placeholder="Nom de la page" />
-                  <textarea value={selectedCarouselPage.description} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { description: event.target.value })} rows={2} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} placeholder="Description rapide" />
-                  <input value={selectedCarouselPage.figmaNodeId ?? ""} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { figmaNodeId: event.target.value })} style={inp} placeholder="Node ID Figma (plus tard via MCP)" />
-                  <textarea value={selectedCarouselPage.pagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { pagePrompt: event.target.value })} rows={4} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} placeholder="Pré-prompt IA pour cette page" />
-                  <textarea value={selectedCarouselPage.imagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { imagePrompt: event.target.value })} rows={3} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} placeholder="Pré-prompt image" />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" onClick={() => addCarouselField(selectedCarouselPage.id, "text")} style={{ flex: 1, minHeight: 38, border: "1px solid rgba(18,26,46,0.1)", borderRadius: 11, background: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>+ Texte</button>
-                    <button type="button" onClick={() => addCarouselField(selectedCarouselPage.id, "image")} style={{ flex: 1, minHeight: 38, border: "1px solid rgba(18,26,46,0.1)", borderRadius: 11, background: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>+ Image</button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selectedCarouselPage.fields.map((field) => (
-                      <div key={field.id} style={{ borderRadius: 14, background: "#f7f7f7", border: "1px solid rgba(18,26,46,0.06)", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "22px 1fr auto", gap: 8, alignItems: "center" }}>
-                          {field.kind === "image" ? <ImageIcon size={14} /> : <FileText size={14} />}
-                          <input value={field.label} onChange={(event) => updateCarouselField(selectedCarouselPage.id, field.id, { label: event.target.value })} style={{ ...inp, background: "#fff" }} />
-                          <button type="button" onClick={() => deleteCarouselField(selectedCarouselPage.id, field.id)} style={{ border: 0, background: "transparent", color: "rgba(18,26,46,0.25)", cursor: "pointer", display: "flex" }}><Trash2 size={13} /></button>
-                        </div>
-                        <textarea value={field.aiPrompt} onChange={(event) => updateCarouselField(selectedCarouselPage.id, field.id, { aiPrompt: event.target.value })} rows={2} style={{ ...inp, background: "#fff", resize: "vertical" }} placeholder="Prompt pour remplir ce champ" />
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p style={{ margin: 0, fontSize: 13, color: "rgba(18,26,46,0.45)" }}>Sélectionne ou crée une page pour éditer ses champs.</p>
-              )}
-            </aside>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 18, alignItems: "start" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 14 }}>
-                {carouselTemplates.length === 0 ? (
-                  <div style={{ gridColumn: "1 / -1", minHeight: 180, border: "1px dashed rgba(18,26,46,0.16)", borderRadius: 20, background: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "rgba(18,26,46,0.45)" }}>
-                    <LayoutTemplate size={32} />
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Aucun template créé</p>
-                    <p style={{ margin: 0, fontSize: 12 }}>Crée un template pour assembler tes pages en structure réutilisable.</p>
-                  </div>
-                ) : carouselTemplates.map((template) => {
-                  const active = selectedCarouselTemplate?.id === template.id;
-                  return (
-                    <button key={template.id} type="button" onClick={() => setSelectedCarouselTemplateId(template.id)} style={{ textAlign: "left", border: active ? "1px solid rgba(1,71,255,0.35)" : "1px solid rgba(18,26,46,0.09)", borderRadius: 18, background: active ? "#f7f9ff" : "#fff", padding: 16, minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 14, cursor: "pointer", boxShadow: active ? "0 18px 36px rgba(1,71,255,0.08)" : "0 16px 32px rgba(18,26,46,0.05)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                      <span>
-                        <span style={{ width: 42, height: 42, borderRadius: 12, background: "#f1f1f1", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", marginBottom: 14 }}><LayoutTemplate size={18} /></span>
-                        <strong style={{ display: "block", fontSize: 16, fontWeight: 800, color: "#121a2e", marginBottom: 6 }}>{template.name}</strong>
-                        <span style={{ display: "block", fontSize: 12, lineHeight: 1.5, color: "rgba(18,26,46,0.48)" }}>{template.description}</span>
-                      </span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.5)" }}>{template.items.length} pages</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedCarouselTemplate && (
-                <div style={{ border: "1px solid rgba(18,26,46,0.09)", borderRadius: 22, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.06)", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 17, fontWeight: 850, color: "#121a2e" }}>{selectedCarouselTemplate.name}</p>
-                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Séquence des pages du carrousel.</p>
-                    </div>
-                    <button type="button" onClick={() => deleteCarouselTemplate(selectedCarouselTemplate.id)} style={{ width: 36, height: 36, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.35)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Trash2 size={14} /></button>
-                  </div>
-                  <input value={selectedCarouselTemplate.name} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { name: event.target.value })} style={{ ...inp, fontSize: 14 }} placeholder="Nom du template" />
-                  <textarea value={selectedCarouselTemplate.description} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { description: event.target.value })} rows={2} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} placeholder="Description du template" />
-                  {selectedCarouselTemplate.items.length === 0 ? (
-                    <div style={{ minHeight: 140, borderRadius: 16, background: "#f8f8f8", border: "1px dashed rgba(18,26,46,0.13)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", fontSize: 13, fontWeight: 700 }}>Ajoute des pages depuis le sélecteur à droite.</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {selectedCarouselTemplate.items.map((item, index) => {
-                        const page = carouselPageTemplates.find((entry) => entry.id === item.pageTemplateId);
-                        return (
-                          <div key={item.id} style={{ display: "grid", gridTemplateColumns: "38px minmax(0, 1fr) auto auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, background: "#f7f7f7", border: "1px solid rgba(18,26,46,0.06)" }}>
-                            <strong style={{ width: 30, height: 30, borderRadius: 10, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#121a2e" }}>{index + 1}</strong>
-                            <button type="button" onClick={() => page && setSelectedCarouselPageId(page.id)} style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: page ? "pointer" : "default", minWidth: 0 }}>
-                              <span style={{ display: "block", fontSize: 14, fontWeight: 800, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page?.name ?? "Page supprimée"}</span>
-                              <span style={{ display: "block", fontSize: 12, color: "rgba(18,26,46,0.45)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page?.description ?? "Cette page n'existe plus."}</span>
-                            </button>
-                            <button type="button" onClick={() => updateCarouselTemplate(selectedCarouselTemplate.id, { items: selectedCarouselTemplate.items.map((entry) => entry.id === item.id ? { ...entry, mode: entry.mode === "single" ? "repeat_ai" : "single" } : entry) })} style={{ border: 0, borderRadius: 999, background: item.mode === "repeat_ai" ? "#e8edff" : "#fff", color: item.mode === "repeat_ai" ? "#0147ff" : "rgba(18,26,46,0.55)", padding: "7px 11px", fontSize: 11, fontWeight: 850, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{item.mode === "repeat_ai" ? "Illimité IA" : "1 page"}</button>
-                            <button type="button" onClick={() => removePageFromCarouselTemplate(selectedCarouselTemplate.id, item.id)} style={{ border: 0, background: "transparent", color: "rgba(18,26,46,0.28)", cursor: "pointer", display: "flex" }}><X size={15} /></button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <aside style={{ position: "sticky", top: 0, border: "1px solid rgba(18,26,46,0.09)", borderRadius: 20, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#121a2e" }}>Pages disponibles</p>
-                <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Clique pour ajouter une page au template sélectionné.</p>
-              </div>
-              {!selectedCarouselTemplate ? (
-                <p style={{ margin: 0, fontSize: 13, color: "rgba(18,26,46,0.45)" }}>Sélectionne ou crée un template.</p>
-              ) : carouselPageTemplates.length === 0 ? (
-                <button type="button" onClick={() => setCarouselStudioTab("pages")} style={{ minHeight: 46, borderRadius: 13, border: "1px dashed rgba(18,26,46,0.16)", background: "#f8f8f8", color: "rgba(18,26,46,0.55)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Créer d'abord une page</button>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 540, overflowY: "auto", paddingRight: 4 }}>
-                  {carouselPageTemplates.map((page) => (
-                    <button key={page.id} type="button" onClick={() => addPageToCarouselTemplate(selectedCarouselTemplate.id, page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 14, background: "#fff", padding: 12, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                      <span style={{ width: 34, height: 34, borderRadius: 10, background: "#f1f1f1", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", flexShrink: 0 }}><FileText size={15} /></span>
-                      <span style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", fontSize: 13, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.name}</strong>
-                        <span style={{ display: "block", fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{page.fields.length} champs modifiables</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </aside>
-          </div>
-        )}
+        {showCarouselPagePicker && selectedCarouselTemplate && <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}><div style={{ width: 560, maxHeight: "82vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}><div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}><Search size={16} /><input value={carouselPageSearch} onChange={(event) => setCarouselPageSearch(event.target.value)} placeholder="Rechercher une page..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} /><button type="button" onClick={() => setShowCarouselPagePicker(false)} style={{ border: 0, background: "transparent", cursor: "pointer", display: "flex" }}><X size={18} /></button></div><div style={{ padding: 16, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>{filteredCarouselPickerPages.map((page) => <button key={page.id} type="button" onClick={() => addPageToCarouselTemplate(selectedCarouselTemplate.id, page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: page.id === FREE_CAROUSEL_PAGE_ID ? "#fbfbfb" : "#fff", padding: 13, minHeight: 110, textAlign: "left", cursor: "pointer" }}><span style={{ width: 36, height: 36, borderRadius: 11, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>{page.id === FREE_CAROUSEL_PAGE_ID ? <ImageIcon size={15} /> : <FileText size={15} />}</span><strong style={{ display: "block", fontSize: 13 }}>{page.name}</strong><span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{page.description}</span></button>)}</div></div></div>}
       </div>
     </>
-  );
-
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  );  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", ...jk }}>
