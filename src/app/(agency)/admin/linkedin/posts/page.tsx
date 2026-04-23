@@ -663,11 +663,43 @@ export default function PostsPage() {
   function downloadCurrentCarousel() {
     const content = generatedSlides.length > 0 ? generatedSlides.map((slide, index) => `Slide ${index + 1}\n${slide}`).join("\n\n---\n\n") : generatedContent;
     if (!content.trim()) return;
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+
+    const lines = content.split("\n");
+    const escapePdf = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+    const pdfLines: string[] = [];
+    let y = 800;
+    for (const rawLine of lines) {
+      const line = rawLine || " ";
+      if (y < 60) break;
+      pdfLines.push(`BT /F1 12 Tf 48 ${y} Td (${escapePdf(line.slice(0, 110))}) Tj ET`);
+      y -= 18;
+    }
+    const stream = pdfLines.join("\n");
+    const pdf = `%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj
+4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+5 0 obj << /Length ${stream.length} >> stream
+${stream}
+endstream endobj
+xref
+0 6
+0000000000 65535 f 
+0000000010 00000 n 
+0000000063 00000 n 
+0000000122 00000 n 
+0000000248 00000 n 
+0000000318 00000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+${318 + stream.length + 17}
+%%EOF`;
+    const blob = new Blob([pdf], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = postType === "carousel" ? "carousel-linkedin.txt" : "post-linkedin.txt";
+    link.download = postType === "carousel" ? "carousel-linkedin.pdf" : "post-linkedin.pdf";
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -796,15 +828,16 @@ export default function PostsPage() {
   const carouselHasGeneratedSlides = generatedSlides.length > 0;
   const activeCarouselEditor = carouselStudioTab === "editor";
   const carouselRightRailStyle: CSSProperties = {
-    width: 358,
+    width: 320,
     borderLeft: "1px solid rgba(18,26,46,0.12)",
     background: "#fff",
     boxShadow: "18px 0px 11px rgba(0,0,0,0.01), 8px 0px 8px rgba(0,0,0,0.01), 2px 0px 4px rgba(0,0,0,0.01)",
-    padding: "42px 30px 28px",
+    padding: "34px 24px 24px",
     display: "flex",
     flexDirection: "column",
-    gap: 22,
-    overflow: "hidden",
+    gap: 18,
+    overflowY: "auto",
+    overflowX: "visible",
   };
   const carouselPanelShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
   const carouselSlideShadow = "0px 24px 10px rgba(0,0,0,0.01), 0px 14px 8px rgba(0,0,0,0.03), 0px 6px 6px rgba(0,0,0,0.04), 0px 1px 3px rgba(0,0,0,0.05)";
@@ -861,7 +894,7 @@ export default function PostsPage() {
     return (
       <aside style={carouselRightRailStyle}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h3 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: showHistoryPanel ? 28 : carouselStudioTab === "pages" ? 24 : 28, lineHeight: "28px", letterSpacing: "-0.45px", color: "#121a2e", fontWeight: 600 }}>
+          <h3 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: showHistoryPanel ? 24 : 20, lineHeight: "24px", letterSpacing: "-0.35px", color: "#121a2e", fontWeight: 600 }}>
             {title}
           </h3>
           {showHistoryPanel && (
@@ -870,20 +903,20 @@ export default function PostsPage() {
             </button>
           )}
         </div>
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", flex: 1, overflowY: "auto" }}>
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", flex: 1, overflowY: "auto", overflowX: "visible", paddingRight: 2 }}>
           {showHistoryPanel ? (
             showCarouselHistory ? (
               carouselGenerationHistory.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 14, color: "rgba(18,26,46,0.5)" }}>Aucune version enregistrée.</p> : carouselGenerationHistory.map((entry) => (
                 <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(entry.slides); setActiveSlide(0); }} style={{ width: "100%", border: 0, borderBottom: "1px solid rgba(0,0,0,0.08)", background: "#fff", padding: "22px 0", textAlign: "left", cursor: "pointer" }}>
-                  <strong style={{ display: "block", fontSize: 16, color: "#121a2e", fontWeight: 600 }}>{entry.label}</strong>
-                  <span style={{ display: "block", marginTop: 4, fontSize: 14, color: "rgba(18,26,46,0.7)" }}>{entry.slides.length} slides</span>
+                  <strong style={{ display: "block", fontSize: 14, color: "#121a2e", fontWeight: 600 }}>{entry.label}</strong>
+                  <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "rgba(18,26,46,0.7)" }}>{entry.slides.length} slides</span>
                 </button>
               ))
             ) : (
               <div style={{ paddingTop: 38, display: "flex", flexDirection: "column", gap: 24 }}>
-                {carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 14, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Les demandes récentes et réponses IA apparaîtront ici.</p> : carouselGenerationChat.map((message) => (
+                {carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Les demandes récentes et réponses IA apparaîtront ici.</p> : carouselGenerationChat.map((message) => (
                   <div key={message.id} style={{ display: "flex", flexDirection: "column", alignItems: message.role === "user" ? "flex-end" : "flex-start", gap: 12 }}>
-                    <span style={{ maxWidth: 168, borderRadius: 12, background: message.role === "user" ? "#f4f4f4" : "transparent", padding: message.role === "user" ? "12px 14px" : 0, color: "rgba(0,0,0,0.7)", fontSize: message.role === "user" ? 14 : 16, lineHeight: "28px", letterSpacing: "-0.45px" }}>{message.content}</span>
+                    <span style={{ maxWidth: 168, borderRadius: 12, background: message.role === "user" ? "#f4f4f4" : "transparent", padding: message.role === "user" ? "10px 12px" : 0, color: "rgba(0,0,0,0.7)", fontSize: 12, lineHeight: "20px", letterSpacing: "-0.2px" }}>{message.content}</span>
                   </div>
                 ))}
               </div>
@@ -891,41 +924,41 @@ export default function PostsPage() {
           ) : carouselStudioTab === "pages" ? (
             <>
               {carouselPageTemplates.map((page) => (
-                <button key={page.id} type="button" onClick={() => setSelectedCarouselPageId(page.id)} style={{ width: "100%", minHeight: 122, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 8, padding: "24px 0", textAlign: "left", cursor: "pointer" }}>
+                <button key={page.id} type="button" onClick={() => setSelectedCarouselPageId(page.id)} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
                   <PageThumb size={64} />
                   <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "28px", fontWeight: 600, color: "#121a2e" }}>{page.name}</strong>
-                    <span style={{ fontSize: 14, lineHeight: "28px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 14, lineHeight: "20px", fontWeight: 600, color: "#121a2e" }}>{page.name}</strong>
+                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
                   </span>
                 </button>
               ))}
-              <div style={{ paddingTop: 24 }}><ClientBlueButton type="button" onClick={createCarouselPageTemplate} icon={<Plus size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>Nouvelle Page</ClientBlueButton></div>
+              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselPageTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>Nouvelle Page</ClientBlueButton></div>
             </>
           ) : carouselStudioTab === "templates" ? (
             <>
               {carouselTemplates.map((template) => (
-                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 122, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 16, padding: "24px 0", textAlign: "left", cursor: "pointer" }}>
+                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
                   <PageThumb size={66} stacked />
                   <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "28px", fontWeight: 600, color: "#121a2e" }}>{template.name}</strong>
-                    <span style={{ fontSize: 14, lineHeight: "28px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 14, lineHeight: "20px", fontWeight: 600, color: "#121a2e" }}>{template.name}</strong>
+                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
                   </span>
                 </button>
               ))}
-              <div style={{ paddingTop: 24 }}><ClientBlueButton type="button" onClick={createCarouselTemplate} icon={<Plus size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>Nouvelle Template</ClientBlueButton></div>
+              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>Nouvelle Template</ClientBlueButton></div>
             </>
           ) : (
             <>
-              {carouselPosts.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 14, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Aucun carrousel généré pour le moment.</p> : carouselPosts.map((post) => (
-                <button key={post.id} type="button" onClick={() => { setGeneratedSlides(post.slides?.length ? post.slides : [post.content]); setActiveSlide(0); setCarouselStudioMode("generate"); }} style={{ width: "100%", minHeight: 122, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 16, padding: "24px 0", textAlign: "left", cursor: "pointer" }}>
+              {carouselPosts.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 12, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Aucun carrousel généré pour le moment.</p> : carouselPosts.map((post) => (
+                <button key={post.id} type="button" onClick={() => { setGeneratedSlides(post.slides?.length ? post.slides : [post.content]); setActiveSlide(0); setCarouselStudioMode("generate"); }} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
                   <PageThumb size={66} stacked />
                   <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "28px", fontWeight: 600, color: "#121a2e" }}>{post.content ? `${post.content.slice(0, 34)}${post.content.length > 34 ? "..." : ""}` : "Carrousel"}</strong>
-                    <span style={{ fontSize: 14, lineHeight: "28px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>{post.slides?.length ?? 1} slides</span>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e" }}>{post.content ? `${post.content.slice(0, 30)}${post.content.length > 30 ? "..." : ""}` : "Carrousel"}</strong>
+                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>{post.slides?.length ?? 1} slides</span>
                   </span>
                 </button>
               ))}
-              <div style={{ paddingTop: 24 }}><ClientBlueButton type="button" onClick={() => { const template = selectedCarouselTemplate ?? carouselTemplates[0]; if (template) startCarouselGeneration(template); }} icon={<Plus size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={carouselTemplates.length === 0}>Nouvelle Template</ClientBlueButton></div>
+              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={() => { const template = selectedCarouselTemplate ?? carouselTemplates[0]; if (template) startCarouselGeneration(template); }} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }} disabled={carouselTemplates.length === 0}>Nouvelle Template</ClientBlueButton></div>
             </>
           )}
         </div>
@@ -943,18 +976,18 @@ export default function PostsPage() {
   const renderTemplateMode = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
       {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: 46, top: 155, display: "flex", gap: 31, alignItems: "center" }}>
+      <div style={{ position: "absolute", left: 46, top: 155, right: 40, display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", overflow: "visible" }}>
         {(selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : [{ id: "placeholder", pageTemplateId: selectedCarouselPage?.id ?? FREE_CAROUSEL_PAGE_ID, mode: "single" as const }]).slice(0, 4).map((item) => {
           const page = resolveCarouselPage(item.pageTemplateId);
           return (
-            <button key={item.id} type="button" onClick={() => { if (item.id !== "placeholder") setSelectedCarouselTemplateItemId(item.id); }} style={{ width: 230, height: 298, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, padding: 32, cursor: "pointer" }}>
+            <button key={item.id} type="button" onClick={() => { if (item.id !== "placeholder") setSelectedCarouselTemplateItemId(item.id); }} style={{ width: 210, height: 268, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
               <span style={{ width: 140, height: 182, borderRadius: 15, background: "#ccc", border: "3px solid #fff", boxShadow: carouselSlideShadow }} />
-              <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 20, lineHeight: "28px", fontWeight: 600, color: "#121a2e", maxWidth: 166, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label || page?.name || "Page libre"}</strong>
+              <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, color: "#121a2e", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label || page?.name || "Page libre"}</strong>
             </button>
           );
         })}
-        <button type="button" onClick={() => setShowCarouselPagePicker(true)} style={{ width: 230, height: 298, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 20, lineHeight: "28px", fontWeight: 600, cursor: "pointer" }}>
-          <Plus size={24} /> Ajouter une page
+        <button type="button" onClick={() => setShowCarouselPagePicker(true)} style={{ width: "fit-content", minWidth: 210, height: 268, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, cursor: "pointer", padding: "28px 24px", textAlign: "center" }}>
+          <Plus size={20} /> Ajouter une page
         </button>
       </div>
     </main>
@@ -963,14 +996,14 @@ export default function PostsPage() {
   const renderEditorBeforeClick = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
       {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: 46, top: 138, display: "flex", gap: 31 }}>
+      <div style={{ position: "absolute", left: 46, top: 138, right: 40, display: "flex", gap: 24, flexWrap: "wrap", overflow: "visible" }}>
         {(carouselTemplates.length ? carouselTemplates : []).slice(0, 3).map((template) => (
-          <button key={template.id} type="button" onClick={() => startCarouselGeneration(template)} style={{ width: 261, height: 298, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, padding: 32, cursor: "pointer" }}>
+          <button key={template.id} type="button" onClick={() => startCarouselGeneration(template)} style={{ width: 230, height: 268, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
             <PageThumb size={154} stacked />
-            <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 20, lineHeight: "28px", fontWeight: 600, color: "#121a2e", maxWidth: 197, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</strong>
+            <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, color: "#121a2e", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</strong>
           </button>
         ))}
-        {carouselTemplates.length === 0 && <div style={{ width: 360, height: 260, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", fontWeight: 600 }}>Crée d'abord un template</div>}
+        {carouselTemplates.length === 0 && <div style={{ width: 320, height: 240, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", fontWeight: 600, fontSize: 14 }}>Crée d'abord un template</div>}
       </div>
     </main>
   );
@@ -978,9 +1011,9 @@ export default function PostsPage() {
   const renderEditorMode = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
       {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: "50%", top: 170, width: 1721, height: 762, transform: "translateX(-50%)" }}>
-        <div style={{ position: "absolute", left: 0, top: 44, width: 519, height: 673, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow }} />
-        <div style={{ position: "absolute", left: 601, top: 0, width: 588, height: 762, borderRadius: 42, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 66 }}>
+      <div style={{ position: "absolute", left: "50%", top: 170, width: 1320, height: 762, transform: "translateX(-50%)", display: "flex", alignItems: "center", justifyContent: "center", gap: 32 }}>
+        <div style={{ width: 415, height: 538, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, transform: "scale(0.8)", opacity: 0.82, flexShrink: 0 }} />
+        <div style={{ width: 588, height: 762, borderRadius: 42, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 66, flexShrink: 0 }}>
           <div style={{ position: "relative", width: "100%", height: 314 }}>
             <SmartSelectionTextarea rows={8} value={generatedSlides[activeSlide] ?? ""} onChange={(value) => { const nextSlides = [...generatedSlides]; nextSlides[activeSlide] = value; setGeneratedSlides(nextSlides); }} contextLabel="slide de carrousel LinkedIn" showGlobalAction={false} autoFit apiKey={settings?.openrouterApiKey || undefined} model={settings?.model} style={{ width: "100%", minHeight: 120, background: "transparent", border: 0, outline: "none", resize: "none", fontSize: 18, lineHeight: 1.55, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
             <div style={{ position: "absolute", inset: 0, border: "1.8px solid #0147ff", pointerEvents: "none" }}>
@@ -988,19 +1021,19 @@ export default function PostsPage() {
             </div>
           </div>
         </div>
-        <div style={{ position: "absolute", right: 0, top: 44, width: 519, height: 673, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow }} />
+        <div style={{ width: 415, height: 538, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, transform: "scale(0.8)", opacity: 0.82, flexShrink: 0 }} />
       </div>
       <div style={{ position: "absolute", left: "50%", bottom: 188, transform: "translateX(-50%)", display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center", padding: "15px 15px", minWidth: 120, height: 41, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
         {(generatedSlides.length ? generatedSlides : [""]).map((_, index) => <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ width: 10, height: 10, padding: 0, border: 0, borderRadius: 999, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.19)", cursor: "pointer" }} />)}
       </div>
-      <div style={{ position: "absolute", left: 46, right: 70, bottom: 45, height: 87, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16 }}>
+      <div style={{ position: "absolute", left: 46, right: 46, bottom: 45, height: 78, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-          <button type="button" style={{ width: 45, height: 45, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Plus size={20} /></button>
-          <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Analyser les posts LinkedIn" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 18, lineHeight: "28px", letterSpacing: "-0.45px", fontFamily: "Inter, sans-serif" }} />
+          <button type="button" style={{ width: 42, height: 42, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Plus size={18} /></button>
+          <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Analyser les posts LinkedIn" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 14, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 14, color: "rgba(18,26,46,0.7)", lineHeight: "28px" }}>{settings?.model || "Sonnet 4.6"}</span>
-          <button type="button" onClick={runCarouselGenerationChat} style={{ width: 55, height: 55, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={22} /></button>
+          <span style={{ fontSize: 12, color: "rgba(18,26,46,0.7)", lineHeight: "18px" }}>{settings?.model || "Sonnet 4.6"}</span>
+          <button type="button" onClick={runCarouselGenerationChat} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={18} /></button>
         </div>
       </div>
     </main>
@@ -1034,6 +1067,9 @@ export default function PostsPage() {
       )}
     </div>
   );
+  const showCarouselEditorSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides;
+  const showCarouselBuilderSidebar = postsMode === "carousel" && !showCarouselEditorSidebar;
+  const selectedCarouselField = selectedCarouselPage?.fields?.[0] ?? null;
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", ...jk }}>
       {/* ── Left: Create panel ── */}
@@ -1062,10 +1098,18 @@ export default function PostsPage() {
               </button>
             ))}
           </div>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>Créer un post</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>
+            {showCarouselBuilderSidebar
+              ? carouselStudioTab === "pages"
+                ? "Paramètres de page"
+                : carouselStudioTab === "templates"
+                  ? "Paramètres de template"
+                  : "Paramètres de template"
+              : "Créer un post"}
+          </h2>
 
           {/* Source tabs */}
-          {!rightEditorVisible && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+          {!rightEditorVisible && !showCarouselBuilderSidebar && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
             {([
               { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
               { id: "url", icon: <Link2 size={12} />, label: "URL" },
@@ -1085,7 +1129,74 @@ export default function PostsPage() {
         </div>
 
         <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-          {rightEditorVisible ? (
+          {showCarouselBuilderSidebar ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, minHeight: "100%" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Modèle IA de texte</label>
+                <select value={settings?.model || "sonnet-4.5"} onChange={() => {}} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12, color: "rgba(0,0,0,0.34)" }}>
+                  <option>{settings?.model || "Sonnet 4.6"}</option>
+                </select>
+              </div>
+
+              {carouselStudioTab === "pages" && selectedCarouselPage && (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom de la page</label>
+                    <input value={selectedCarouselPage.name} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { name: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Description</label>
+                    <input value={selectedCarouselPage.description} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { description: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt de page</label>
+                    <textarea rows={4} value={selectedCarouselPage.pagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { pagePrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt image</label>
+                    <textarea rows={3} value={selectedCarouselPage.imagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { imagePrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+                  </div>
+                  {selectedCarouselField && (
+                    <>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom du champ</label>
+                        <input value={selectedCarouselField.label} onChange={(event) => updateCarouselField(selectedCarouselPage.id, selectedCarouselField.id, { label: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt du champ</label>
+                        <textarea rows={3} value={selectedCarouselField.aiPrompt} onChange={(event) => updateCarouselField(selectedCarouselPage.id, selectedCarouselField.id, { aiPrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {carouselStudioTab !== "pages" && selectedCarouselTemplate && (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom du template</label>
+                    <input value={selectedCarouselTemplate.name} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { name: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Description</label>
+                    <textarea rows={4} value={selectedCarouselTemplate.description} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { description: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+                  </div>
+                  {selectedCarouselTemplateItem && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom de la page dans le template</label>
+                      <input value={selectedCarouselTemplateItem.label || ""} onChange={(event) => updateCarouselTemplateItem(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, { label: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div style={{ marginTop: "auto", padding: 6, borderRadius: 15, background: "#e1e5ee", boxShadow: "inset 0 0 2px rgba(0,0,0,0.1)" }}>
+                <ClientBlueButton type="button" onClick={downloadCurrentCarousel} icon={<Download size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 52, fontSize: 14 }} disabled={generatedSlides.length === 0 && !generatedContent.trim()}>
+                  Télécharger
+                </ClientBlueButton>
+              </div>
+            </div>
+          ) : rightEditorVisible ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Style du post</label>
@@ -1202,12 +1313,14 @@ export default function PostsPage() {
 
           {/* Generate button */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={16} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 16 }}>
+          <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>
             {generating ? "Génération..." : "Générer avec l'IA"}
           </ClientBlueButton>
-            <button type="button" onClick={startManualPost} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
-              Démarrer manuellement
-            </button>
+            {postsMode === "post" && (
+              <button type="button" onClick={startManualPost} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
+                Démarrer manuellement
+              </button>
+            )}
           </div>
 
           {postsMode === "carousel" && (
@@ -1238,7 +1351,7 @@ export default function PostsPage() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
-                      <Layers size={12} />Carrousel — {generatedSlides.length} slides
+                      <Layers size={12} />{generatedSlides.length} slides
                     </p>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       {generatedSlides.map((_, i) => (
@@ -1312,7 +1425,7 @@ export default function PostsPage() {
                 <ClientBlueButton compact type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%" }}>
                   Sauvegarder
                 </ClientBlueButton>
-                <button onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate} style={{ ...btnGrad, flex: 1, padding: "10px 0", fontSize: 12, opacity: scheduleDate ? 1 : 0.45 }}>
+                <button onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate} style={{ flex: 1, minHeight: 40, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 10, background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: scheduleDate ? 1 : 0.45 }}>
                     Planifier
                 </button>
               </div>
