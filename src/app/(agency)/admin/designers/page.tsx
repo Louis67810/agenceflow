@@ -6,6 +6,8 @@ import {
   Loader2, Trash2, Pen, Code2, AlertCircle,
 } from "lucide-react";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 interface Designer {
   id: string;
   name: string;
@@ -25,8 +27,10 @@ interface Project {
   designer_id: string | null;
 }
 
-const roleColor = (role: string) =>
-  role === "designer" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700";
+const roleStyle = (role: string) =>
+  role === "designer"
+    ? { background: "#E1D1FA", color: "#6236AA" }
+    : { background: "#d5eeff", color: "#073e63" };
 const roleLabel = (role: string) =>
   role === "designer" ? "Designer" : "Développeur";
 const roleIcon = (role: string) =>
@@ -42,15 +46,12 @@ export default function AdminDesignersPage() {
   const [assignModal, setAssignModal]     = useState<Designer | null>(null);
   const [assigning, setAssigning]         = useState(false);
 
-  // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm]             = useState({ name: "", email: "", speciality: "", role: "designer" as "designer" | "developer", bio: "", hourly_rate: "" });
   const [creating, setCreating]     = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     setLoading(true);
@@ -70,10 +71,7 @@ export default function AdminDesignersPage() {
     const r = await fetch("/api/designers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null,
-      }),
+      body: JSON.stringify({ ...form, hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : null }),
     });
     const d = await r.json();
     if (!r.ok) { setCreateError(d.error ?? "Erreur"); setCreating(false); return; }
@@ -112,58 +110,71 @@ export default function AdminDesignersPage() {
 
   const designerProjects = (d: Designer) => projects.filter((p) => p.designer_id === d.id);
 
+  const cardStyle = {
+    background: "#fff",
+    border: "1px solid rgba(0,0,0,0.13)",
+    borderRadius: 13,
+    boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
+  };
+
+  const inputStyle = {
+    width: "100%", padding: "10px 14px",
+    border: "1px solid rgba(0,0,0,0.09)", borderRadius: 10,
+    fontSize: 13, background: "#f6f6f6", color: "#121a2e",
+    outline: "none", boxSizing: "border-box" as const,
+    fontFamily: '"Plus Jakarta Sans", sans-serif',
+  };
+
   return (
-    <div className="p-8">
+    <div style={{ padding: 32, background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
       {/* Profile slide-over */}
       {selectedProfile && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/30" onClick={() => setSelectedProfile(null)} />
-          <div className="w-[420px] bg-white h-full overflow-y-auto shadow-2xl flex flex-col">
-            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-200">
-              <button onClick={() => setSelectedProfile(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <ArrowLeft size={16} className="text-gray-500" />
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex" }}>
+          <div style={{ flex: 1, background: "rgba(0,0,0,0.3)" }} onClick={() => setSelectedProfile(null)} />
+          <div style={{ width: 420, background: "#fff", height: "100%", overflowY: "auto", boxShadow: "0 0 40px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+              <button onClick={() => setSelectedProfile(null)} style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(18,26,46,0.05)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <ArrowLeft size={15} style={{ color: "rgba(18,26,46,0.5)" }} />
               </button>
-              <h2 className="font-semibold text-gray-900">Profil prestataire</h2>
+              <h2 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 15, letterSpacing: "-0.3px" }}>Profil prestataire</h2>
             </div>
-            <div className="p-6 flex-1 space-y-6">
-              {/* Identity */}
-              <div className="flex items-start gap-4">
-                <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold shrink-0 ${selectedProfile.role === "designer" ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"}`}>
+            <div style={{ padding: 24, flex: 1, display: "flex", flexDirection: "column", gap: 24 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                <div style={{ width: 56, height: 56, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, flexShrink: 0, ...roleStyle(selectedProfile.role) }}>
                   {selectedProfile.name.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">{selectedProfile.name}</h3>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${roleColor(selectedProfile.role)}`}>
+                  <h3 style={{ fontSize: 17, fontWeight: 700, color: "#121a2e", margin: "0 0 4px", letterSpacing: "-0.3px" }}>{selectedProfile.name}</h3>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, ...roleStyle(selectedProfile.role) }}>
                     {roleIcon(selectedProfile.role)}{roleLabel(selectedProfile.role)}
                   </span>
-                  {selectedProfile.speciality && <p className="text-sm text-gray-500 mt-1">{selectedProfile.speciality}</p>}
-                  {selectedProfile.email && <div className="flex items-center gap-1 mt-1 text-xs text-gray-400"><Mail size={11} />{selectedProfile.email}</div>}
-                  {selectedProfile.hourly_rate && <p className="text-xs text-gray-400 mt-0.5">{selectedProfile.hourly_rate} €/h</p>}
+                  {selectedProfile.speciality && <p style={{ fontSize: 13, color: "rgba(18,26,46,0.55)", margin: "6px 0 0" }}>{selectedProfile.speciality}</p>}
+                  {selectedProfile.email && <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, fontSize: 12, color: "rgba(18,26,46,0.4)" }}><Mail size={11} />{selectedProfile.email}</div>}
+                  {selectedProfile.hourly_rate && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "2px 0 0" }}>{selectedProfile.hourly_rate} €/h</p>}
                 </div>
               </div>
 
               {selectedProfile.bio && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Bio</p>
-                  <p className="text-sm text-gray-700">{selectedProfile.bio}</p>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(18,26,46,0.38)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>Bio</p>
+                  <p style={{ fontSize: 13, color: "#121a2e", lineHeight: "1.6", margin: 0 }}>{selectedProfile.bio}</p>
                 </div>
               )}
 
-              {/* Assigned projects */}
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(18,26,46,0.38)", textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>
                   Projets assignés ({designerProjects(selectedProfile).length})
                 </p>
                 {designerProjects(selectedProfile).length === 0 ? (
-                  <p className="text-sm text-gray-400">Aucun projet assigné</p>
+                  <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)" }}>Aucun projet assigné</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {designerProjects(selectedProfile).map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
-                        <FolderKanban size={14} className="text-gray-400" />
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 10, border: "1px solid rgba(0,0,0,0.07)", background: "#f9f9fb" }}>
+                        <FolderKanban size={14} style={{ color: "rgba(18,26,46,0.35)" }} />
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{p.name}</p>
-                          {p.client_name && <p className="text-xs text-gray-400">{p.client_name}</p>}
+                          <p style={{ fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>{p.name}</p>
+                          {p.client_name && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "1px 0 0" }}>{p.client_name}</p>}
                         </div>
                       </div>
                     ))}
@@ -171,18 +182,24 @@ export default function AdminDesignersPage() {
                 )}
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-200 space-y-2">
+            <div style={{ padding: "16px 24px", borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", gap: 8 }}>
               <button
                 onClick={() => { setAssignModal(selectedProfile); setSelectedProfile(null); }}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                  color: "#fff", border: "1px solid #2f4d9d",
+                  boxShadow: "inset 0px -2px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.2)",
+                }}
               >
-                <FolderKanban size={15} />Assigner à un projet
+                <FolderKanban size={14} />Assigner à un projet
               </button>
               <button
                 onClick={() => { handleDelete(selectedProfile.id); setSelectedProfile(null); }}
-                className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-500 py-2 rounded-lg text-sm hover:bg-red-50"
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "10px", borderRadius: 10, fontSize: 13, cursor: "pointer", background: "#fff", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444" }}
               >
-                <Trash2 size={14} />Supprimer
+                <Trash2 size={13} />Supprimer
               </button>
             </div>
           </div>
@@ -191,21 +208,21 @@ export default function AdminDesignersPage() {
 
       {/* Assign modal */}
       {assignModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setAssignModal(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} onClick={() => setAssignModal(null)} />
+          <div style={{ position: "relative", background: "#fff", borderRadius: 16, boxShadow: "0 24px 60px rgba(0,0,0,0.15)", width: "100%", maxWidth: 440, margin: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
               <div>
-                <h3 className="font-semibold text-gray-900">Assigner à un projet</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{assignModal.name}</p>
+                <h3 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 15, letterSpacing: "-0.3px" }}>Assigner à un projet</h3>
+                <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>{assignModal.name}</p>
               </div>
-              <button onClick={() => setAssignModal(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
-                <X size={16} className="text-gray-500" />
+              <button onClick={() => setAssignModal(null)} style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(18,26,46,0.05)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <X size={15} style={{ color: "rgba(18,26,46,0.5)" }} />
               </button>
             </div>
-            <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
               {projects.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">Aucun projet disponible</p>
+                <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: 16 }}>Aucun projet disponible</p>
               ) : projects.map((project) => {
                 const isAssigned = project.designer_id === assignModal.id;
                 return (
@@ -213,22 +230,30 @@ export default function AdminDesignersPage() {
                     key={project.id}
                     onClick={() => handleAssign(assignModal, project.id)}
                     disabled={assigning}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left ${isAssigned ? "border-indigo-300 bg-indigo-50" : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"}`}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, borderRadius: 10,
+                      border: isAssigned ? "1px solid rgba(1,71,255,0.2)" : "1px solid rgba(0,0,0,0.08)",
+                      background: isAssigned ? "#e8edff" : "#fff", cursor: "pointer", textAlign: "left",
+                    }}
                   >
-                    <div className="flex items-center gap-3">
-                      <FolderKanban size={15} className={isAssigned ? "text-indigo-500" : "text-gray-400"} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <FolderKanban size={14} style={{ color: isAssigned ? "#0147ff" : "rgba(18,26,46,0.35)" }} />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{project.name}</p>
-                        {project.client_name && <p className="text-xs text-gray-500">{project.client_name}</p>}
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>{project.name}</p>
+                        {project.client_name && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", margin: "1px 0 0" }}>{project.client_name}</p>}
                       </div>
                     </div>
-                    {isAssigned && <Check size={15} className="text-indigo-600 shrink-0" />}
+                    {isAssigned && <Check size={14} style={{ color: "#0147ff", flexShrink: 0 }} />}
                   </button>
                 );
               })}
             </div>
-            <div className="p-4 border-t border-gray-200">
-              <button onClick={() => setAssignModal(null)} className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
+            <div style={{ padding: 16, borderTop: "1px solid rgba(0,0,0,0.07)" }}>
+              <button onClick={() => setAssignModal(null)} style={{
+                width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                color: "#fff", border: "1px solid #2f4d9d",
+              }}>
                 Fermer
               </button>
             </div>
@@ -237,14 +262,21 @@ export default function AdminDesignersPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Prestataires</h1>
-          <p className="text-gray-500 mt-1">{designers.length} prestataire{designers.length !== 1 ? "s" : ""}</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.45px" }}>Prestataires</h1>
+          <p style={{ color: "rgba(18,26,46,0.5)", margin: "4px 0 0", fontSize: 14 }}>{designers.length} prestataire{designers.length !== 1 ? "s" : ""}</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700"
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "11px 16px", borderRadius: 10,
+            fontSize: 13, fontWeight: 600, cursor: "pointer",
+            background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+            color: "#fff", border: "1px solid #2f4d9d",
+            boxShadow: "inset 0px -2px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.2)",
+            letterSpacing: "-0.3px",
+          }}
         >
           <Plus size={15} />Ajouter un prestataire
         </button>
@@ -252,68 +284,83 @@ export default function AdminDesignersPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Nouveau prestataire</h3>
+        <div style={{ ...cardStyle, padding: 24, marginBottom: 24 }}>
+          <h3 style={{ fontWeight: 700, color: "#121a2e", margin: "0 0 16px", fontSize: 15, letterSpacing: "-0.3px" }}>Nouveau prestataire</h3>
           {createError && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
-              <AlertCircle size={14} className="text-red-500 mt-0.5" />
-              <p className="text-sm text-red-700">{createError}</p>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: 12, background: "#fef2f2", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, marginBottom: 16 }}>
+              <AlertCircle size={13} style={{ color: "#ef4444", marginTop: 1 }} />
+              <p style={{ fontSize: 13, color: "#b91c1c", margin: 0 }}>{createError}</p>
             </div>
           )}
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleCreate}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              {[
+                { label: "Nom *", key: "name", placeholder: "Prénom Nom", type: "text", required: true },
+                { label: "Email", key: "email", placeholder: "email@exemple.com", type: "email", required: false },
+                { label: "Spécialité", key: "speciality", placeholder: "Ex : UI/UX Design, Next.js...", type: "text", required: false },
+                { label: "Taux horaire (€)", key: "hourly_rate", placeholder: "Ex : 65", type: "number", required: false },
+                { label: "Bio", key: "bio", placeholder: "Courte description...", type: "text", required: false },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6, letterSpacing: "-0.2px" }}>{f.label}</label>
+                  <input
+                    type={f.type}
+                    value={(form as Record<string, string>)[f.key]}
+                    onChange={(e) => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    required={f.required}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nom <span className="text-red-500">*</span></label>
-                <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Prénom Nom" required className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder="email@exemple.com" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Spécialité</label>
-                <input value={form.speciality} onChange={(e) => setForm((p) => ({ ...p, speciality: e.target.value }))} placeholder="Ex : UI/UX Design, Next.js..." className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
-                <select value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as "designer" | "developer" }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6, letterSpacing: "-0.2px" }}>Rôle</label>
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm(p => ({ ...p, role: e.target.value as "designer" | "developer" }))}
+                  style={inputStyle}
+                >
                   <option value="designer">Designer</option>
                   <option value="developer">Développeur</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Taux horaire (€)</label>
-                <input type="number" value={form.hourly_rate} onChange={(e) => setForm((p) => ({ ...p, hourly_rate: e.target.value }))} placeholder="Ex : 65" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                <input value={form.bio} onChange={(e) => setForm((p) => ({ ...p, bio: e.target.value }))} placeholder="Courte description..." className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-              </div>
             </div>
-            <div className="flex gap-3 pt-1">
-              <button type="submit" disabled={creating} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
-                {creating ? <><Loader2 size={14} className="animate-spin" />Création...</> : <><Check size={14} />Ajouter</>}
+            <div style={{ display: "flex", gap: 12 }}>
+              <button type="submit" disabled={creating} style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10,
+                fontSize: 13, fontWeight: 600, cursor: creating ? "not-allowed" : "pointer", opacity: creating ? 0.7 : 1,
+                background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                color: "#fff", border: "1px solid #2f4d9d",
+              }}>
+                {creating ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />Création...</> : <><Check size={13} />Ajouter</>}
               </button>
-              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+              <button type="button" onClick={() => setShowCreate(false)} style={{ padding: "10px 18px", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 10, fontSize: 13, color: "rgba(18,26,46,0.6)", background: "#fff", cursor: "pointer" }}>
+                Annuler
+              </button>
             </div>
           </form>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+        <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+          <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.35)" }} />
           <input
             type="text"
             placeholder="Rechercher..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            style={{ ...inputStyle, paddingLeft: 38 }}
           />
         </div>
         {(["all", "designer", "developer"] as const).map((r) => (
-          <button key={r} onClick={() => setFilterRole(r)} className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${filterRole === r ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:border-indigo-300"}`}>
+          <button key={r} onClick={() => setFilterRole(r)} style={{
+            padding: "9px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer",
+            background: filterRole === r ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)" : "#fff",
+            color: filterRole === r ? "#fff" : "rgba(18,26,46,0.6)",
+            border: filterRole === r ? "1px solid #2f4d9d" : "1px solid rgba(0,0,0,0.1)",
+          }}>
             {r === "all" ? "Tous" : r === "designer" ? "Designers" : "Développeurs"}
           </button>
         ))}
@@ -321,39 +368,42 @@ export default function AdminDesignersPage() {
 
       {/* Grid */}
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-gray-400" size={28} /></div>
+        <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
+          <Loader2 size={28} style={{ color: "rgba(18,26,46,0.2)", animation: "spin 1s linear infinite" }} />
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-gray-200">
-          <p className="text-gray-500 font-medium">Aucun prestataire</p>
-          <p className="text-gray-400 text-sm mt-1">Ajoutez votre premier prestataire.</p>
+        <div style={{ ...cardStyle, padding: 60, textAlign: "center" }}>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(18,26,46,0.5)", margin: "0 0 4px" }}>Aucun prestataire</p>
+          <p style={{ fontSize: 13, color: "rgba(18,26,46,0.35)", margin: 0 }}>Ajoutez votre premier prestataire.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
           {filtered.map((d) => {
             const activeProjects = designerProjects(d);
+            const rs = roleStyle(d.role);
             return (
               <div
                 key={d.id}
                 onClick={() => setSelectedProfile(d)}
-                className="bg-white rounded-xl border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all group"
+                style={{ ...cardStyle, padding: 20, cursor: "pointer" }}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold ${d.role === "designer" ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"}`}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, ...rs }}>
                     {d.name.charAt(0)}
                   </div>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${roleColor(d.role)}`}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, ...rs }}>
                     {roleIcon(d.role)}{roleLabel(d.role)}
                   </span>
                 </div>
-                <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{d.name}</h3>
-                {d.speciality && <p className="text-sm text-gray-500 mt-0.5">{d.speciality}</p>}
-                {d.email && <div className="flex items-center gap-1 mt-1 text-xs text-gray-400"><Mail size={11} />{d.email}</div>}
-                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
-                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: "0 0 2px", letterSpacing: "-0.3px" }}>{d.name}</h3>
+                {d.speciality && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", margin: "0 0 2px" }}>{d.speciality}</p>}
+                {d.email && <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.4)" }}><Mail size={11} />{d.email}</div>}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, paddingTop: 12, borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>
                     <FolderKanban size={12} />
                     {activeProjects.length} projet{activeProjects.length !== 1 ? "s" : ""}
                   </div>
-                  {d.hourly_rate && <span className="text-xs text-gray-400">{d.hourly_rate} €/h</span>}
+                  {d.hourly_rate && <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{d.hourly_rate} €/h</span>}
                 </div>
               </div>
             );

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine, Trash2 } from "lucide-react";
 import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
-import { loadLinkedInSettings } from "../layout";
+import { loadLinkedInSettings } from "@/lib/linkedin/settings";
 import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
 import {
   fetchRemoteLinkedInWorkspace,

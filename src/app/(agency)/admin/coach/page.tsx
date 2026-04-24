@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { Send, Bot, User, Loader2, Plus, Trash2, ChevronDown } from "lucide-react";
 
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -102,60 +104,76 @@ export default function CoachPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
       {/* Sidebar conversations */}
-      <div className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <Bot size={18} className="text-indigo-600" />
-              <span className="font-bold text-gray-900 text-sm">Coach IA</span>
+      <div style={{ width: 240, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: 16, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#E1D1FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Bot size={15} style={{ color: "#6236AA" }} />
+              </div>
+              <span style={{ fontWeight: 700, color: "#121a2e", fontSize: 14, letterSpacing: "-0.3px" }}>Coach IA</span>
             </div>
-            <button onClick={newConversation} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700" title="Nouvelle conversation">
-              <Plus size={14} />
+            <button onClick={newConversation} style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+              border: "1px solid #2f4d9d", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} title="Nouvelle conversation">
+              <Plus size={13} style={{ color: "#fff" }} />
             </button>
           </div>
         </div>
 
         {/* Model selector */}
-        <div className="px-3 py-2 border-b border-gray-100">
-          <label className="text-xs text-gray-500 mb-1 block">Modèle</label>
-          <div className="relative">
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+          <label style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", display: "block", marginBottom: 4 }}>Modèle</label>
+          <div style={{ position: "relative" }}>
             <select
               value={model}
               onChange={e => setModel(e.target.value)}
-              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 pr-6 bg-white appearance-none focus:outline-none focus:border-indigo-400 text-gray-700"
+              style={{
+                width: "100%", fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8,
+                padding: "6px 24px 6px 10px", background: "#f6f6f6", appearance: "none",
+                color: "#121a2e", outline: "none", cursor: "pointer",
+              }}
             >
               {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <ChevronDown size={11} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.4)", pointerEvents: "none" }} />
           </div>
         </div>
 
         {/* Conversations list */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
           {conversations.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center p-4">Aucune conversation</p>
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: 16 }}>Aucune conversation</p>
           ) : (
             conversations.map(c => (
-              <div key={c.id} className={`p-2.5 rounded-lg mb-1 cursor-pointer text-xs hover:bg-gray-50 transition-colors ${conversationId === c.id ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-600"}`}>
-                <p className="truncate">{c.title}</p>
-                <p className="text-gray-400 mt-0.5">{new Date(c.updated_at).toLocaleDateString("fr-FR")}</p>
+              <div key={c.id} style={{
+                padding: "10px 12px", borderRadius: 9, marginBottom: 2, cursor: "pointer", fontSize: 12,
+                background: conversationId === c.id ? "#e8edff" : "transparent",
+                color: conversationId === c.id ? "#0147ff" : "rgba(18,26,46,0.6)",
+                fontWeight: conversationId === c.id ? 600 : 400,
+              }}>
+                <p style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</p>
+                <p style={{ margin: "2px 0 0", color: "rgba(18,26,46,0.35)", fontSize: 11 }}>{new Date(c.updated_at).toLocaleDateString("fr-FR")}</p>
               </div>
             ))
           )}
         </div>
 
-        {/* Settings */}
-        <div className="border-t border-gray-200 p-3">
+        {/* Business context */}
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: 12 }}>
           <button
             onClick={() => setShowSettings(s => !s)}
-            className="w-full text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 justify-center"
+            style={{ width: "100%", fontSize: 12, color: "rgba(18,26,46,0.5)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: "none", border: "none", cursor: "pointer" }}
           >
-            Contexte business <ChevronDown size={11} className={showSettings ? "rotate-180" : ""} />
+            Contexte business <ChevronDown size={11} style={{ transform: showSettings ? "rotate(180deg)" : "none" }} />
           </button>
           {showSettings && (
-            <div className="mt-2">
+            <div style={{ marginTop: 8 }}>
               <textarea
                 value={businessContext}
                 onChange={e => setBusinessContext(e.target.value)}
@@ -166,28 +184,37 @@ export default function CoachPage() {
                 })}
                 placeholder="Décrivez votre agence, vos services, vos objectifs..."
                 rows={5}
-                className="w-full text-xs border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:border-indigo-400 text-gray-700"
+                style={{
+                  width: "100%", fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9,
+                  padding: "8px 10px", resize: "none", background: "#f6f6f6", color: "#121a2e",
+                  outline: "none", boxSizing: "border-box",
+                }}
               />
-              <p className="text-xs text-gray-400 mt-1">Sauvegarde automatique</p>
+              <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Sauvegarde automatique</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
           {messages.length === 0 && (
-            <div className="max-w-2xl mx-auto text-center mt-12">
-              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Bot size={32} className="text-indigo-600" />
+            <div style={{ maxWidth: 560, margin: "48px auto 0", textAlign: "center" }}>
+              <div style={{ width: 64, height: 64, background: "#E1D1FA", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                <Bot size={30} style={{ color: "#6236AA" }} />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Coach Business IA</h2>
-              <p className="text-gray-500 text-sm mb-8">Je connais vos projets, leads et données. Posez-moi n'importe quelle question sur votre agence.</p>
-              <div className="grid grid-cols-1 gap-2 text-left">
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#121a2e", margin: "0 0 8px", letterSpacing: "-0.45px" }}>Coach Business IA</h2>
+              <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, margin: "0 0 32px", lineHeight: "1.5" }}>Je connais vos projets, leads et données. Posez-moi n'importe quelle question sur votre agence.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, textAlign: "left" }}>
                 {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={() => send(s)} className="p-3 bg-white rounded-xl border border-gray-200 text-sm text-gray-700 hover:border-indigo-400 hover:bg-indigo-50 transition-all text-left">
+                  <button key={s} onClick={() => send(s)} style={{
+                    padding: "12px 16px", background: "#fff",
+                    border: "1px solid rgba(0,0,0,0.1)", borderRadius: 11,
+                    fontSize: 13, color: "#121a2e", cursor: "pointer", textAlign: "left",
+                    letterSpacing: "-0.3px", lineHeight: "1.4",
+                  }}>
                     {s}
                   </button>
                 ))}
@@ -196,34 +223,40 @@ export default function CoachPage() {
           )}
 
           {messages.map((msg, i) => (
-            <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"} max-w-4xl ${msg.role === "user" ? "ml-auto" : "mr-auto"}`}>
+            <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%", alignSelf: msg.role === "user" ? "flex-end" : "flex-start" }}>
               {msg.role === "assistant" && (
-                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
-                  <Bot size={16} className="text-indigo-600" />
+                <div style={{ width: 32, height: 32, background: "#E1D1FA", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Bot size={15} style={{ color: "#6236AA" }} />
                 </div>
               )}
-              <div className={`rounded-2xl px-4 py-3 text-sm max-w-2xl whitespace-pre-wrap leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-indigo-600 text-white rounded-tr-sm"
-                  : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
-              }`}>
+              <div style={{
+                borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                padding: "12px 16px", fontSize: 14, lineHeight: "1.6",
+                background: msg.role === "user"
+                  ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)"
+                  : "#fff",
+                color: msg.role === "user" ? "#fff" : "#121a2e",
+                border: msg.role === "user" ? "1px solid #2f4d9d" : "1px solid rgba(0,0,0,0.1)",
+                boxShadow: msg.role === "user" ? "0px 4px 12px rgba(1,71,255,0.2)" : "0px 2px 8px rgba(0,0,0,0.04)",
+                whiteSpace: "pre-wrap",
+              }}>
                 {msg.content}
               </div>
               {msg.role === "user" && (
-                <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center shrink-0">
-                  <User size={16} className="text-white" />
+                <div style={{ width: 32, height: 32, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <User size={15} style={{ color: "#fff" }} />
                 </div>
               )}
             </div>
           ))}
 
           {loading && (
-            <div className="flex gap-3 justify-start max-w-4xl">
-              <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
-                <Bot size={16} className="text-indigo-600" />
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-start", alignSelf: "flex-start" }}>
+              <div style={{ width: 32, height: 32, background: "#E1D1FA", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Bot size={15} style={{ color: "#6236AA" }} />
               </div>
-              <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
-                <Loader2 size={16} className="animate-spin text-indigo-500" />
+              <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: "18px 18px 18px 4px", padding: "12px 16px" }}>
+                <Loader2 size={16} style={{ color: "#0147ff", animation: "spin 1s linear infinite" }} />
               </div>
             </div>
           )}
@@ -231,22 +264,34 @@ export default function CoachPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-gray-200 bg-white p-4">
-          <div className="max-w-3xl mx-auto flex items-end gap-3">
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", background: "#fff", padding: 16 }}>
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "flex-end", gap: 12 }}>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               placeholder="Posez votre question... (Entrée pour envoyer, Shift+Entrée pour nouvelle ligne)"
               rows={2}
-              className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-indigo-400 leading-relaxed"
+              style={{
+                flex: 1, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 11,
+                padding: "12px 16px", fontSize: 14, resize: "none", background: "#f6f6f6",
+                color: "#121a2e", outline: "none", lineHeight: "1.5", fontFamily: '"Plus Jakarta Sans", sans-serif',
+              }}
             />
             <button
               onClick={() => send()}
               disabled={loading || !input.trim()}
-              className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+              style={{
+                width: 44, height: 44, borderRadius: 11, flexShrink: 0,
+                background: loading || !input.trim()
+                  ? "rgba(18,26,46,0.08)"
+                  : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+                border: loading || !input.trim() ? "1px solid rgba(0,0,0,0.08)" : "1px solid #2f4d9d",
+                cursor: loading || !input.trim() ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
             >
-              <Send size={18} />
+              <Send size={17} style={{ color: loading || !input.trim() ? "rgba(18,26,46,0.3)" : "#fff" }} />
             </button>
           </div>
         </div>

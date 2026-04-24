@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import {
-  Plus, ClipboardList, ChevronRight, Users, Clock, CheckCircle2,
-  XCircle, AlertCircle, Trash2, X, Check, ChevronDown,
+  Plus, ClipboardList, Users, Clock, CheckCircle2,
+  XCircle, AlertCircle, Trash2, X, Check, ChevronRight,
 } from "lucide-react";
+
+const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
 interface Test {
   id: string;
@@ -41,12 +43,9 @@ export default function TestsPage() {
   const [feedbackModal, setFeedbackModal] = useState<{ sub: Submission; action: "accepted" | "rejected" } | null>(null);
   const [feedback, setFeedback] = useState("");
 
-  // Create form
   const [form, setForm] = useState({
     title: "", description: "", instructions: "", skills: "", deadline_days: 7,
   });
-
-  // Assign form
   const [assignForm, setAssignForm] = useState({ designer_email: "", designer_name: "" });
 
   useEffect(() => { loadTests(); }, []);
@@ -68,10 +67,7 @@ export default function TestsPage() {
     const res = await agendaFetch("/api/tests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        skills: form.skills.split(",").map(s => s.trim()).filter(Boolean),
-      }),
+      body: JSON.stringify({ ...form, skills: form.skills.split(",").map(s => s.trim()).filter(Boolean) }),
     }).then(r => r.json());
     if (res.test) {
       setTests(prev => [res.test, ...prev]);
@@ -116,64 +112,97 @@ export default function TestsPage() {
   };
 
   const statusBadge = (status: Submission["status"]) => {
-    const map = {
-      pending: { label: "En attente", color: "bg-gray-100 text-gray-600", icon: <Clock size={11} /> },
-      submitted: { label: "Soumis", color: "bg-blue-100 text-blue-700", icon: <AlertCircle size={11} /> },
-      accepted: { label: "Accepté", color: "bg-green-100 text-green-700", icon: <CheckCircle2 size={11} /> },
-      rejected: { label: "Refusé", color: "bg-red-100 text-red-600", icon: <XCircle size={11} /> },
+    const map: Record<string, { label: string; bg: string; color: string; icon: React.ReactNode }> = {
+      pending:   { label: "En attente", bg: "#fee6d0", color: "#663b12", icon: <Clock size={11} /> },
+      submitted: { label: "Soumis",     bg: "#d5eeff", color: "#073e63", icon: <AlertCircle size={11} /> },
+      accepted:  { label: "Accepté",    bg: "#d1fae5", color: "#168b64", icon: <CheckCircle2 size={11} /> },
+      rejected:  { label: "Refusé",     bg: "#fee2e2", color: "#b91c1c", icon: <XCircle size={11} /> },
     };
     const s = map[status];
-    return <span className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${s.color}`}>{s.icon}{s.label}</span>;
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: s.bg, color: s.color }}>
+        {s.icon}{s.label}
+      </span>
+    );
   };
 
+  const cardStyle = {
+    background: "#fff",
+    border: "1px solid rgba(0,0,0,0.13)",
+    borderRadius: 13,
+    boxShadow: "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)",
+  };
+
+  const inputStyle = {
+    width: "100%", padding: "10px 14px",
+    border: "1px solid rgba(0,0,0,0.09)", borderRadius: 10,
+    fontSize: 13, background: "#f6f6f6", color: "#121a2e",
+    outline: "none", boxSizing: "border-box" as const,
+    fontFamily: '"Plus Jakarta Sans", sans-serif',
+    resize: "none" as const,
+  };
+
+  const primaryBtn = {
+    display: "flex", alignItems: "center", gap: 8, padding: "11px 16px", borderRadius: 10,
+    fontSize: 13, fontWeight: 600, cursor: "pointer",
+    background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
+    color: "#fff", border: "1px solid #2f4d9d",
+    boxShadow: "inset 0px -2px 0px 0px #0e42c8, 0px 4px 12px rgba(1,71,255,0.2)",
+    letterSpacing: "-0.3px",
+  } as const;
+
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div style={{ padding: 32, background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tests Prestataires</h1>
-          <p className="text-gray-500 text-sm mt-1">Créez des tests techniques et évaluez vos prestataires</p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.45px" }}>Tests Prestataires</h1>
+          <p style={{ color: "rgba(18,26,46,0.5)", margin: "4px 0 0", fontSize: 14 }}>Créez des tests techniques et évaluez vos prestataires</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-          <Plus size={16} />Nouveau test
+        <button onClick={() => setShowCreate(true)} style={primaryBtn}>
+          <Plus size={15} />Nouveau test
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}>
         {/* Tests list */}
-        <div className="col-span-1">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Tests disponibles ({tests.length})</h2>
+        <div>
+          <h2 style={{ fontSize: 13, fontWeight: 700, color: "rgba(18,26,46,0.5)", margin: "0 0 12px", letterSpacing: "-0.2px", textTransform: "uppercase" }}>Tests disponibles ({tests.length})</h2>
           {loading ? (
-            <p className="text-sm text-gray-400">Chargement...</p>
+            <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)" }}>Chargement...</p>
           ) : tests.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-              <ClipboardList size={32} className="text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Aucun test créé</p>
+            <div style={{ ...cardStyle, padding: 48, textAlign: "center" }}>
+              <ClipboardList size={32} style={{ color: "rgba(18,26,46,0.15)", margin: "0 auto 12px" }} />
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)" }}>Aucun test créé</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {tests.map(test => (
                 <div
                   key={test.id}
                   onClick={() => selectTest(test)}
-                  className={`bg-white rounded-xl border p-4 cursor-pointer hover:shadow-md transition-all ${selectedTest?.id === test.id ? "border-indigo-400 shadow-md" : "border-gray-200"}`}
+                  style={{
+                    ...cardStyle,
+                    padding: 16, cursor: "pointer",
+                    border: selectedTest?.id === test.id ? "1px solid #0147ff" : "1px solid rgba(0,0,0,0.13)",
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm truncate">{test.title}</p>
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{test.description}</p>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 700, color: "#121a2e", fontSize: 13, margin: 0, letterSpacing: "-0.3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{test.title}</p>
+                      <p style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", margin: "4px 0 0", lineHeight: "1.4", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{test.description}</p>
                     </div>
-                    <button onClick={e => { e.stopPropagation(); deleteTest(test.id); }} className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500 shrink-0">
-                      <Trash2 size={13} />
+                    <button onClick={e => { e.stopPropagation(); deleteTest(test.id); }} style={{ width: 26, height: 26, borderRadius: 7, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Trash2 size={13} style={{ color: "rgba(18,26,46,0.3)" }} />
                     </button>
                   </div>
-                  <div className="flex items-center gap-3 mt-3">
-                    <span className="flex items-center gap-1 text-xs text-gray-500"><Clock size={11} />{test.deadline_days}j</span>
-                    <span className="flex items-center gap-1 text-xs text-gray-500"><Users size={11} />{test.test_submissions?.[0]?.count ?? 0} submissions</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.45)" }}><Clock size={11} />{test.deadline_days}j</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(18,26,46,0.45)" }}><Users size={11} />{test.test_submissions?.[0]?.count ?? 0} soumissions</span>
                   </div>
                   {test.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
                       {test.skills.slice(0, 3).map(s => (
-                        <span key={s} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{s}</span>
+                        <span key={s} style={{ fontSize: 11, background: "#e8edff", color: "#0147ff", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>{s}</span>
                       ))}
                     </div>
                   )}
@@ -184,55 +213,55 @@ export default function TestsPage() {
         </div>
 
         {/* Submissions */}
-        <div className="col-span-2">
+        <div>
           {selectedTest ? (
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="p-5 border-b border-gray-200">
-                <div className="flex items-center justify-between">
+            <div style={cardStyle}>
+              <div style={{ padding: 20, borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div>
-                    <h2 className="font-bold text-gray-900">{selectedTest.title}</h2>
-                    <p className="text-sm text-gray-500 mt-1">{selectedTest.description}</p>
+                    <h2 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 16, letterSpacing: "-0.45px" }}>{selectedTest.title}</h2>
+                    <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", margin: "4px 0 0" }}>{selectedTest.description}</p>
                   </div>
-                  <button onClick={() => setShowAssign(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700">
+                  <button onClick={() => setShowAssign(true)} style={{ ...primaryBtn, padding: "9px 14px" }}>
                     <Plus size={13} />Assigner
                   </button>
                 </div>
                 {selectedTest.instructions && (
-                  <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-relaxed">
+                  <div style={{ marginTop: 12, padding: "10px 14px", background: "#f9f9fb", borderRadius: 9, fontSize: 12, color: "rgba(18,26,46,0.65)", lineHeight: "1.6" }}>
                     <strong>Instructions :</strong> {selectedTest.instructions}
                   </div>
                 )}
               </div>
 
-              <div className="p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Soumissions ({submissions.length})</h3>
+              <div style={{ padding: 20 }}>
+                <h3 style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.45)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 16px" }}>Soumissions ({submissions.length})</h3>
                 {submissions.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">Aucune soumission pour ce test</p>
+                  <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: "32px 0" }}>Aucune soumission pour ce test</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {submissions.map(sub => (
-                      <div key={sub.id} className="border border-gray-200 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-2">
+                      <div key={sub.id} style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: 11, padding: 16 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                           <div>
-                            <p className="font-medium text-gray-900 text-sm">{sub.designer_name || "Prestataire"}</p>
-                            <p className="text-xs text-gray-500">{sub.designer_email}</p>
+                            <p style={{ fontWeight: 700, color: "#121a2e", fontSize: 13, margin: 0, letterSpacing: "-0.3px" }}>{sub.designer_name || "Prestataire"}</p>
+                            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>{sub.designer_email}</p>
                           </div>
                           {statusBadge(sub.status)}
                         </div>
                         {sub.submission_url && (
-                          <a href={sub.submission_url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1 mt-1">
+                          <a href={sub.submission_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#0147ff", textDecoration: "none", fontWeight: 500 }}>
                             Voir la soumission <ChevronRight size={11} />
                           </a>
                         )}
                         {sub.admin_feedback && (
-                          <p className="text-xs text-gray-600 mt-2 bg-gray-50 p-2 rounded"><strong>Feedback :</strong> {sub.admin_feedback}</p>
+                          <p style={{ fontSize: 12, color: "rgba(18,26,46,0.6)", marginTop: 8, background: "#f9f9fb", padding: "8px 12px", borderRadius: 8 }}><strong>Feedback :</strong> {sub.admin_feedback}</p>
                         )}
                         {sub.status === "submitted" && (
-                          <div className="flex gap-2 mt-3">
-                            <button onClick={() => setFeedbackModal({ sub, action: "accepted" })} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700">
+                          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                            <button onClick={() => setFeedbackModal({ sub, action: "accepted" })} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#d1fae5", border: "1px solid rgba(22,139,100,0.2)", color: "#168b64", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                               <Check size={12} />Accepter
                             </button>
-                            <button onClick={() => setFeedbackModal({ sub, action: "rejected" })} className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700">
+                            <button onClick={() => setFeedbackModal({ sub, action: "rejected" })} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#fee2e2", border: "1px solid rgba(239,68,68,0.2)", color: "#b91c1c", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                               <X size={12} />Refuser
                             </button>
                           </div>
@@ -244,10 +273,10 @@ export default function TestsPage() {
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 flex items-center justify-center h-64">
-              <div className="text-center text-gray-400">
-                <ClipboardList size={32} className="mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Sélectionnez un test pour voir les soumissions</p>
+            <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 256 }}>
+              <div style={{ textAlign: "center" }}>
+                <ClipboardList size={32} style={{ color: "rgba(18,26,46,0.12)", margin: "0 auto 8px" }} />
+                <p style={{ fontSize: 13, color: "rgba(18,26,46,0.4)" }}>Sélectionnez un test pour voir les soumissions</p>
               </div>
             </div>
           )}
@@ -256,38 +285,40 @@ export default function TestsPage() {
 
       {/* Modal: Créer un test */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-gray-900">Nouveau test</h2>
-              <button onClick={() => setShowCreate(false)}><X size={18} className="text-gray-400" /></button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 24px 60px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <h2 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 16, letterSpacing: "-0.3px" }}>Nouveau test</h2>
+              <button onClick={() => setShowCreate(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} style={{ color: "rgba(18,26,46,0.4)" }} /></button>
             </div>
-            <form onSubmit={createTest} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Titre *</label>
-                <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
-                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Instructions détaillées</label>
-                <textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} rows={4} placeholder="Décrivez précisément ce que le prestataire doit réaliser..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={createTest} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {[
+                { label: "Titre *", key: "title", required: true, rows: 1 },
+                { label: "Description", key: "description", required: false, rows: 2 },
+                { label: "Instructions détaillées", key: "instructions", required: false, rows: 4, placeholder: "Décrivez précisément ce que le prestataire doit réaliser..." },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6 }}>{f.label}</label>
+                  {f.rows > 1 ? (
+                    <textarea required={f.required} value={(form as Record<string, string | number>)[f.key] as string} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} rows={f.rows} placeholder={f.placeholder} style={inputStyle} />
+                  ) : (
+                    <input required={f.required} value={(form as Record<string, string | number>)[f.key] as string} onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))} style={inputStyle} />
+                  )}
+                </div>
+              ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Compétences (séparées par virgule)</label>
-                  <input value={form.skills} onChange={e => setForm(f => ({ ...f, skills: e.target.value }))} placeholder="Figma, CSS, Motion..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6 }}>Compétences (séparées par virgule)</label>
+                  <input value={form.skills} onChange={e => setForm(p => ({ ...p, skills: e.target.value }))} placeholder="Figma, CSS, Motion..." style={inputStyle} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Délai (jours)</label>
-                  <input type="number" value={form.deadline_days} onChange={e => setForm(f => ({ ...f, deadline_days: Number(e.target.value) }))} min={1} max={30} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6 }}>Délai (jours)</label>
+                  <input type="number" value={form.deadline_days} onChange={e => setForm(p => ({ ...p, deadline_days: Number(e.target.value) }))} min={1} max={30} style={inputStyle} />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreate(false)} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50">Annuler</button>
-                <button type="submit" className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Créer le test</button>
+              <div style={{ display: "flex", gap: 12, paddingTop: 8 }}>
+                <button type="button" onClick={() => setShowCreate(false)} style={{ flex: 1, padding: "11px", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 10, fontSize: 13, background: "#fff", cursor: "pointer", color: "rgba(18,26,46,0.6)", fontWeight: 500 }}>Annuler</button>
+                <button type="submit" style={{ flex: 1, ...primaryBtn, justifyContent: "center" }}>Créer le test</button>
               </div>
             </form>
           </div>
@@ -296,51 +327,51 @@ export default function TestsPage() {
 
       {/* Modal: Assigner */}
       {showAssign && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-bold text-gray-900">Assigner le test</h2>
-              <button onClick={() => setShowAssign(false)}><X size={18} className="text-gray-400" /></button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 24px 60px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <h2 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 16, letterSpacing: "-0.3px" }}>Assigner le test</h2>
+              <button onClick={() => setShowAssign(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} style={{ color: "rgba(18,26,46,0.4)" }} /></button>
             </div>
-            <form onSubmit={assignTest} className="space-y-4">
+            <form onSubmit={assignTest} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Nom du prestataire</label>
-                <input required value={assignForm.designer_name} onChange={e => setAssignForm(f => ({ ...f, designer_name: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6 }}>Nom du prestataire</label>
+                <input required value={assignForm.designer_name} onChange={e => setAssignForm(p => ({ ...p, designer_name: e.target.value }))} style={inputStyle} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
-                <input required type="email" value={assignForm.designer_email} onChange={e => setAssignForm(f => ({ ...f, designer_email: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400" />
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", marginBottom: 6 }}>Email *</label>
+                <input required type="email" value={assignForm.designer_email} onChange={e => setAssignForm(p => ({ ...p, designer_email: e.target.value }))} style={inputStyle} />
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowAssign(false)} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50">Annuler</button>
-                <button type="submit" className="flex-1 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Assigner</button>
+              <div style={{ display: "flex", gap: 12, paddingTop: 8 }}>
+                <button type="button" onClick={() => setShowAssign(false)} style={{ flex: 1, padding: "11px", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 10, fontSize: 13, background: "#fff", cursor: "pointer", color: "rgba(18,26,46,0.6)", fontWeight: 500 }}>Annuler</button>
+                <button type="submit" style={{ flex: 1, ...primaryBtn, justifyContent: "center" }}>Assigner</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal: Feedback accepter/refuser */}
+      {/* Modal: Feedback */}
       {feedbackModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900">
-                {feedbackModal.action === "accepted" ? "✅ Accepter" : "❌ Refuser"} la soumission
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 24px 60px rgba(0,0,0,0.15)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h2 style={{ fontWeight: 700, color: "#121a2e", margin: 0, fontSize: 15, letterSpacing: "-0.3px" }}>
+                {feedbackModal.action === "accepted" ? "Accepter" : "Refuser"} la soumission
               </h2>
-              <button onClick={() => setFeedbackModal(null)}><X size={18} className="text-gray-400" /></button>
+              <button onClick={() => setFeedbackModal(null)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={18} style={{ color: "rgba(18,26,46,0.4)" }} /></button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">Prestataire : <strong>{feedbackModal.sub.designer_name}</strong></p>
-            <textarea
-              value={feedback}
-              onChange={e => setFeedback(e.target.value)}
-              placeholder="Feedback (optionnel, sera envoyé par email)..."
-              rows={4}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-400 resize-none"
-            />
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setFeedbackModal(null)} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50">Annuler</button>
-              <button onClick={evaluate} className={`flex-1 py-2.5 text-white rounded-lg text-sm font-medium ${feedbackModal.action === "accepted" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}`}>
+            <p style={{ fontSize: 13, color: "rgba(18,26,46,0.6)", marginBottom: 16 }}>Prestataire : <strong>{feedbackModal.sub.designer_name}</strong></p>
+            <textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback (optionnel, sera envoyé par email)..." rows={4} style={inputStyle} />
+            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+              <button onClick={() => setFeedbackModal(null)} style={{ flex: 1, padding: "11px", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 10, fontSize: 13, background: "#fff", cursor: "pointer", color: "rgba(18,26,46,0.6)", fontWeight: 500 }}>Annuler</button>
+              <button onClick={evaluate} style={{
+                flex: 1, padding: "11px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none",
+                background: feedbackModal.action === "accepted"
+                  ? "linear-gradient(121deg, rgb(34,197,94) 0%, rgb(22,163,74) 100%)"
+                  : "linear-gradient(121deg, rgb(248,113,113) 0%, rgb(220,38,38) 100%)",
+                color: "#fff",
+              }}>
                 {feedbackModal.action === "accepted" ? "Confirmer l'acceptation" : "Confirmer le refus"}
               </button>
             </div>

@@ -11,7 +11,7 @@ import {
   LinkedInProspect, ConversationMessage, ProspectionSkeleton,
   ACTION_LABELS, PROSPECT_STATUS_LABELS, PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
-import { loadLinkedInSettings } from "../layout";
+import { loadLinkedInSettings } from "@/lib/linkedin/settings";
 import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
 import {
   fetchRemoteLinkedInWorkspace,

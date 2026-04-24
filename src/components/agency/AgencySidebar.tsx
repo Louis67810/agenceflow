@@ -1,9 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -17,6 +17,7 @@ import {
   PenLine,
   CheckSquare,
   ChevronDown,
+  ChevronRight,
   Zap,
   UserCheck,
   CalendarDays,
@@ -30,6 +31,7 @@ import {
   Repeat,
   Timer,
   BarChart2,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -53,13 +55,15 @@ const agendaSubNav: NavItem[] = [
 ];
 
 const linkedInSubNav: NavItem[] = [
-  { href: "/admin/linkedin/posts", label: "Posts", icon: <PenLine size={13} /> },
-  { href: "/admin/linkedin/planification", label: "Planification", icon: <CalendarDays size={13} /> },
-  { href: "/admin/linkedin/statistiques", label: "Statistiques", icon: <BarChart2 size={13} /> },
-  { href: "/admin/linkedin/style", label: "Style", icon: <Palette size={13} /> },
-  { href: "/admin/linkedin/idees", label: "Idées", icon: <Lightbulb size={13} /> },
-  { href: "/admin/linkedin/prospection", label: "Prospection", icon: <UserCheck size={13} /> },
-  { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={13} /> },
+  { href: "/admin/linkedin/posts", label: "Post", icon: <PenLine size={18} /> },
+  { href: "/admin/linkedin/carrousel", label: "Carrousel", icon: <FileText size={18} /> },
+  { href: "/admin/linkedin/planification", label: "Planification", icon: <CalendarDays size={18} /> },
+  { href: "/admin/linkedin/statistiques", label: "Statistiques", icon: <BarChart2 size={18} /> },
+  { href: "/admin/linkedin/style", label: "Style", icon: <Palette size={18} /> },
+  { href: "/admin/linkedin/idees", label: "Idées", icon: <Lightbulb size={18} /> },
+  { href: "/admin/linkedin/prospection", label: "Prospection", icon: <UserCheck size={18} /> },
+  { href: "/admin/lead-magnet", label: "Lead Magnet", icon: <Zap size={18} /> },
+  { href: "/admin/linkedin/parametres", label: "Parametres", icon: <Settings size={18} /> },
 ];
 
 const adminNav: NavItem[] = [
@@ -97,10 +101,15 @@ interface AgencySidebarProps {
 
 export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarProps) {
   const pathname = usePathname();
-  const isOnLinkedIn = pathname.startsWith("/admin/linkedin");
+  const router = useRouter();
+  const isOnLinkedIn = pathname.startsWith("/admin/linkedin") || pathname.startsWith("/admin/lead-magnet");
   const isOnAgenda = pathname.startsWith("/admin/agenda");
   const [linkedInOpen, setLinkedInOpen] = useState(isOnLinkedIn);
   const [agendaOpen, setAgendaOpen] = useState(isOnAgenda);
+
+  useEffect(() => {
+    if (isOnLinkedIn) setLinkedInOpen(true);
+  }, [isOnLinkedIn]);
 
   const navItems = role === "admin" ? adminNav : role === "client" ? clientNav : designerNav;
 
@@ -251,139 +260,142 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          // Insert LinkedIn group after copywriting
-          if (item.href === "/admin/calendar" && role === "admin") {
-            return (
-              <div key="linkedin-group">
-                {/* LinkedIn collapsible group */}
-                <button
-                  onClick={() => setLinkedInOpen((o) => !o)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    isOnLinkedIn
-                      ? "bg-[#0A66C2] text-white"
-                      : "text-gray-400 hover:bg-white/5 hover:text-white"
-                  )}
-                >
-                  <div className="w-[18px] h-[18px] bg-white rounded flex items-center justify-center shrink-0">
-                    <span className="text-[#0A66C2] text-[10px] font-black leading-none">in</span>
-                  </div>
-                  <span className="flex-1 text-left">LinkedIn</span>
-                  <ChevronDown
-                    size={15}
-                    className={`transition-transform ${linkedInOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-
-                {linkedInOpen && (
-                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
-                    {linkedInSubNav.map((sub) => {
-                      const subActive = pathname.startsWith(sub.href);
-                      return (
-                        <Link
-                          key={sub.href}
-                          href={sub.href}
-                          className={cn(
-                            "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
-                            subActive
-                              ? "text-white bg-white/7"
-                              : "text-gray-400 hover:text-white hover:bg-white/5"
-                          )}
-                        >
-                          {sub.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Render the calendar item */}
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1",
-                    pathname.startsWith(item.href)
-                      ? "bg-white/7 text-white rounded-lg"
-                      : "text-gray-400 hover:bg-white/5 hover:text-white"
-                  )}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-              </div>
-            );
-          }
-
-          // Insert Agenda collapsible group
-          if (item.href === "/admin/agenda" && role === "admin") {
-            return (
-              <div key="agenda-group">
-                <button
-                  onClick={() => setAgendaOpen((o) => !o)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    isOnAgenda
-                      ? "bg-white/7 text-white rounded-lg"
-                      : "text-gray-400 hover:bg-white/5 hover:text-white"
-                  )}
-                >
-                  <CalendarDays size={18} />
-                  <span className="flex-1 text-left">Habits</span>
-                  <ChevronDown
-                    size={15}
-                    className={`transition-transform ${agendaOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-                {agendaOpen && (
-                  <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
-                    {agendaSubNav.map((sub) => {
-                      const subActive = sub.href === "/admin/agenda"
-                        ? pathname === sub.href
-                        : pathname.startsWith(sub.href);
-                      return (
-                        <Link
-                          key={sub.href}
-                          href={sub.href}
-                          className={cn(
-                            "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
-                            subActive
-                              ? "text-white bg-white/7"
-                              : "text-gray-400 hover:text-white hover:bg-white/5"
-                          )}
-                        >
-                          {sub.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          const isActive =
-            item.href === `/${role}`
-              ? pathname === item.href
-              : pathname.startsWith(item.href);
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-white/7 text-white rounded-lg"
-                  : "text-gray-400 hover:bg-white/5 hover:text-white"
-              )}
+        {linkedInOpen ? (
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setLinkedInOpen(false)}
+              className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
             >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
+              <ArrowLeft size={15} />
+              <span>Retour</span>
+            </button>
+            {linkedInSubNav.map((sub, index) => {
+              const subActive =
+                sub.href === "/admin/linkedin/posts"
+                  ? pathname === sub.href
+                  : pathname.startsWith(sub.href);
+              return (
+                <Link
+                  key={sub.href}
+                  href={sub.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    subActive ? "bg-white/7 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                  )}
+                  style={{ animation: `linkedin-nav-enter 320ms ease ${index * 38}ms both` }}
+                >
+                  <span className="flex h-[18px] w-[18px] items-center justify-center shrink-0">{sub.icon}</span>
+                  <span>{sub.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          navItems.map((item) => {
+            if (item.href === "/admin/calendar" && role === "admin") {
+              return (
+                <div key="linkedin-group">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkedInOpen(true);
+                      if (!isOnLinkedIn && pathname !== "/admin/lead-magnet") router.push("/admin/linkedin/posts");
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      isOnLinkedIn ? "bg-white/7 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <div className="w-[18px] h-[18px] bg-white rounded flex items-center justify-center shrink-0">
+                      <span className="text-[#0A66C2] text-[10px] font-black leading-none">in</span>
+                    </div>
+                    <span className="flex-1 text-left">LinkedIn</span>
+                    <ChevronRight size={15} />
+                  </button>
+
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1",
+                      pathname.startsWith(item.href) ? "bg-white/7 text-white rounded-lg" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                </div>
+              );
+            }
+
+            if (item.href === "/admin/agenda" && role === "admin") {
+              return (
+                <div key="agenda-group">
+                  <button
+                    onClick={() => setAgendaOpen((o) => !o)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      isOnAgenda ? "bg-white/7 text-white rounded-lg" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <CalendarDays size={18} />
+                    <span className="flex-1 text-left">Habits</span>
+                    <ChevronDown
+                      size={15}
+                      className={`transition-transform ${agendaOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {agendaOpen && (
+                    <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
+                      {agendaSubNav.map((sub) => {
+                        const subActive = sub.href === "/admin/agenda"
+                          ? pathname === sub.href
+                          : pathname.startsWith(sub.href);
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            className={cn(
+                              "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
+                              subActive
+                                ? "text-white bg-white/7"
+                                : "text-gray-400 hover:text-white hover:bg-white/5"
+                            )}
+                          >
+                            {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isActive =
+              item.href === `/${role}`
+                ? pathname === item.href
+                : pathname.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-white/7 text-white rounded-lg"
+                    : "text-gray-400 hover:bg-white/5 hover:text-white"
+                )}
+              >
+                {item.icon}
+                {item.label}
+              </Link>
+            );
+          })
+        )}
       </nav>
+      <style>{`@keyframes linkedin-nav-enter { from { opacity: 0; filter: blur(10px); transform: translateY(-10px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }`}</style>
 
       {/* User + Actions */}
       <div className="px-3 py-4 border-t border-gray-700 space-y-1">

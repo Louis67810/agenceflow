@@ -483,6 +483,7 @@ export default function LinkedInStatsPage() {
   const [pendingImportedAnalytics, setPendingImportedAnalytics] = useState<LinkedInPostAnalytics | null>(null);
   const [linkOverlayOpen, setLinkOverlayOpen] = useState(false);
   const [linkSearch, setLinkSearch] = useState("");
+  const [analyticsOverlayPostId, setAnalyticsOverlayPostId] = useState<string | null>(null);
   const [showPendingCsvPosts, setShowPendingCsvPosts] = useState(false);
   const [activeTab, setActiveTab] = useState<StatsTab>("posts");
   const [periodKey, setPeriodKey] = useState<PeriodKey>("30");
@@ -552,11 +553,12 @@ export default function LinkedInStatsPage() {
   }, [pendingCsvPosts, publishedPosts, showPendingCsvPosts, sortBy]);
 
   const selectedPost = posts.find((post) => post.id === selectedPostId) ?? null;
+  const analyticsOverlayPost = posts.find((post) => post.id === analyticsOverlayPostId) ?? null;
   const totalImpressions = getMetricTotal(publishedPosts, "impressions");
   const totalReactions = getMetricTotal(publishedPosts, "reactions");
   const totalComments = getMetricTotal(publishedPosts, "comments");
   const totalLinkClicks = getMetricTotal(publishedPosts, "linkClicks");
-  const canSave = Boolean((selectedPostId || pendingImportedAnalytics) && (postContent.trim() || pendingImportedAnalytics) && selectedStyleId && editor.format);
+  const canSave = Boolean((selectedPostId || pendingImportedAnalytics) && (postContent.trim() || pendingImportedAnalytics || selectedPost) && selectedStyleId && editor.format);
   const selectedPeriod = PERIOD_OPTIONS.find((period) => period.key === periodKey) ?? PERIOD_OPTIONS[0];
   const currentPeriodRange = useMemo(() => getPeriodRange(selectedPeriod.days, 0), [selectedPeriod.days]);
   const previousPeriodRange = useMemo(() => getPeriodRange(selectedPeriod.days, 1), [selectedPeriod.days]);
@@ -783,15 +785,20 @@ export default function LinkedInStatsPage() {
     const normalizedAnalytics = normalizeAnalytics({
       ...post.analytics,
       ...analytics,
-      importedAt: post.analytics?.importedAt ?? new Date().toISOString(),
-      format: analytics.format,
+      importedAt: normalizeAnalytics(analytics).importedAt || post.analytics?.importedAt || new Date().toISOString(),
+      format: analytics.format ?? post.analytics?.format,
     });
+    const publishedAtFromAnalytics = normalizedAnalytics.publishedDate
+      ? `${normalizedAnalytics.publishedDate}T${normalizedAnalytics.publishedTime || "12:00"}:00`
+      : undefined;
 
     return normalizePost({
       ...post,
-      content: content.trim() || post.content,
-      postUrl: normalizedAnalytics.postUrl,
+      content: content.trim() || getPostContentFallback(post) || post.content,
+      postUrl: normalizedAnalytics.postUrl || post.postUrl,
       type: normalizedAnalytics.format === "carousel" ? "carousel" : "post",
+      status: "published",
+      publishedAt: post.publishedAt || publishedAtFromAnalytics || normalizedAnalytics.importedAt || new Date().toISOString(),
       styleId: selectedStyle?.id,
       styleName: selectedStyle?.name,
       likes: normalizedAnalytics.reactions,
@@ -1199,11 +1206,11 @@ export default function LinkedInStatsPage() {
           )}
         </div>
 
-        {!editorActive ? (
+        {!editorActive && publishedPosts.length > 0 ? (
           <div style={{ padding: "24px 26px 24px", display: "flex", flexDirection: "column", gap: 13, overflowY: "auto", minHeight: 0 }}>
             {metricCards.map((card) => (
-              <article key={card.label} style={{ minHeight: 96, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+              <article key={card.label} style={{ minHeight: 148, height: "auto", borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "20px 20px 24px", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "visible" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 10, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12, flexShrink: 0 }}>
                   {card.icon}
                 </div>
                 <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
@@ -1211,7 +1218,7 @@ export default function LinkedInStatsPage() {
               </article>
             ))}
           </div>
-        ) : (
+        ) : editorActive ? (
           <div style={{ padding: "30px 26px 24px", display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", minHeight: 0, flex: 1 }}>
             <Field label="Format du post *">
               <div style={{ position: "relative" }}>
@@ -1281,6 +1288,7 @@ export default function LinkedInStatsPage() {
               />
             </Field>
 
+            {false && selectedPostId && <>
             <Field label="Lien du post">
               <input value={toInputValue(editor.postUrl)} onChange={(event) => handleEditorChange("postUrl", event.target.value)} style={figmaInputStyle} />
             </Field>
@@ -1383,7 +1391,10 @@ export default function LinkedInStatsPage() {
                 </div>
               </div>
             )}
+            </>}
           </div>
+        ) : (
+          <div style={{ flex: 1, minHeight: 0 }} />
         )}
 
         {editorActive ? (
@@ -1414,13 +1425,13 @@ export default function LinkedInStatsPage() {
 
             <div style={{ height: 1, background: "#e9ecef" }} />
 
-            {dataSideCards.map((card) => {
+            {analyticsPosts.length > 0 && dataSideCards.map((card) => {
               const Icon = card.icon;
               const delta = percentDelta(card.value, card.previous);
               const hasPrevious = selectedPeriod.days !== null && card.previous > 0;
               return (
-              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${formatNumber(Math.round(card.value))} sur ${selectedPeriod.label}. Comparaison calculée avec la période précédente de même durée.` })} style={{ textAlign: "left", minHeight: 118, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "18px 20px", boxSizing: "border-box", cursor: "pointer", overflow: "hidden" }}>
-                <div style={{ width: 42, height: 42, borderRadius: 9, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+              <button key={card.label} type="button" onClick={() => setDataOverlay({ title: card.label, body: `${formatNumber(Math.round(card.value))} sur ${selectedPeriod.label}. Comparaison calculée avec la période précédente de même durée.` })} style={{ textAlign: "left", minHeight: 152, borderRadius: 20, border: "1px solid #e1e4e8", background: "#fff", boxShadow: cardShadow, padding: "20px 20px 24px", boxSizing: "border-box", cursor: "pointer", overflow: "visible", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+                <div style={{ width: 48, height: 48, borderRadius: 10, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14, flexShrink: 0 }}>
                   <Icon size={17} style={{ color: "#6f7887" }} />
                 </div>
                 <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: "#6f7887" }}>{card.label}</p>
@@ -1501,7 +1512,7 @@ export default function LinkedInStatsPage() {
                   ))}
                   {[0, 1, 2, 3, 4].map((line) => {
                     const value = Math.round(timelineMax - (timelineMax / 4) * line);
-                    return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontFamily="Inter, sans-serif">{formatNumber(value)}</text>;
+                    return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{formatNumber(value)}</text>;
                   })}
                   <defs>
                     <linearGradient id="linkedinStatsLineFill" x1="0" y1="0" x2="0" y2="1">
@@ -1533,18 +1544,18 @@ export default function LinkedInStatsPage() {
                   {timeline.map((item, index) => {
                     if (index % Math.max(Math.ceil(timeline.length / 6), 1) !== 0) return null;
                     const x = timeline.length <= 1 ? 58 : 58 + (index / Math.max(timeline.length - 1, 1)) * 820;
-                    return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontFamily="Inter, sans-serif">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
+                    return <text key={`label-${item.date.toISOString()}`} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{item.date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
                   })}
                 </svg>
               )}
             </section>
 
-            <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 22 }}>
+            <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
               <article style={{ ...dataCardStyle, padding: 24 }}>
                 <h3 style={{ margin: "0 0 18px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Repartition par format</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "152px 1fr", gap: 20, alignItems: "center" }}>
-                  <div style={{ width: 152, height: 152, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
-                    <div style={{ position: "absolute", inset: 42, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "184px 1fr", gap: 20, alignItems: "center" }}>
+                  <div style={{ width: 184, height: 184, borderRadius: "50%", background: `conic-gradient(${formatConic})`, position: "relative" }}>
+                  <div style={{ position: "absolute", inset: 42, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
                       <span style={{ ...dataMutedText, fontSize: 13 }}>Total</span>
                       <strong style={{ fontSize: 22, color: "#121a2e" }}>{analyticsPosts.length}</strong>
                       <span style={{ ...dataMutedText, fontSize: 12 }}>posts</span>
@@ -1605,7 +1616,7 @@ export default function LinkedInStatsPage() {
                 </div>
               </article>
 
-              <article style={{ ...dataCardStyle, padding: 24, display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: 234 }}>
+              <article style={{ ...dataCardStyle, padding: 24, display: "none", flexDirection: "column", justifyContent: "space-between", minHeight: 234 }}>
                 <div>
                   <h3 style={{ margin: "0 0 52px", fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Meilleur moment pour publier</h3>
                   <strong style={{ display: "block", fontSize: 34, fontWeight: 500, color: "#121a2e", letterSpacing: "-0.6px" }}>{bestTime.label}</strong>
@@ -1705,7 +1716,7 @@ export default function LinkedInStatsPage() {
                   setSortOpen(false);
                   setShowPendingCsvPosts((current) => !current);
                 }}
-                style={{ border: "1px solid rgba(18,26,46,0.12)", background: showPendingCsvPosts ? "#121a2e" : "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 600, color: showPendingCsvPosts ? "#fff" : "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
+                style={{ border: "1px solid rgba(18,26,46,0.12)", background: showPendingCsvPosts ? "#121a2e" : "#fff", borderRadius: 18, minHeight: 38, padding: "0 15px", fontFamily: '"Inter", sans-serif', fontSize: 14, fontWeight: 500, color: showPendingCsvPosts ? "#fff" : "rgba(18,26,46,0.72)", cursor: "pointer", boxShadow: sortShadow, display: "flex", alignItems: "center", gap: 6 }}
               >
                 À importer {pendingCsvPosts.length > 0 ? `(${pendingCsvPosts.length})` : ""}
               </button>
@@ -1785,7 +1796,7 @@ export default function LinkedInStatsPage() {
                       borderBottom: "none",
                       background: "transparent",
                       display: "grid",
-                      gridTemplateColumns: "84px minmax(180px, 1fr) auto auto 42px",
+                      gridTemplateColumns: "84px minmax(180px, 1fr) auto auto 42px 42px",
                       alignItems: "center",
                       gap: 8,
                       padding: 16,
@@ -1801,7 +1812,7 @@ export default function LinkedInStatsPage() {
                   >
                     <MediaSquare analytics={analytics} />
                     <div style={{ minWidth: 0 }}>
-                      <h3 style={{ margin: 0, fontSize: 16, lineHeight: "21px", fontWeight: 500, color: "#121a2e", letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <h3 style={{ margin: 0, fontSize: 18, lineHeight: "23px", fontWeight: 500, color: "#121a2e", letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {buildPostTitle(post)}
                       </h3>
                       <p style={{ margin: "7px 0 0", fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>
@@ -1817,6 +1828,25 @@ export default function LinkedInStatsPage() {
                     <span
                       role="button"
                       tabIndex={0}
+                      aria-label="Voir les statistiques"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setAnalyticsOverlayPostId(post.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setAnalyticsOverlayPostId(post.id);
+                        }
+                      }}
+                      style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.82)", cursor: "pointer", boxShadow: sortShadow }}
+                    >
+                      <Info size={15} />
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
                       aria-label="Supprimer le post"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -1829,7 +1859,7 @@ export default function LinkedInStatsPage() {
                           deletePost(post.id);
                         }
                       }}
-                      style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "#c53434", cursor: "pointer", boxShadow: sortShadow }}
+                      style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.82)", cursor: "pointer", boxShadow: sortShadow }}
                     >
                       <Trash2 size={15} />
                     </span>
@@ -1842,6 +1872,50 @@ export default function LinkedInStatsPage() {
           </>
         )}
       </main>
+
+      {analyticsOverlayPost ? (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 36, background: "rgba(18,26,46,0.16)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          onClick={() => setAnalyticsOverlayPostId(null)}
+        >
+          <div
+            style={{ width: "min(560px, 100%)", borderRadius: 20, background: "#fff", border: "1px solid #e1e4e8", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 22 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#121a2e" }}>{buildPostTitle(analyticsOverlayPost)}</h3>
+                <p style={{ margin: "7px 0 0", ...dataMutedText }}>{formatPreviewDate(analyticsOverlayPost)}</p>
+              </div>
+              <button type="button" onClick={() => setAnalyticsOverlayPostId(null)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid #e1e4e8", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} aria-label="Fermer">
+                <X size={16} style={{ color: "#6f7887" }} />
+              </button>
+            </div>
+            <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              {(() => {
+                const analytics = normalizeAnalytics(analyticsOverlayPost.analytics);
+                return [
+                  ["Impressions", analytics.impressions],
+                  ["Réactions", analytics.reactions],
+                  ["Commentaires", analytics.comments],
+                  ["Membres touchés", analytics.reach],
+                  ["Vues profil", analytics.profileViews],
+                  ["Abonnés gagnés", analytics.followersGained],
+                  ["Republications", analytics.reposts],
+                  ["Enregistrements", analytics.saves],
+                  ["Envois LinkedIn", analytics.sends],
+                  ["Clics lien", analytics.linkClicks],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ border: "1px solid #e1e4e8", borderRadius: 12, padding: "12px 14px", background: "#fff" }}>
+                    <span style={{ display: "block", ...dataMutedText, fontSize: 12 }}>{label}</span>
+                    <strong style={{ display: "block", marginTop: 6, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{formatNumber(Number(value) || 0)}</strong>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {dataOverlay ? (
         <div

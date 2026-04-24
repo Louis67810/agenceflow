@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Wand2, Loader2, X, Check, Copy, Trash2, Link2, Plus, Download,
+  Wand2, Loader2, X, Check, Trash2, Link2, Plus, Download,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
   ThumbsUp, MessageCircle, Eye, Calendar,
-  BarChart2, Clock, Layers, FileText, Image as ImageIcon,
-  Search, Send, History,
+  FileText, Image as ImageIcon,
+  Search, Send, History, ChevronDown, ArrowLeft,
 } from "lucide-react";
-import type { LinkedInCarouselPageTemplate, LinkedInCarouselTemplate, LinkedInPost, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
+import type { LinkedInCarouselPageTemplate, LinkedInCarouselTemplate, LinkedInPost, LinkedInPostAnalytics, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
 import { DEFAULT_STYLES } from "@/types/linkedin";
-import { loadLinkedInSettings, type LinkedInSettings } from "../layout";
+import { loadLinkedInSettings, type LinkedInSettings } from "@/lib/linkedin/settings";
 import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
 import {
   computeLinkedInPostScore,
@@ -28,6 +28,10 @@ import {
   persistRemoteLinkedInPosts,
 } from "@/lib/linkedin/remote";
 import {
+  persistRemoteLinkedInSettings,
+  queueRemoteLinkedInSettingsSync,
+} from "@/lib/linkedin/settings";
+import {
   fetchRemoteLinkedInWorkspace,
   hasMeaningfulLinkedInWorkspaceData,
   loadLinkedInWorkspaceCache,
@@ -39,10 +43,237 @@ import ClientBlueButton from "@/components/shared/ClientBlueButton";
 type SourceTab = "idea" | "url" | "youtube" | "manual";
 type PostsView = "draft" | "scheduled";
 type PostsMode = "post" | "carousel";
-type CarouselStudioTab = "pages" | "templates" | "editor";
+type CarouselStudioTab = "templates" | "editor";
 type CarouselStudioMode = "builder" | "generate";
+type ManualPostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
+type CarouselSlideKind = "context" | "step" | "argument-blue" | "argument-red" | "cta" | "before-after" | "why-design" | "avis" | "image" | "free";
+type CarouselSlidePayload = {
+  kind: CarouselSlideKind;
+  label: string;
+  stepNumber?: number;
+  pointNumber?: number;
+  title?: string;
+  subtitle?: string;
+  body?: string;
+  result?: string;
+  showResult?: boolean;
+  showStepCta?: boolean;
+  stepCtaText?: string;
+  imageMode?: "frame" | "full";
+  imageSource?: "manual" | "ai";
+  imageUrl?: string;
+  beforeImage?: string;
+  afterImage?: string;
+  backgroundImage1?: string;
+  backgroundImage2?: string;
+};
+
+type CarouselTemplateItemMeta = {
+  label?: string;
+  fields?: Record<string, string>;
+};
+
+const MANUAL_POST_FORMATS: Array<{ value: ManualPostFormat; label: string }> = [
+  { value: "text", label: "Texte" },
+  { value: "image", label: "Image" },
+  { value: "video", label: "Vidéo" },
+  { value: "document", label: "Document" },
+];
 
 const FREE_CAROUSEL_PAGE_ID = "__free_carousel_page__";
+const SLIDE_KIND_PREFIX = "builtin:";
+
+const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
+  {
+    id: "builtin:context",
+    name: "Contexte",
+    description: "Slide contexte avec label fixe et sous-titre modifiable.",
+    figmaNodeId: "slide:context",
+    pagePrompt: "Explique le contexte en quelques phrases fortes.",
+    imagePrompt: "",
+    fields: [
+      { id: "context-subtitle", label: "Texte du sous-titre", kind: "text", required: true, aiPrompt: "Genere le texte de contexte.", defaultValue: "La plupart des landing pages convertissent mal.\n\nPas parce qu'elles sont moches. Mais parce qu'elles parlent a tout le monde... donc a personne." },
+      { id: "context-step-enabled", label: "Afficher le bouton etape", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "oui" },
+      { id: "context-step-text", label: "Texte du bouton", kind: "text", required: false, aiPrompt: "Texte court du bouton noir.", defaultValue: "Voici les 3 etapes pour y remedier" },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:step",
+    name: "Etape",
+    description: "Slide etape avec numerotation automatique.",
+    figmaNodeId: "slide:step",
+    pagePrompt: "Genere une etape courte et actionnable.",
+    imagePrompt: "",
+    fields: [
+      { id: "step-title", label: "Texte de l'etape", kind: "text", required: true, aiPrompt: "Titre d'etape.", defaultValue: "Creer ton avatar client" },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:argument-blue",
+    name: "Point bleu",
+    description: "Argument positif dynamique avec image et resultat optionnel.",
+    figmaNodeId: "slide:argument-blue",
+    pagePrompt: "Transforme l'instruction en points positifs.",
+    imagePrompt: "Image claire qui illustre ce point.",
+    fields: [
+      { id: "arg-title", label: "Titre max 22 caracteres", kind: "text", required: true, aiPrompt: "Titre court.", defaultValue: "Definis son profil" },
+      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
+      { id: "arg-image", label: "Image", kind: "image", required: false, aiPrompt: "Image manuelle ou generee." },
+      { id: "arg-image-source", label: "Image IA active", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "non" },
+      { id: "arg-image-mode", label: "Mode image", kind: "text", required: false, aiPrompt: "frame/full", defaultValue: "frame" },
+      { id: "arg-result-enabled", label: "Afficher resultat", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "oui" },
+      { id: "arg-result", label: "Texte resultat", kind: "text", required: false, aiPrompt: "Resultat court.", defaultValue: "Resultat : La valeur percue s'effondre" },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:argument-red",
+    name: "Point rouge",
+    description: "Argument negatif, meme structure que le point bleu.",
+    figmaNodeId: "slide:argument-red",
+    pagePrompt: "Transforme l'instruction en points negatifs.",
+    imagePrompt: "Image claire qui illustre cette erreur.",
+    fields: [
+      { id: "arg-title", label: "Titre max 22 caracteres", kind: "text", required: true, aiPrompt: "Titre court.", defaultValue: "Aucune preuve sociale" },
+      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
+      { id: "arg-image", label: "Image", kind: "image", required: false, aiPrompt: "Image manuelle ou generee." },
+      { id: "arg-image-source", label: "Image IA active", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "non" },
+      { id: "arg-image-mode", label: "Mode image", kind: "text", required: false, aiPrompt: "frame/full", defaultValue: "frame" },
+      { id: "arg-result-enabled", label: "Afficher resultat", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "oui" },
+      { id: "arg-result", label: "Texte resultat", kind: "text", required: false, aiPrompt: "Resultat court.", defaultValue: "Resultat : La valeur percue s'effondre" },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:cta",
+    name: "CTA",
+    description: "Slide CTA fixe, seules les deux images de fond sont modifiables.",
+    figmaNodeId: "slide:cta",
+    pagePrompt: "Slide CTA fixe.",
+    imagePrompt: "",
+    fields: [
+      { id: "cta-bg-1", label: "Image de fond 1", kind: "image", required: false, aiPrompt: "Image de fond principale." },
+      { id: "cta-bg-2", label: "Image de fond 2", kind: "image", required: false, aiPrompt: "Image de fond secondaire." },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:before-after",
+    name: "Avant / Apres",
+    description: "Deux images fixes avant et apres.",
+    figmaNodeId: "slide:before-after",
+    pagePrompt: "Compare une ancienne et une nouvelle version.",
+    imagePrompt: "",
+    fields: [
+      { id: "before-image", label: "Image avant", kind: "image", required: true, aiPrompt: "Image avant." },
+      { id: "after-image", label: "Image apres", kind: "image", required: true, aiPrompt: "Image apres." },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:why-design",
+    name: "Pourquoi ce design fonctionne",
+    description: "Slide bleue dont seul le texte est modifiable.",
+    figmaNodeId: "slide:why-design",
+    pagePrompt: "Explique pourquoi ce design fonctionne mieux.",
+    imagePrompt: "",
+    fields: [
+      { id: "why-text", label: "Texte", kind: "text", required: true, aiPrompt: "Texte de la carte bleue.", defaultValue: "Pourquoi ce design fonctionne-t-il mieux ?" },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:avis",
+    name: "Avis",
+    description: "Slide avis fixe.",
+    figmaNodeId: "slide:avis",
+    pagePrompt: "Question de preference.",
+    imagePrompt: "",
+    fields: [
+      { id: "avis-title", label: "Question", kind: "text", required: true, aiPrompt: "Question de preference.", defaultValue: "Tu preferes quelle version ?" },
+      { id: "avis-image-1", label: "Image version 1", kind: "image", required: false, aiPrompt: "Premiere image." },
+      { id: "avis-image-2", label: "Image version 2", kind: "image", required: false, aiPrompt: "Deuxieme image." },
+    ],
+    createdAt: "builtin",
+  },
+  {
+    id: "builtin:image",
+    name: "Image",
+    description: "Slide image plein format.",
+    figmaNodeId: "slide:image",
+    pagePrompt: "Slide image seule.",
+    imagePrompt: "Image plein format sur toute la slide.",
+    fields: [
+      { id: "image-src", label: "Image", kind: "image", required: true, aiPrompt: "Image principale de la slide." },
+    ],
+    createdAt: "builtin",
+  },
+];
+
+function getSlideKind(pageTemplateId: string): CarouselSlideKind {
+  return pageTemplateId.replace(SLIDE_KIND_PREFIX, "") as CarouselSlideKind;
+}
+
+function isEnabled(value?: string) {
+  return !["non", "false", "0", "off"].includes((value || "").trim().toLowerCase());
+}
+
+function getTemplateField(page: LinkedInCarouselPageTemplate | null, fieldId: string, fallback = "") {
+  return page?.fields.find((field) => field.id === fieldId)?.defaultValue ?? fallback;
+}
+
+function limitSlideTitle(value: string, max = 22) {
+  const clean = value.trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1).trim()}...`;
+}
+
+function splitInstructionPoints(prompt: string) {
+  const lines = prompt
+    .split(/\n|;|•|-/)
+    .map((line) => line.replace(/^\d+[\).\s-]*/, "").trim())
+    .filter(Boolean);
+  if (lines.length > 1) return lines;
+  const sentences = prompt.split(/(?<=[.!?])\s+/).map((line) => line.trim()).filter((line) => line.length > 18);
+  return sentences.length > 1 ? sentences : [];
+}
+
+function encodeCarouselSlide(payload: CarouselSlidePayload) {
+  return `__AF_CAROUSEL_SLIDE__${JSON.stringify(payload)}`;
+}
+
+function decodeCarouselSlide(value: string): CarouselSlidePayload | null {
+  if (!value.startsWith("__AF_CAROUSEL_SLIDE__")) return null;
+  try {
+    return JSON.parse(value.replace("__AF_CAROUSEL_SLIDE__", "")) as CarouselSlidePayload;
+  } catch {
+    return null;
+  }
+}
+
+function encodeCarouselTemplateItemMeta(meta: CarouselTemplateItemMeta) {
+  return `__AF_ITEM_META__${JSON.stringify(meta)}`;
+}
+
+function decodeCarouselTemplateItemMeta(label?: string): CarouselTemplateItemMeta {
+  if (!label?.startsWith("__AF_ITEM_META__")) return {};
+  try {
+    return JSON.parse(label.replace("__AF_ITEM_META__", "")) as CarouselTemplateItemMeta;
+  } catch {
+    return {};
+  }
+}
+
+function getCarouselTemplateItemLabel(item: LinkedInCarouselTemplate["items"][number], page: LinkedInCarouselPageTemplate | null, index: number) {
+  const meta = decodeCarouselTemplateItemMeta(item.label);
+  return meta.label || item.label || `${index + 1}. ${page?.name || "Slide"}`;
+}
+
+function getCarouselTemplateItemField(item: LinkedInCarouselTemplate["items"][number], page: LinkedInCarouselPageTemplate | null, fieldId: string, fallback = "") {
+  const meta = decodeCarouselTemplateItemMeta(item.label);
+  return meta.fields?.[fieldId] ?? getTemplateField(page, fieldId, fallback);
+}
 
 async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes: number; kind: "image" | "pdf" }> {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
@@ -59,7 +290,7 @@ async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.onerror = () => reject(new Error("Impossible de télécharger l'image."));
     img.src = rawDataUrl;
   });
   const ratio = Math.min(420 / image.width, 420 / image.height, 1);
@@ -77,7 +308,7 @@ async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes
   return { url, bytes: Math.round((url.length * 3) / 4), kind: "image" };
 }
 
-// ─── Style tokens ─────────────────────────────────────────────────────────────
+// Style tokens
 
 const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
 const inp: CSSProperties = { width: "100%", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "8px 12px", fontSize: 13, color: "#121a2e", outline: "none", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' };
@@ -99,11 +330,22 @@ const STYLE_TAGS: Record<LinkedInStyle["category"] | "custom", { bg: string; col
   custom: { bg: "#f6f6f6", color: "rgba(18,26,46,0.58)", border: "rgba(18,26,46,0.1)" },
 };
 const inactiveStyleTag = { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.55)" };
+const OPENROUTER_MODEL_OPTIONS = [
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-3.7-sonnet",
+  "anthropic/claude-3.5-sonnet",
+  "openai/gpt-4.1",
+  "openai/gpt-4o",
+  "google/gemini-2.5-pro",
+  "google/gemini-2.0-flash",
+];
 
-// ─────────────────────────────────────────────────────────────────────────────
+//
 
 export default function PostsPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isCarouselRoute = pathname.startsWith("/admin/linkedin/carrousel");
   const [posts, setPosts] = useState<LinkedInPost[]>([]);
   const [styles, setStyles] = useState<LinkedInStyle[]>(DEFAULT_STYLES);
   const [ideas, setIdeas] = useState<LinkedInIdea[]>([]);
@@ -114,14 +356,17 @@ export default function PostsPage() {
   const [postsMode, setPostsMode] = useState<PostsMode>("post");
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [postType, setPostType] = useState<"post" | "carousel">("post");
+  const [selectedPostFormat, setSelectedPostFormat] = useState<ManualPostFormat | "">("");
   const [carouselSlides, setCarouselSlides] = useState(5);
-  const [carouselStudioTab, setCarouselStudioTab] = useState<CarouselStudioTab>("pages");
+  const [carouselStudioTab, setCarouselStudioTab] = useState<CarouselStudioTab>("editor");
   const [carouselStudioMode, setCarouselStudioMode] = useState<CarouselStudioMode>("builder");
   const [selectedCarouselPageId, setSelectedCarouselPageId] = useState("");
   const [selectedCarouselTemplateId, setSelectedCarouselTemplateId] = useState("");
   const [selectedCarouselTemplateItemId, setSelectedCarouselTemplateItemId] = useState("");
   const [showCarouselPagePicker, setShowCarouselPagePicker] = useState(false);
+  const [showCarouselTemplatePicker, setShowCarouselTemplatePicker] = useState(false);
   const [carouselPageSearch, setCarouselPageSearch] = useState("");
+  const [carouselTemplateSearch, setCarouselTemplateSearch] = useState("");
   const [carouselGenerationTemplateId, setCarouselGenerationTemplateId] = useState("");
   const [carouselGenerationPrompt, setCarouselGenerationPrompt] = useState("");
   const [carouselGenerationChat, setCarouselGenerationChat] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([]);
@@ -149,6 +394,14 @@ export default function PostsPage() {
   const [manualEditorStarted, setManualEditorStarted] = useState(false);
   const [editorHistory, setEditorHistory] = useState<Array<{ id: string; label: string; before: string; after: string; createdAt: string }>>([]);
   const [chatInput, setChatInput] = useState("");
+  const [hoveredDraftImage, setHoveredDraftImage] = useState(false);
+  const [scheduleOverlayPostId, setScheduleOverlayPostId] = useState<string | null>(null);
+  const [scheduleOverlayDate, setScheduleOverlayDate] = useState("");
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
+  const [draggedCarouselItemId, setDraggedCarouselItemId] = useState("");
+  const editorCarouselRef = useRef<HTMLDivElement | null>(null);
+  const editorDragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 });
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({
@@ -165,8 +418,15 @@ export default function PostsPage() {
     linkClicks: 0,
     engagementRate: 0,
   });
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [settings, setSettings] = useState<LinkedInSettings | null>(null);
+
+  useEffect(() => {
+    setPostsMode(isCarouselRoute ? "carousel" : "post");
+    setPostType(isCarouselRoute ? "carousel" : "post");
+    if (isCarouselRoute) {
+      setCarouselStudioTab("editor");
+    }
+  }, [isCarouselRoute]);
 
   useEffect(() => {
     const localPosts = loadLinkedInPosts();
@@ -374,10 +634,14 @@ export default function PostsPage() {
     setScrapedTitle("");
     setTags("");
     setScheduleDate("");
+    setSelectedPostFormat("");
     setDraftMedia(null);
     setManualEditorStarted(false);
     setEditorHistory([]);
     setChatInput("");
+    setHoveredDraftImage(false);
+    setScheduleOverlayPostId(null);
+    setScheduleOverlayDate("");
   }
 
   function isoToLocalInput(iso?: string) {
@@ -403,6 +667,7 @@ export default function PostsPage() {
     setTags("");
     setScheduleDate(isoToLocalInput(post.scheduledAt));
     const analytics = normalizeAnalytics(post.analytics);
+    setSelectedPostFormat(analytics.format && analytics.format !== "carousel" ? analytics.format : "");
     setDraftMedia(analytics.mediaPreviewUrl ? {
       url: analytics.mediaPreviewUrl,
       kind: analytics.mediaPreviewKind === "pdf" ? "pdf" : "image",
@@ -412,6 +677,7 @@ export default function PostsPage() {
     setManualEditorStarted(true);
     setEditorHistory([]);
     setChatInput("");
+    setHoveredDraftImage(false);
   }
 
   function startManualPost() {
@@ -420,6 +686,7 @@ export default function PostsPage() {
     setGeneratedContent("");
     setGeneratedSlides([]);
     setPostType("post");
+    setSelectedPostFormat("");
     setGenerationError("");
     setDraftMedia(null);
     setEditorHistory([]);
@@ -578,6 +845,43 @@ export default function PostsPage() {
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
   }
 
+  function updateCarouselTemplateItemMeta(templateId: string, itemId: string, patch: Partial<CarouselTemplateItemMeta>) {
+    const nextTemplates = carouselTemplates.map((template) => {
+      if (template.id !== templateId) return template;
+      return {
+        ...template,
+        items: template.items.map((item) => {
+          if (item.id !== itemId) return item;
+          const current = decodeCarouselTemplateItemMeta(item.label);
+          if (!item.label?.startsWith("__AF_ITEM_META__") && item.label) current.label = item.label;
+          return { ...item, label: encodeCarouselTemplateItemMeta({ ...current, ...patch }) };
+        }),
+      };
+    });
+    persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+    const nextTemplate = nextTemplates.find((template) => template.id === templateId);
+    if (nextTemplate && carouselStudioMode === "generate" && generatedSlides.length > 0) {
+      setGeneratedSlides(buildCarouselSlidesFromTemplate(nextTemplate, carouselGenerationPrompt));
+    }
+  }
+
+  function updateCarouselTemplateItemField(templateId: string, itemId: string, fieldId: string, value: string) {
+    const item = carouselTemplates.find((template) => template.id === templateId)?.items.find((entry) => entry.id === itemId);
+    const current = decodeCarouselTemplateItemMeta(item?.label);
+    updateCarouselTemplateItemMeta(templateId, itemId, {
+      fields: {
+        ...(current.fields ?? {}),
+        [fieldId]: fieldId === "arg-title" ? limitSlideTitle(value) : value,
+      },
+    });
+  }
+
+  async function importCarouselTemplateItemImage(templateId: string, itemId: string, fieldId: string, file?: File | null) {
+    if (!file) return;
+    const preview = await fileToCompressedPreview(file);
+    updateCarouselTemplateItemField(templateId, itemId, fieldId, preview.url);
+  }
+
   function moveCarouselTemplateItem(templateId: string, itemId: string, direction: -1 | 1) {
     const nextTemplates = carouselTemplates.map((template) => {
       if (template.id !== templateId) return template;
@@ -592,7 +896,24 @@ export default function PostsPage() {
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
   }
 
+  function reorderCarouselTemplateItem(templateId: string, draggedId: string, targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+    const nextTemplates = carouselTemplates.map((template) => {
+      if (template.id !== templateId) return template;
+      const fromIndex = template.items.findIndex((item) => item.id === draggedId);
+      const toIndex = template.items.findIndex((item) => item.id === targetId);
+      if (fromIndex < 0 || toIndex < 0) return template;
+      const items = [...template.items];
+      const [dragged] = items.splice(fromIndex, 1);
+      items.splice(toIndex, 0, dragged);
+      return { ...template, items };
+    });
+    persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
+  }
+
   function resolveCarouselPage(pageTemplateId: string): LinkedInCarouselPageTemplate | null {
+    const builtin = CAROUSEL_SLIDE_LIBRARY.find((entry) => entry.id === pageTemplateId);
+    if (builtin) return builtin;
     if (pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
       return {
         id: FREE_CAROUSEL_PAGE_ID,
@@ -608,28 +929,56 @@ export default function PostsPage() {
   }
 
   function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string) {
+    let stepIndex = 0;
+    let pointIndex = 0;
+    const instructionPoints = splitInstructionPoints(prompt);
     const slides = template.items.flatMap((item, itemIndex) => {
       if (item.pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
-        return [`PAGE LIBRE ${itemIndex + 1}\n\nImage manuelle à ajouter après génération.`];
+        return [encodeCarouselSlide({ kind: "free", label: "Libre", body: "" })];
       }
       const page = resolveCarouselPage(item.pageTemplateId);
       if (!page) return [];
-      const count = item.mode === "repeat_ai" ? 3 : 1;
+      const kind = getSlideKind(page.id);
+      const getField = (fieldId: string, fallback = "") => getCarouselTemplateItemField(item, page, fieldId, fallback);
+      const isArgument = kind === "argument-blue" || kind === "argument-red";
+      const dynamicPoints = item.mode === "repeat_ai" || isArgument ? instructionPoints : [];
+      const count = dynamicPoints.length > 0 ? dynamicPoints.length : item.mode === "repeat_ai" ? 3 : 1;
       return Array.from({ length: count }).map((_, repeatIndex) => {
-        const suffix = item.mode === "repeat_ai" ? ` ${repeatIndex + 1}` : "";
-        const fields = page.fields.length > 0
-          ? page.fields.map((field) => `${field.label.toUpperCase()}:\n${field.defaultValue || field.aiPrompt || "À remplir par l'IA."}`).join("\n\n")
-          : `TEXTE:\n${page.pagePrompt || "Contenu à générer."}`;
-        return `${page.name}${suffix}\n\n${fields}\n\nCONTEXTE:\n${prompt || "Aucun prompt de départ."}`;
+        const pointText = dynamicPoints[repeatIndex] ?? prompt;
+        if (kind === "step") stepIndex += 1;
+        if (isArgument) pointIndex += 1;
+        const payload: CarouselSlidePayload = {
+          kind,
+          label: page.name,
+          stepNumber: kind === "step" ? stepIndex : undefined,
+          pointNumber: isArgument ? pointIndex : undefined,
+          title: kind === "avis" ? getField("avis-title") : limitSlideTitle(isArgument ? (pointText || getField("arg-title")) : getField("step-title")),
+          subtitle: isArgument ? getField("arg-subtitle", pointText) : getField("context-subtitle"),
+          body: kind === "why-design" ? getField("why-text") : pointText,
+          result: getField("arg-result"),
+          showResult: isEnabled(getField("arg-result-enabled", "oui")),
+          showStepCta: isEnabled(getField("context-step-enabled", "oui")),
+          stepCtaText: getField("context-step-text", "Voici les 3 etapes pour y remedier"),
+          imageMode: getField("arg-image-mode", "frame") === "full" ? "full" : "frame",
+          imageSource: isEnabled(getField("arg-image-source", "non")) ? "ai" : "manual",
+          imageUrl: kind === "image" ? getField("image-src") : getField("arg-image"),
+          beforeImage: kind === "avis" ? getField("avis-image-1") : getField("before-image"),
+          afterImage: kind === "avis" ? getField("avis-image-2") : getField("after-image"),
+          backgroundImage1: getField("cta-bg-1"),
+          backgroundImage2: getField("cta-bg-2"),
+        };
+        return encodeCarouselSlide(payload);
       });
     });
-    return slides.length > 0 ? slides : ["Carrousel vide\n\nAjoute des pages au template avant de générer."];
+    return slides;
   }
 
   function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
     const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
     setCarouselStudioMode("generate");
+    setCarouselStudioTab("editor");
     if (selected) {
+      setShowCarouselTemplatePicker(false);
       setCarouselGenerationTemplateId(selected.id);
       setSelectedCarouselTemplateId(selected.id);
       const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt);
@@ -637,6 +986,42 @@ export default function PostsPage() {
       setActiveSlide(0);
       setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
     }
+  }
+
+  function updateGeneratedCarouselSlide(
+    index: number,
+    updater: (payload: CarouselSlidePayload) => CarouselSlidePayload
+  ) {
+    setGeneratedSlides((current) =>
+      current.map((slide, slideIndex) => {
+        if (slideIndex !== index) return slide;
+        const payload = decodeCarouselSlide(slide) ?? { kind: "free" as CarouselSlideKind, label: "Libre", body: "" };
+        return encodeCarouselSlide(updater(payload));
+      })
+    );
+  }
+
+  async function importGeneratedCarouselSlideImage(index: number, file?: File | null) {
+    if (!file) return;
+    const preview = await fileToCompressedPreview(file);
+    updateGeneratedCarouselSlide(index, (payload) => ({
+      ...payload,
+      imageUrl: preview.url,
+      beforeImage: payload.kind === "before-after" || payload.kind === "avis" ? payload.beforeImage ?? preview.url : payload.beforeImage,
+      afterImage: payload.kind === "before-after" || payload.kind === "avis" ? payload.afterImage ?? preview.url : payload.afterImage,
+    }));
+  }
+
+  function startCarouselManualEditing(template?: LinkedInCarouselTemplate) {
+    const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
+    if (!selected) return;
+    setCarouselStudioMode("generate");
+    setCarouselStudioTab("editor");
+    setCarouselGenerationTemplateId(selected.id);
+    setSelectedCarouselTemplateId(selected.id);
+    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, ""));
+    setActiveSlide(0);
+    setShowCarouselTemplatePicker(false);
   }
 
   function runCarouselGenerationChat() {
@@ -710,7 +1095,7 @@ ${318 + stream.length + 17}
       setDraftMedia({ url: preview.url, kind: preview.kind, fileName: file.name, bytes: preview.bytes });
       setGenerationError("");
     } catch (error) {
-      setGenerationError(error instanceof Error ? error.message : "Image impossible à charger.");
+      setGenerationError(error instanceof Error ? error.message : "Image impossible à télécharger.");
     }
   }
 
@@ -743,12 +1128,46 @@ ${318 + stream.length + 17}
     }
   }
 
-  function handleSave(status: "draft" | "scheduled" | "published") {
+  function updateActiveModel(nextModel: string) {
+    if (!nextModel) return;
+    setSettings((current) => {
+      const nextSettings = { ...(current ?? loadLinkedInSettings()), model: nextModel };
+      queueRemoteLinkedInSettingsSync(nextSettings);
+      void persistRemoteLinkedInSettings(nextSettings);
+      return nextSettings;
+    });
+    setModelPickerOpen(false);
+    setModelSearch("");
+  }
+
+  function getDefaultScheduleInput() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    return isoToLocalInput(tomorrow.toISOString());
+  }
+
+  function openScheduleOverlay(post?: LinkedInPost) {
+    setScheduleOverlayPostId(post?.id ?? null);
+    setScheduleOverlayDate(post?.scheduledAt ? isoToLocalInput(post.scheduledAt) : scheduleDate || getDefaultScheduleInput());
+  }
+
+  function closeScheduleOverlay() {
+    setScheduleOverlayPostId(null);
+    setScheduleOverlayDate("");
+  }
+
+  function handleSave(status: "draft" | "scheduled" | "published", scheduledOverride?: string) {
     const content = postType === "carousel" ? generatedSlides.join("\n\n---\n\n") : generatedContent;
     if (!content.trim()) return;
+    if (postType === "post" && !selectedPostFormat) {
+      setGenerationError("Choisis un format avant de sauvegarder ce post.");
+      return;
+    }
     setSaving(true);
     const selectedStyle = styles.find(s => s.id === selectedStyleId);
     const existingPost = editingPostId ? posts.find((post) => post.id === editingPostId) : null;
+    const nextScheduledInput = scheduledOverride ?? scheduleDate;
     const nextPost: LinkedInPost = {
       ...(existingPost ?? {
         id: crypto.randomUUID(),
@@ -763,12 +1182,13 @@ ${318 + stream.length + 17}
       sourceUrl: ["url", "youtube"].includes(sourceTab) ? sourceInput : undefined,
       sourceTitle: scrapedTitle || undefined,
       styleId: selectedStyleId || undefined, styleName: selectedStyle?.name,
-      scheduledAt: status === "scheduled" && scheduleDate ? new Date(scheduleDate).toISOString() : undefined,
+      scheduledAt: status === "scheduled" && nextScheduledInput ? new Date(nextScheduledInput).toISOString() : undefined,
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
       status,
       tags: selectedStyle ? [selectedStyle.name, selectedStyle.category] : [],
       analytics: normalizeAnalytics({
         ...existingPost?.analytics,
+        format: postType === "carousel" ? "carousel" : selectedPostFormat || existingPost?.analytics?.format || "text",
         mediaPreviewUrl: draftMedia?.url ?? existingPost?.analytics?.mediaPreviewUrl,
         mediaPreviewKind: draftMedia?.kind ?? existingPost?.analytics?.mediaPreviewKind,
         mediaFileName: draftMedia?.fileName ?? existingPost?.analytics?.mediaFileName,
@@ -780,6 +1200,37 @@ ${318 + stream.length + 17}
     setPostsView(status === "scheduled" ? "scheduled" : "draft");
     resetEditor();
     setSaving(false);
+  }
+
+  function schedulePost(postId: string, scheduledInput: string) {
+    if (!scheduledInput) return;
+    const updated = normalizePosts(
+      posts.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              status: "scheduled" as const,
+              scheduledAt: new Date(scheduledInput).toISOString(),
+            }
+          : post
+      )
+    );
+    setPosts(updated);
+    saveLinkedInPosts(updated);
+    void persistRemoteLinkedInPosts(updated, true);
+    setPostsView("scheduled");
+  }
+
+  function confirmScheduleOverlay() {
+    if (!scheduleOverlayDate) return;
+    if (scheduleOverlayPostId) {
+      schedulePost(scheduleOverlayPostId, scheduleOverlayDate);
+      closeScheduleOverlay();
+      return;
+    }
+    setScheduleDate(scheduleOverlayDate);
+    handleSave("scheduled", scheduleOverlayDate);
+    closeScheduleOverlay();
   }
 
   function deletePost(id: string) { const updated = normalizePosts(posts.filter(p => p.id !== id)); setPosts(updated); saveLinkedInPosts(updated); void persistRemoteLinkedInPosts(updated, true); }
@@ -807,10 +1258,6 @@ ${318 + stream.length + 17}
     setPosts(normalized); saveLinkedInPosts(normalized); void persistRemoteLinkedInPosts(normalized, true); setStatsPost(null);
   }
 
-  function copyPost(post: LinkedInPost) {
-    navigator.clipboard.writeText(post.content).then(() => { setCopiedId(post.id); setTimeout(() => setCopiedId(null), 2000); });
-  }
-
   const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
   const editorVisible = hasGenerated && !manualEditorStarted && !editingPostId;
   const rightEditorVisible = manualEditorStarted || Boolean(editingPostId);
@@ -818,15 +1265,16 @@ ${318 + stream.length + 17}
     drafts: posts.filter(p => p.status === "draft").length,
     scheduled: posts.filter(p => p.status === "scheduled").length,
   };
-  const selectedCarouselPage = carouselPageTemplates.find((page) => page.id === selectedCarouselPageId) ?? carouselPageTemplates[0] ?? null;
   const selectedCarouselTemplate = carouselTemplates.find((template) => template.id === selectedCarouselTemplateId) ?? carouselTemplates[0] ?? null;
   const selectedCarouselTemplateItem = selectedCarouselTemplate?.items.find((item) => item.id === selectedCarouselTemplateItemId) ?? null;
   const selectedTemplateItemPage = selectedCarouselTemplateItem ? resolveCarouselPage(selectedCarouselTemplateItem.pageTemplateId) : null;
-  const carouselPickerPages = [resolveCarouselPage(FREE_CAROUSEL_PAGE_ID), ...carouselPageTemplates].filter(Boolean) as LinkedInCarouselPageTemplate[];
-  const filteredCarouselPickerPages = carouselPickerPages.filter((page) => `${page.name} ${page.description}`.toLowerCase().includes(carouselPageSearch.toLowerCase()));
+  const carouselPickerPages = CAROUSEL_SLIDE_LIBRARY;
+  const filteredCarouselPickerPages = carouselPickerPages.filter((page) => page.name.toLowerCase().includes(carouselPageSearch.toLowerCase()));
+  const filteredCarouselTemplates = carouselTemplates.filter((template) => template.name.toLowerCase().includes(carouselTemplateSearch.toLowerCase()));
   const carouselPosts = posts.filter((post) => post.type === "carousel");
   const carouselHasGeneratedSlides = generatedSlides.length > 0;
   const activeCarouselEditor = carouselStudioTab === "editor";
+  const activeGeneratedSlidePayload = decodeCarouselSlide(generatedSlides[activeSlide] ?? "") ?? null;
   const carouselRightRailStyle: CSSProperties = {
     width: 320,
     borderLeft: "1px solid rgba(18,26,46,0.12)",
@@ -836,44 +1284,333 @@ ${318 + stream.length + 17}
     display: "flex",
     flexDirection: "column",
     gap: 18,
-    overflowY: "auto",
-    overflowX: "visible",
+    overflow: "hidden",
   };
   const carouselPanelShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
   const carouselSlideShadow = "0px 24px 10px rgba(0,0,0,0.01), 0px 14px 8px rgba(0,0,0,0.03), 0px 6px 6px rgba(0,0,0,0.04), 0px 1px 3px rgba(0,0,0,0.05)";
+  const modelOptions = Array.from(new Set([settings?.model, ...OPENROUTER_MODEL_OPTIONS].filter(Boolean) as string[]));
+  const filteredModelOptions = modelOptions.filter((model) => model.toLowerCase().includes(modelSearch.toLowerCase()));
+  const activeModelLabel = settings?.model || "anthropic/claude-sonnet-4";
+
+  const getCarouselPreviewPayload = (page: LinkedInCarouselPageTemplate | null, item?: LinkedInCarouselTemplate["items"][number] | null, index = 0): CarouselSlidePayload => {
+    if (!page) return { kind: "context", label: "Slide", subtitle: "" };
+    if (page.id === FREE_CAROUSEL_PAGE_ID) return { kind: "free", label: "Libre", body: "" };
+    const kind = getSlideKind(page.id);
+    const getField = (fieldId: string, fallback = "") => item ? getCarouselTemplateItemField(item, page, fieldId, fallback) : getTemplateField(page, fieldId, fallback);
+    const isArgument = kind === "argument-blue" || kind === "argument-red";
+    return {
+      kind,
+      label: page.name,
+      stepNumber: kind === "step" ? index + 1 : undefined,
+      pointNumber: isArgument ? index + 1 : undefined,
+      title: limitSlideTitle(isArgument ? getField("arg-title") : getField("step-title")),
+      subtitle: isArgument ? getField("arg-subtitle") : getField("context-subtitle"),
+      body: kind === "why-design" ? getField("why-text") : "",
+      result: getField("arg-result"),
+      showResult: isEnabled(getField("arg-result-enabled", "oui")),
+      showStepCta: isEnabled(getField("context-step-enabled", "oui")),
+      stepCtaText: getField("context-step-text", "Voici les 3 etapes pour y remedier"),
+      imageMode: getField("arg-image-mode", "frame") === "full" ? "full" : "frame",
+      imageSource: isEnabled(getField("arg-image-source", "non")) ? "ai" : "manual",
+      imageUrl: kind === "image" ? getField("image-src") : getField("arg-image"),
+      beforeImage: kind === "avis" ? getField("avis-image-1") : getField("before-image"),
+      afterImage: kind === "avis" ? getField("avis-image-2") : getField("after-image"),
+      backgroundImage1: getField("cta-bg-1"),
+      backgroundImage2: getField("cta-bg-2"),
+      ...(kind === "avis" ? { title: getField("avis-title") } : {}),
+    };
+  };
+
+  const renderSlideMiniPreview = (payload: CarouselSlidePayload, width: number, height: number, radius = 18) => {
+    const scale = Math.min(width / 575, height / 690);
+    return (
+      <span style={{ position: "relative", width, height, borderRadius: radius, background: "#f6f6f6", border: "4px solid #fff", boxShadow: carouselSlideShadow, overflow: "hidden", display: "block", flexShrink: 0 }}>
+        <span style={{ position: "absolute", left: (width - 575 * scale) / 2, top: (height - 690 * scale) / 2, width: 575 * scale, height: 690 * scale }}>
+          <CarouselSlideCanvas payload={payload} raw="" scale={scale} />
+        </span>
+      </span>
+    );
+  };
+
+  const renderTemplateStackPreview = (template: LinkedInCarouselTemplate) => {
+    const items = template.items.slice(0, 3);
+    const previewItems = items.length > 0 ? items : [{ id: "fallback", pageTemplateId: CAROUSEL_SLIDE_LIBRARY[0].id, mode: "single" as const }];
+    return (
+      <span style={{ position: "relative", width: 74, height: 82, flexShrink: 0, display: "inline-block" }}>
+        {previewItems.map((item, index) => {
+          const page = resolveCarouselPage(item.pageTemplateId);
+          const payload = getCarouselPreviewPayload(page, item, index);
+          const left = index === 0 ? 0 : index === 1 ? 13 : 26;
+          const rotate = index === 0 ? -11 : index === 1 ? 0 : 11;
+          return (
+            <span key={`${item.id}-${index}`} style={{ position: "absolute", left, top: index === 1 ? 0 : 6, transform: `rotate(${rotate}deg)`, zIndex: index + 1 }}>
+              {renderSlideMiniPreview(payload, 48, 62, 7)}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
+
+  const renderGeneratedCarouselStackPreview = (slides?: string[]) => {
+    const previewSlides = (slides && slides.length > 0 ? slides : [""]).slice(0, 4);
+    return (
+      <span style={{ position: "relative", width: 86, height: 82, flexShrink: 0, display: "inline-block" }}>
+        {previewSlides.map((slide, index) => {
+          const payload = decodeCarouselSlide(slide) ?? { kind: "free" as CarouselSlideKind, label: "Slide", body: "" };
+          const left = index * 13;
+          const rotate = [-12, -4, 5, 12][index] ?? 0;
+          return (
+            <span key={`${index}-${slide.slice(0, 12)}`} style={{ position: "absolute", left, top: index === 1 ? 0 : 6, transform: `rotate(${rotate}deg)`, zIndex: index + 1 }}>
+              {renderSlideMiniPreview(payload, 48, 62, 7)}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
+
+  const renderCarouselTemplateField = (field: LinkedInCarouselPageTemplate["fields"][number]) => {
+    if (!selectedCarouselTemplate || !selectedCarouselTemplateItem || !selectedTemplateItemPage) return null;
+    const value = getCarouselTemplateItemField(selectedCarouselTemplateItem, selectedTemplateItemPage, field.id);
+    const update = (nextValue: string) => updateCarouselTemplateItemField(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, field.id, nextValue);
+    const fieldLabelStyle: CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "#121a2e", marginBottom: 7 };
+    const chipStyle = (active: boolean): CSSProperties => ({
+      minHeight: 34,
+      borderRadius: 999,
+      border: active ? "1px solid rgba(1,71,255,0.32)" : "1px solid rgba(18,26,46,0.1)",
+      background: active ? "rgba(1,71,255,0.08)" : "#f6f6f6",
+      color: active ? "#0147ff" : "rgba(18,26,46,0.62)",
+      fontSize: 12,
+      fontWeight: 700,
+      padding: "0 13px",
+      cursor: "pointer",
+      fontFamily: '"Plus Jakarta Sans", sans-serif',
+    });
+
+    if (field.id === "context-step-enabled" || field.id === "arg-result-enabled" || field.id === "arg-image-source") {
+      return (
+        <div key={field.id}>
+          <label style={fieldLabelStyle}>{field.label}</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => update("oui")} style={chipStyle(isEnabled(value || field.defaultValue))}>Oui</button>
+            <button type="button" onClick={() => update("non")} style={chipStyle(!isEnabled(value || field.defaultValue))}>Non</button>
+          </div>
+        </div>
+      );
+    }
+
+    if (field.id === "arg-image-mode") {
+      const activeValue = value || field.defaultValue || "frame";
+      return (
+        <div key={field.id}>
+          <label style={fieldLabelStyle}>{field.label}</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => update("frame")} style={chipStyle(activeValue !== "full")}>Avec cadre</button>
+            <button type="button" onClick={() => update("full")} style={chipStyle(activeValue === "full")}>Plein format</button>
+          </div>
+        </div>
+      );
+    }
+
+    if (field.kind === "image") {
+      return (
+        <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={fieldLabelStyle}>{field.label}</label>
+          {value ? <img src={value} alt="" style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+          <input type="file" accept="image/*,application/pdf" onChange={(event) => importCarouselTemplateItemImage(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, field.id, event.target.files?.[0])} style={{ fontSize: 12 }} />
+          <input value={value} onChange={(event) => update(event.target.value)} placeholder="URL ou image importee" style={{ ...inp, minHeight: 42, background: "#f2f2f2", borderRadius: 12 }} />
+        </div>
+      );
+    }
+
+    const multiline = field.id.includes("subtitle") || field.id.includes("result") || field.id === "why-text" || field.id === "context-subtitle";
+    return (
+      <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <label style={fieldLabelStyle}>{field.label}</label>
+        {multiline ? (
+          <textarea rows={field.id === "context-subtitle" ? 6 : 3} value={value} onChange={(event) => update(event.target.value)} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.45 }} />
+        ) : (
+          <input value={value} maxLength={field.id === "arg-title" ? 22 : undefined} onChange={(event) => update(event.target.value)} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+        )}
+        {field.id === "arg-title" ? <span style={{ fontSize: 11, color: value.length > 22 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{Math.min(value.length, 22)}/22 caracteres</span> : null}
+      </div>
+    );
+  };
+
+  const renderGeneratedCarouselSlideFields = () => {
+    if (!activeGeneratedSlidePayload) return null;
+
+    const payload = activeGeneratedSlidePayload;
+    const labelStyle: CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, color: "#121a2e", marginBottom: 7 };
+    const inputStyle: CSSProperties = { ...inp, minHeight: 46, background: "#f2f2f2", borderRadius: 12 };
+    const chipStyle = (active: boolean): CSSProperties => ({
+      minHeight: 34,
+      borderRadius: 999,
+      border: active ? "1px solid rgba(1,71,255,0.32)" : "1px solid rgba(18,26,46,0.1)",
+      background: active ? "rgba(1,71,255,0.08)" : "#f6f6f6",
+      color: active ? "#0147ff" : "rgba(18,26,46,0.62)",
+      fontSize: 12,
+      fontWeight: 700,
+      padding: "0 13px",
+      cursor: "pointer",
+      fontFamily: '"Plus Jakarta Sans", sans-serif',
+    });
+
+    const update = (patch: Partial<CarouselSlidePayload>) =>
+      updateGeneratedCarouselSlide(activeSlide, (current) => ({ ...current, ...patch }));
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 6 }}>
+        {(payload.kind === "context" || payload.kind === "argument-blue" || payload.kind === "argument-red" || payload.kind === "step" || payload.kind === "why-design" || payload.kind === "avis") && (
+          <div>
+            <label style={labelStyle}>Titre</label>
+            <input
+              value={payload.title ?? ""}
+              onChange={(event) => update({ title: payload.kind === "argument-blue" || payload.kind === "argument-red" ? limitSlideTitle(event.target.value) : event.target.value })}
+              style={inputStyle}
+            />
+          </div>
+        )}
+
+        {(payload.kind === "context" || payload.kind === "argument-blue" || payload.kind === "argument-red") && (
+          <div>
+            <label style={labelStyle}>Texte</label>
+            <textarea
+              rows={payload.kind === "context" ? 6 : 4}
+              value={payload.subtitle ?? ""}
+              onChange={(event) => update({ subtitle: event.target.value })}
+              style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.45 }}
+            />
+          </div>
+        )}
+
+        {payload.kind === "step" && (
+          <div>
+            <label style={labelStyle}>Texte de l'etape</label>
+            <input value={payload.title ?? ""} onChange={(event) => update({ title: event.target.value })} style={inputStyle} />
+          </div>
+        )}
+
+        {payload.kind === "why-design" && (
+          <div>
+            <label style={labelStyle}>Texte</label>
+            <textarea rows={4} value={payload.body ?? ""} onChange={(event) => update({ body: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.45 }} />
+          </div>
+        )}
+
+        {(payload.kind === "argument-blue" || payload.kind === "argument-red") && (
+          <>
+            <div>
+              <label style={labelStyle}>Image</label>
+              {payload.imageUrl ? <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 120, objectFit: payload.imageMode === "full" ? "cover" : "contain", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff" }} /> : null}
+              <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ fontSize: 12, marginTop: 8 }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Mode image</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => update({ imageMode: "frame" })} style={chipStyle(payload.imageMode !== "full")}>Avec cadre</button>
+                <button type="button" onClick={() => update({ imageMode: "full" })} style={chipStyle(payload.imageMode === "full")}>Plein format</button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {(payload.kind === "before-after" || payload.kind === "avis") && (
+          <>
+            <div>
+              <label style={labelStyle}>{payload.kind === "avis" ? "Image 1" : "Image avant"}</label>
+              {payload.beforeImage ? <img src={payload.beforeImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const preview = await fileToCompressedPreview(file);
+                update({ beforeImage: preview.url });
+              }} style={{ fontSize: 12, marginTop: 8 }} />
+            </div>
+            <div>
+              <label style={labelStyle}>{payload.kind === "avis" ? "Image 2" : "Image apres"}</label>
+              {payload.afterImage ? <img src={payload.afterImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const preview = await fileToCompressedPreview(file);
+                update({ afterImage: preview.url });
+              }} style={{ fontSize: 12, marginTop: 8 }} />
+            </div>
+          </>
+        )}
+
+        {payload.kind === "cta" && (
+          <>
+            <div>
+              <label style={labelStyle}>Image de fond 1</label>
+              {payload.backgroundImage1 ? <img src={payload.backgroundImage1} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const preview = await fileToCompressedPreview(file);
+                update({ backgroundImage1: preview.url });
+              }} style={{ fontSize: 12, marginTop: 8 }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Image de fond 2</label>
+              {payload.backgroundImage2 ? <img src={payload.backgroundImage2} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const preview = await fileToCompressedPreview(file);
+                update({ backgroundImage2: preview.url });
+              }} style={{ fontSize: 12, marginTop: 8 }} />
+            </div>
+          </>
+        )}
+
+        {payload.kind === "image" && (
+          <div>
+            <label style={labelStyle}>Image</label>
+            {payload.imageUrl ? <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
+            <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ fontSize: 12, marginTop: 8 }} />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderCarouselTabs = () => (
-    <div style={{ position: "absolute", left: 46, top: 24, zIndex: 5, display: "inline-flex", alignItems: "center", padding: 4, borderRadius: 33, background: "#f0f0f0" }}>
+    <div style={{ display: "inline-flex", alignItems: "center", padding: 4, borderRadius: 33, background: "#f0f0f0" }}>
       {([
-        ["pages", `Page (${carouselPageTemplates.length})`],
-        ["templates", `Template (${carouselTemplates.length})`],
-        ["editor", "Editeur de carrousel"],
-      ] as [CarouselStudioTab, string][]).map(([tab, label]) => {
-        const active = carouselStudioTab === tab;
+        { id: "editor", label: "Editeur" },
+        { id: "templates", label: "Template" },
+      ] as { id: CarouselStudioTab; label: string }[]).map((tab) => {
+        const active = carouselStudioTab === tab.id;
         return (
           <button
-            key={tab}
+            key={tab.id}
             type="button"
             onClick={() => {
-              setCarouselStudioTab(tab);
-              setCarouselStudioMode(tab === "editor" && carouselHasGeneratedSlides ? "generate" : "builder");
+              setCarouselStudioTab(tab.id);
+              setCarouselStudioMode("builder");
+              if (tab.id === "editor") {
+                setSelectedCarouselTemplateItemId("");
+              }
             }}
             style={{
-              minHeight: 44,
-              padding: "8px 18px",
+              minHeight: 36,
+              padding: "8px 16px",
               borderRadius: 46,
               border: active ? "1px solid rgba(0,0,0,0.12)" : "1px solid transparent",
               background: active ? "#fff" : "transparent",
               color: active ? "#121a2e" : "rgba(18,26,46,0.5)",
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 500,
-              letterSpacing: "-0.45px",
+              letterSpacing: "-0.3px",
               cursor: "pointer",
               fontFamily: "Inter, sans-serif",
               boxShadow: active ? "0 1px 4px rgba(0,0,0,0.06)" : "none",
             }}
           >
-            {label}
+            {tab.label}
           </button>
         );
       })}
@@ -881,29 +1618,29 @@ ${318 + stream.length + 17}
   );
 
   const PageThumb = ({ size = 64, stacked = false }: { size?: number; stacked?: boolean }) => (
-    <span style={{ position: "relative", width: stacked ? size * 1.25 : size, height: size * 1.16, display: "inline-block", flexShrink: 0 }}>
-      {stacked && <span style={{ position: "absolute", width: size * 0.72, height: size * 0.94, left: 0, top: size * 0.16, borderRadius: 6, background: "#ccc", border: "2px solid #fff", transform: "rotate(-15deg)", boxShadow: carouselSlideShadow }} />}
-      {stacked && <span style={{ position: "absolute", width: size * 0.72, height: size * 0.94, right: 0, top: size * 0.16, borderRadius: 6, background: "#ccc", border: "2px solid #fff", transform: "rotate(15deg)", boxShadow: carouselSlideShadow }} />}
-      <span style={{ position: "absolute", width: stacked ? size * 0.86 : size, height: stacked ? size * 1.12 : size * 1.13, left: stacked ? size * 0.2 : 0, top: 0, borderRadius: stacked ? 8 : 4, background: "#ccc", border: "2px solid #fff", boxShadow: carouselSlideShadow, transform: stacked ? "none" : "rotate(-1.83deg)" }} />
+    <span style={{ position: "relative", width: stacked ? size * 1.16 : size, height: size * 1.22, display: "inline-block", flexShrink: 0 }}>
+      {stacked && <span style={{ position: "absolute", width: size * 0.72, height: size * 0.98, left: 0, top: size * 0.14, borderRadius: 12, background: "#ccc", border: "3px solid #fff", transform: "rotate(-15deg)", boxShadow: carouselSlideShadow }} />}
+      {stacked && <span style={{ position: "absolute", width: size * 0.72, height: size * 0.98, right: 0, top: size * 0.14, borderRadius: 12, background: "#ccc", border: "3px solid #fff", transform: "rotate(15deg)", boxShadow: carouselSlideShadow }} />}
+      <span style={{ position: "absolute", width: stacked ? size * 0.86 : size, height: stacked ? size * 1.14 : size * 1.16, left: stacked ? size * 0.15 : 0, top: 0, borderRadius: 14, background: "#ccc", border: "3px solid #fff", boxShadow: carouselSlideShadow, transform: stacked ? "none" : "rotate(-1.83deg)" }} />
     </span>
   );
 
   const renderRightList = () => {
-    const title = carouselStudioTab === "pages" ? "Toutes les pages" : carouselStudioTab === "templates" ? "Toutes templates" : carouselHasGeneratedSlides ? "Récents" : "Tous les carrousels faits";
-    const showHistoryPanel = carouselStudioTab === "editor" && carouselHasGeneratedSlides;
+    const showHistoryPanel = carouselStudioTab === "editor" && carouselStudioMode === "generate" && carouselHasGeneratedSlides;
+    const rightRailTitle = carouselStudioTab === "templates" ? "Toutes les templates" : showHistoryPanel ? "Récents" : "Tous les carrousels faits";
     return (
       <aside style={carouselRightRailStyle}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h3 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: showHistoryPanel ? 24 : 20, lineHeight: "24px", letterSpacing: "-0.35px", color: "#121a2e", fontWeight: 600 }}>
-            {title}
+          <h3 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: showHistoryPanel ? 20 : 18, lineHeight: "22px", letterSpacing: "-0.3px", color: "#121a2e", fontWeight: 600 }}>
+            {rightRailTitle}
           </h3>
           {showHistoryPanel && (
-            <button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 45, height: 45, borderRadius: 34, border: showCarouselHistory ? "1px solid #121a2e" : "1px solid rgba(0,0,0,0.07)", background: showCarouselHistory ? "#121a2e" : "#fff", color: showCarouselHistory ? "#fff" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-              <History size={20} />
+            <button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 38, height: 38, borderRadius: 999, border: showCarouselHistory ? "1px solid #121a2e" : "1px solid rgba(0,0,0,0.07)", background: showCarouselHistory ? "#121a2e" : "#fff", color: showCarouselHistory ? "#fff" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+              <History size={16} />
             </button>
           )}
         </div>
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", flex: 1, overflowY: "auto", overflowX: "visible", paddingRight: 2 }}>
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", flex: 1, overflow: "hidden", paddingRight: 2 }}>
           {showHistoryPanel ? (
             showCarouselHistory ? (
               carouselGenerationHistory.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 14, color: "rgba(18,26,46,0.5)" }}>Aucune version enregistrée.</p> : carouselGenerationHistory.map((entry) => (
@@ -921,44 +1658,31 @@ ${318 + stream.length + 17}
                 ))}
               </div>
             )
-          ) : carouselStudioTab === "pages" ? (
-            <>
-              {carouselPageTemplates.map((page) => (
-                <button key={page.id} type="button" onClick={() => setSelectedCarouselPageId(page.id)} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
-                  <PageThumb size={64} />
-                  <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 14, lineHeight: "20px", fontWeight: 600, color: "#121a2e" }}>{page.name}</strong>
-                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
-                  </span>
-                </button>
-              ))}
-              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselPageTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>Nouvelle Page</ClientBlueButton></div>
-            </>
           ) : carouselStudioTab === "templates" ? (
             <>
               {carouselTemplates.map((template) => (
-                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
-                  <PageThumb size={66} stacked />
+                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
+                  {renderTemplateStackPreview(template)}
                   <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 14, lineHeight: "20px", fontWeight: 600, color: "#121a2e" }}>{template.name}</strong>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</strong>
                     <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
                   </span>
                 </button>
               ))}
-              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>Nouvelle Template</ClientBlueButton></div>
+              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 12 }}>Nouvelle Template</ClientBlueButton></div>
             </>
           ) : (
             <>
               {carouselPosts.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 12, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Aucun carrousel généré pour le moment.</p> : carouselPosts.map((post) => (
-                <button key={post.id} type="button" onClick={() => { setGeneratedSlides(post.slides?.length ? post.slides : [post.content]); setActiveSlide(0); setCarouselStudioMode("generate"); }} style={{ width: "100%", minHeight: 106, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "20px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
-                  <PageThumb size={66} stacked />
+                <button key={post.id} type="button" onClick={() => { setGeneratedSlides(post.slides?.length ? post.slides : [post.content]); setActiveSlide(0); setCarouselStudioMode("generate"); setCarouselStudioTab("editor"); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
+                  {renderGeneratedCarouselStackPreview(post.slides?.length ? post.slides : [post.content])}
                   <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e" }}>{post.content ? `${post.content.slice(0, 30)}${post.content.length > 30 ? "..." : ""}` : "Carrousel"}</strong>
-                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>{post.slides?.length ?? 1} slides</span>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{post.content ? `${post.content.slice(0, 30)}${post.content.length > 30 ? "..." : ""}` : "Carrousel"}</strong>
+                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
                   </span>
                 </button>
               ))}
-              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={() => { const template = selectedCarouselTemplate ?? carouselTemplates[0]; if (template) startCarouselGeneration(template); }} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }} disabled={carouselTemplates.length === 0}>Nouvelle Template</ClientBlueButton></div>
+              <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={() => setShowCarouselTemplatePicker(true)} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 12 }} disabled={carouselTemplates.length === 0}>Creer un nouveau carrousel</ClientBlueButton></div>
             </>
           )}
         </div>
@@ -966,27 +1690,51 @@ ${318 + stream.length + 17}
     );
   };
 
-  const renderPageMode = () => (
-    <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: "50%", top: "50%", width: "min(612px, 68%)", aspectRatio: "612 / 776", transform: "translate(-50%, -45%)", borderRadius: 32, background: "#ccc", border: "8px solid #fff", boxShadow: carouselSlideShadow }} />
-    </main>
-  );
-
   const renderTemplateMode = () => (
-    <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: 46, top: 155, right: 40, display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", overflow: "visible" }}>
-        {(selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : [{ id: "placeholder", pageTemplateId: selectedCarouselPage?.id ?? FREE_CAROUSEL_PAGE_ID, mode: "single" as const }]).slice(0, 4).map((item) => {
+    <main onClick={() => setSelectedCarouselTemplateItemId("")} style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
+      <div style={{ position: "absolute", left: 46, top: 138, right: 40, display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", overflow: "visible" }}>
+        {(selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : []).slice(0, 10).map((item, index) => {
           const page = resolveCarouselPage(item.pageTemplateId);
+          const previewPayload = getCarouselPreviewPayload(page, item, index);
+          const selected = selectedCarouselTemplateItemId === item.id;
+          const selectedShadow = "0px 20px 12px rgba(1,71,255,0.02), 0px 9px 9px rgba(1,71,255,0.03), 0px 2px 5px rgba(1,71,255,0.03)";
           return (
-            <button key={item.id} type="button" onClick={() => { if (item.id !== "placeholder") setSelectedCarouselTemplateItemId(item.id); }} style={{ width: 210, height: 268, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
-              <span style={{ width: 140, height: 182, borderRadius: 15, background: "#ccc", border: "3px solid #fff", boxShadow: carouselSlideShadow }} />
-              <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, color: "#121a2e", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label || page?.name || "Page libre"}</strong>
+            <button
+              key={item.id}
+              type="button"
+              draggable
+              onClick={(event) => { event.stopPropagation(); setSelectedCarouselTemplateItemId(item.id); }}
+              onDragStart={(event) => {
+                setDraggedCarouselItemId(item.id);
+                event.dataTransfer.effectAllowed = "move";
+                const ghost = document.createElement("div");
+                ghost.style.width = "1px";
+                ghost.style.height = "1px";
+                ghost.style.opacity = "0";
+                document.body.appendChild(ghost);
+                event.dataTransfer.setDragImage(ghost, 0, 0);
+                window.setTimeout(() => ghost.remove(), 0);
+              }}
+              onDragEnd={() => setDraggedCarouselItemId("")}
+              onDragOver={(event) => { event.preventDefault(); if (selectedCarouselTemplate) reorderCarouselTemplateItem(selectedCarouselTemplate.id, draggedCarouselItemId, item.id); }}
+              style={{ position: "relative", width: 210, minHeight: 268, borderRadius: 24, border: selected ? "1px solid rgba(1,71,255,0.42)" : "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: selected ? selectedShadow : carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: draggedCarouselItemId === item.id ? "grabbing" : "grab", overflow: "visible", zIndex: draggedCarouselItemId === item.id ? 10 : 1, transform: draggedCarouselItemId === item.id ? "translateY(-8px) rotate(-2deg) scale(1.03)" : "none", transition: "transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease", userSelect: "none", WebkitUserSelect: "none" }}
+            >
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(event) => { event.stopPropagation(); if (selectedCarouselTemplate) removePageFromCarouselTemplate(selectedCarouselTemplate.id, item.id); }}
+                onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && selectedCarouselTemplate) removePageFromCarouselTemplate(selectedCarouselTemplate.id, item.id); }}
+                style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.04)", background: "#fff", color: "rgba(18,26,46,0.72)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(18,26,46,0.08)", cursor: "pointer", zIndex: 3 }}
+                aria-label="Supprimer la page"
+              >
+                <Trash2 size={13} />
+              </span>
+              {renderSlideMiniPreview(previewPayload, 132, 174, 18)}
+              <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e", maxWidth: 150, minHeight: 42, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", textAlign: "center" }}>{getCarouselTemplateItemLabel(item, page, index)}</strong>
             </button>
           );
         })}
-        <button type="button" onClick={() => setShowCarouselPagePicker(true)} style={{ width: "fit-content", minWidth: 210, height: 268, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, cursor: "pointer", padding: "28px 24px", textAlign: "center" }}>
+        <button type="button" onClick={(event) => { event.stopPropagation(); setShowCarouselPagePicker(true); }} style={{ width: "fit-content", minWidth: 210, minHeight: 268, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "20px", fontWeight: 600, cursor: "pointer", padding: "28px 24px", textAlign: "center", alignSelf: "stretch" }}>
           <Plus size={20} /> Ajouter une page
         </button>
       </div>
@@ -995,45 +1743,112 @@ ${318 + stream.length + 17}
 
   const renderEditorBeforeClick = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      {renderCarouselTabs()}
       <div style={{ position: "absolute", left: 46, top: 138, right: 40, display: "flex", gap: 24, flexWrap: "wrap", overflow: "visible" }}>
-        {(carouselTemplates.length ? carouselTemplates : []).slice(0, 3).map((template) => (
-          <button key={template.id} type="button" onClick={() => startCarouselGeneration(template)} style={{ width: 230, height: 268, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
-            <PageThumb size={154} stacked />
-            <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 16, lineHeight: "20px", fontWeight: 600, color: "#121a2e", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</strong>
-          </button>
-        ))}
-        {carouselTemplates.length === 0 && <div style={{ width: 320, height: 240, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", fontWeight: 600, fontSize: 14 }}>Crée d'abord un template</div>}
+        {carouselPosts.slice(0, 8).map((post) => {
+          const slides = post.slides?.length ? post.slides : [post.content];
+          return (
+            <button key={post.id} type="button" onClick={() => { setGeneratedSlides(slides); setActiveSlide(0); setCarouselStudioMode("generate"); setCarouselStudioTab("editor"); }} style={{ width: 230, minHeight: 268, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
+              {renderGeneratedCarouselStackPreview(slides)}
+              <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e", maxWidth: 160, minHeight: 42, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", textAlign: "center" }}>{post.content ? `${post.content.slice(0, 36)}${post.content.length > 36 ? "..." : ""}` : "Carrousel"}</strong>
+            </button>
+          );
+        })}
+        {carouselPosts.length === 0 && <div style={{ width: 320, height: 240, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", fontWeight: 600, fontSize: 14 }}>Aucun carrousel cree pour le moment.</div>}
+        <button type="button" onClick={() => setShowCarouselTemplatePicker(true)} disabled={carouselTemplates.length === 0} style={{ width: 230, minHeight: 268, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "20px", fontWeight: 600, cursor: carouselTemplates.length === 0 ? "not-allowed" : "pointer", padding: "28px 24px", textAlign: "center", opacity: carouselTemplates.length === 0 ? 0.48 : 1 }}>
+          <Plus size={20} /> Creer un nouveau carrousel
+        </button>
       </div>
     </main>
   );
 
+  const scrollEditorToSlide = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(generatedSlides.length - 1, index));
+    editorCarouselRef.current?.scrollTo({ left: nextIndex * 458, behavior: "smooth" });
+    setActiveSlide(nextIndex);
+  };
+
+  const handleEditorCarouselScroll = () => {
+    const container = editorCarouselRef.current;
+    if (!container) return;
+    const nextIndex = Math.max(0, Math.min(generatedSlides.length - 1, Math.round(container.scrollLeft / 458)));
+    if (nextIndex !== activeSlide) setActiveSlide(nextIndex);
+  };
+
   const renderEditorMode = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      {renderCarouselTabs()}
-      <div style={{ position: "absolute", left: "50%", top: 170, width: 1320, height: 762, transform: "translateX(-50%)", display: "flex", alignItems: "center", justifyContent: "center", gap: 32 }}>
-        <div style={{ width: 415, height: 538, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, transform: "scale(0.8)", opacity: 0.82, flexShrink: 0 }} />
-        <div style={{ width: 588, height: 762, borderRadius: 42, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 66, flexShrink: 0 }}>
-          <div style={{ position: "relative", width: "100%", height: 314 }}>
-            <SmartSelectionTextarea rows={8} value={generatedSlides[activeSlide] ?? ""} onChange={(value) => { const nextSlides = [...generatedSlides]; nextSlides[activeSlide] = value; setGeneratedSlides(nextSlides); }} contextLabel="slide de carrousel LinkedIn" showGlobalAction={false} autoFit apiKey={settings?.openrouterApiKey || undefined} model={settings?.model} style={{ width: "100%", minHeight: 120, background: "transparent", border: 0, outline: "none", resize: "none", fontSize: 18, lineHeight: 1.55, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
-            <div style={{ position: "absolute", inset: 0, border: "1.8px solid #0147ff", pointerEvents: "none" }}>
-              {[["-8px", "-8px"], ["-8px", "calc(100% - 8px)"], ["calc(100% - 8px)", "-8px"], ["calc(100% - 8px)", "calc(100% - 8px)"]].map(([top, left], index) => <span key={index} style={{ position: "absolute", top, left, width: 16, height: 16, borderRadius: 3, background: "#fff", border: "2px solid #0147ff" }} />)}
-            </div>
-          </div>
+      <button type="button" onClick={() => { setCarouselStudioMode("builder"); setCarouselStudioTab("editor"); }} style={{ position: "absolute", top: 24, right: 24, zIndex: 8, minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center", cursor: "pointer", padding: "0 14px", color: "#121a2e", fontSize: 13, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0 8px 20px rgba(18,26,46,0.08)" }} aria-label="Revenir aux carrousels">
+        <ArrowLeft size={15} />
+        Revenir aux carrousels
+      </button>
+      <div
+        ref={editorCarouselRef}
+        className="carousel-editor-strip"
+        onScroll={handleEditorCarouselScroll}
+        onPointerDown={(event) => {
+          const container = editorCarouselRef.current;
+          if (!container) return;
+          editorDragRef.current = { active: true, startX: event.clientX, startScrollLeft: container.scrollLeft };
+          container.setPointerCapture(event.pointerId);
+          container.style.cursor = "grabbing";
+        }}
+        onPointerMove={(event) => {
+          const container = editorCarouselRef.current;
+          if (!container || !editorDragRef.current.active) return;
+          container.scrollLeft = editorDragRef.current.startScrollLeft - (event.clientX - editorDragRef.current.startX);
+        }}
+        onPointerUp={(event) => {
+          const container = editorCarouselRef.current;
+          if (!container) return;
+          editorDragRef.current.active = false;
+          container.releasePointerCapture(event.pointerId);
+          container.style.cursor = "grab";
+          scrollEditorToSlide(Math.round(container.scrollLeft / 458));
+        }}
+        onPointerLeave={() => {
+          const container = editorCarouselRef.current;
+          if (!container) return;
+          editorDragRef.current.active = false;
+          container.style.cursor = "grab";
+        }}
+        style={{ position: "absolute", left: 0, right: 0, top: 84, height: 640, display: "flex", alignItems: "center", gap: 28, overflowX: "auto", overflowY: "hidden", padding: "0 max(32px, calc(50% - 215px))", scrollSnapType: "x mandatory", scrollbarWidth: "none", cursor: "grab", userSelect: "none", WebkitUserSelect: "none" }}
+      >
+        {generatedSlides.map((slide, index) => (
+          <button key={`${index}-${slide.slice(0, 24)}`} type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 430, height: 516, borderRadius: 34, background: "#fff", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 0, flex: "0 0 430px", overflow: "hidden", scrollSnapAlign: "center", cursor: "grab", transition: "box-shadow 0.2s ease", userSelect: "none", WebkitUserSelect: "none" }}>
+            <CarouselSlideCanvas payload={decodeCarouselSlide(slide)} raw={slide} scale={430 / 575} />
+          </button>
+        ))}
+      </div>
+      {generatedSlides.length > 1 ? (
+        <div style={{ position: "absolute", left: "50%", bottom: 118, transform: "translateX(-50%)", display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", padding: "14px 18px", minWidth: 70, height: 44, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
+          {generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 12, height: 12, padding: 0, border: 0, borderRadius: 999, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.19)", cursor: "pointer" }} />)}
         </div>
-        <div style={{ width: 415, height: 538, borderRadius: 40, background: "#ccc", border: "7px solid #fff", boxShadow: carouselSlideShadow, transform: "scale(0.8)", opacity: 0.82, flexShrink: 0 }} />
-      </div>
-      <div style={{ position: "absolute", left: "50%", bottom: 188, transform: "translateX(-50%)", display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center", padding: "15px 15px", minWidth: 120, height: 41, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
-        {(generatedSlides.length ? generatedSlides : [""]).map((_, index) => <button key={index} type="button" onClick={() => setActiveSlide(index)} style={{ width: 10, height: 10, padding: 0, border: 0, borderRadius: 999, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.19)", cursor: "pointer" }} />)}
-      </div>
-      <div style={{ position: "absolute", left: 46, right: 46, bottom: 45, height: 78, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 14 }}>
+      ) : null}
+      <div style={{ position: "absolute", left: 46, right: 46, bottom: 45, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-          <button type="button" style={{ width: 42, height: 42, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Plus size={18} /></button>
-          <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Analyser les posts LinkedIn" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 14, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
+          <button type="button" style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
+          <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Taper un texte ici" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 12, color: "rgba(18,26,46,0.7)", lineHeight: "18px" }}>{settings?.model || "Sonnet 4.6"}</span>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 16 }}>
+          <button type="button" onClick={() => setModelPickerOpen((current) => !current)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+            <span>{activeModelLabel}</span>
+            <ChevronDown size={14} style={{ color: "rgba(18,26,46,0.52)" }} />
+          </button>
           <button type="button" onClick={runCarouselGenerationChat} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={18} /></button>
+          {modelPickerOpen ? (
+            <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
+                <Search size={14} style={{ color: "#6f7887" }} />
+                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modèle..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+              </div>
+              <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                {filteredModelOptions.map((model) => (
+                  <button key={model} type="button" onClick={() => updateActiveModel(model)} style={{ width: "100%", border: 0, borderRadius: 10, background: model === activeModelLabel ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                    {model}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </main>
@@ -1041,26 +1856,58 @@ ${318 + stream.length + 17}
 
   const carouselStudioView = (
     <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden", background: "#fbfbfb" }}>
-      {carouselStudioTab === "pages" && renderPageMode()}
-      {carouselStudioTab === "templates" && renderTemplateMode()}
       {activeCarouselEditor && (carouselHasGeneratedSlides && carouselStudioMode === "generate" ? renderEditorMode() : renderEditorBeforeClick())}
+      {carouselStudioTab === "templates" && renderTemplateMode()}
       {renderRightList()}
       {showCarouselPagePicker && selectedCarouselTemplate && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 30, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ width: 560, maxHeight: "82vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+        <div onClick={() => setShowCarouselPagePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 30, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: 560, maxHeight: "82vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
               <Search size={16} />
               <input value={carouselPageSearch} onChange={(event) => setCarouselPageSearch(event.target.value)} placeholder="Rechercher une page..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} />
               <button type="button" onClick={() => setShowCarouselPagePicker(false)} style={{ border: 0, background: "transparent", cursor: "pointer", display: "flex" }}><X size={18} /></button>
             </div>
-            <div style={{ padding: 16, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {filteredCarouselPickerPages.map((page) => (
-                <button key={page.id} type="button" onClick={() => addPageToCarouselTemplate(selectedCarouselTemplate.id, page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: page.id === FREE_CAROUSEL_PAGE_ID ? "#fbfbfb" : "#fff", padding: 13, minHeight: 110, textAlign: "left", cursor: "pointer" }}>
-                  <span style={{ width: 36, height: 36, borderRadius: 11, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>{page.id === FREE_CAROUSEL_PAGE_ID ? <ImageIcon size={15} /> : <FileText size={15} />}</span>
+            <div style={{ padding: 18, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+              {filteredCarouselPickerPages.map((page) => {
+                const previewPayload = getCarouselPreviewPayload(page, null, 0);
+                return (
+                <button key={page.id} type="button" onClick={() => addPageToCarouselTemplate(selectedCarouselTemplate.id, page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: page.id === FREE_CAROUSEL_PAGE_ID ? "#fbfbfb" : "#fff", padding: 13, minHeight: 198, height: "fit-content", textAlign: "left", cursor: "pointer" }}>
+                  <span style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                    {renderSlideMiniPreview(previewPayload, 116, 140, 14)}
+                  </span>
                   <strong style={{ display: "block", fontSize: 13 }}>{page.name}</strong>
-                  <span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)" }}>{page.description}</span>
+                </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+      {showCarouselTemplatePicker && (
+        <div onClick={() => setShowCarouselTemplatePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 31, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: 620, maxHeight: "82vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+              <Search size={16} />
+              <input value={carouselTemplateSearch} onChange={(event) => setCarouselTemplateSearch(event.target.value)} placeholder="Rechercher une template..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} />
+              <button type="button" onClick={() => setShowCarouselTemplatePicker(false)} style={{ border: 0, background: "transparent", cursor: "pointer", display: "flex" }}><X size={18} /></button>
+            </div>
+            <div style={{ padding: 18, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+              {filteredCarouselTemplates.map((template) => (
+                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setCarouselGenerationTemplateId(template.id); setShowCarouselTemplatePicker(false); }} style={{ border: template.id === (carouselGenerationTemplateId || selectedCarouselTemplateId) ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", padding: 14, minHeight: 210, textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <span style={{ display: "flex", justifyContent: "center" }}>
+                    {renderTemplateStackPreview(template)}
+                  </span>
+                  <strong style={{ display: "block", fontSize: 13, color: "#121a2e" }}>{template.name}</strong>
                 </button>
               ))}
+            </div>
+            <div style={{ padding: 18, borderTop: "1px solid rgba(18,26,46,0.08)", display: "flex", gap: 10 }}>
+              <ClientBlueButton type="button" onClick={() => startCarouselGeneration(carouselTemplates.find((entry) => entry.id === (carouselGenerationTemplateId || selectedCarouselTemplateId)))} wrapperStyle={{ flex: 1 }} style={{ width: "100%" }} disabled={!carouselTemplates.find((entry) => entry.id === (carouselGenerationTemplateId || selectedCarouselTemplateId))}>
+                Generer avec l'IA
+              </ClientBlueButton>
+              <button type="button" onClick={() => startCarouselManualEditing(carouselTemplates.find((entry) => entry.id === (carouselGenerationTemplateId || selectedCarouselTemplateId)))} disabled={!carouselTemplates.find((entry) => entry.id === (carouselGenerationTemplateId || selectedCarouselTemplateId))} style={{ flex: 1, minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Demarrer manuellement
+              </button>
             </div>
           </div>
         </div>
@@ -1069,47 +1916,26 @@ ${318 + stream.length + 17}
   );
   const showCarouselEditorSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides;
   const showCarouselBuilderSidebar = postsMode === "carousel" && !showCarouselEditorSidebar;
-  const selectedCarouselField = selectedCarouselPage?.fields?.[0] ?? null;
+  const showCarouselGeneratedSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides;
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", ...jk }}>
-      {/* ── Left: Create panel ── */}
+      {/* Left: Create panel */}
       <div style={{ width: 384, borderRight: "1px solid rgba(0,0,0,0.09)", background: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, overflowY: "auto" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed", marginBottom: 14 }}>
-            {([
-              ["post", "Poste", <Edit3 size={12} key="post" />],
-              ["carousel", "Carrousel", <LayoutTemplate size={12} key="carousel" />],
-            ] as const).map(([mode, label, icon]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  setPostsMode(mode);
-                  if (mode === "post") setPostType("post");
-                  else {
-                    setPostType("carousel");
-                    resetEditor();
-                  }
-                }}
-                style={{ minHeight: 30, padding: "0 13px", borderRadius: 999, border: 0, background: postsMode === mode ? "#fff" : "transparent", boxShadow: postsMode === mode ? "0px 1px 4px rgba(0,0,0,0.08)" : "none", color: postsMode === mode ? "#121a2e" : "rgba(18,26,46,0.5)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", gap: 6 }}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
           <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>
             {showCarouselBuilderSidebar
-              ? carouselStudioTab === "pages"
-                ? "Paramètres de page"
-                : carouselStudioTab === "templates"
-                  ? "Paramètres de template"
-                  : "Paramètres de template"
+              ? "Paramètres de template"
               : "Créer un post"}
           </h2>
 
+          {postsMode === "carousel" ? (
+            <div style={{ marginTop: 12 }}>
+              {renderCarouselTabs()}
+            </div>
+          ) : null}
+
           {/* Source tabs */}
-          {!rightEditorVisible && !showCarouselBuilderSidebar && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+          {!isCarouselRoute && !rightEditorVisible && !showCarouselBuilderSidebar && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
             {([
               { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
               { id: "url", icon: <Link2 size={12} />, label: "URL" },
@@ -1131,73 +1957,47 @@ ${318 + stream.length + 17}
         <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
           {showCarouselBuilderSidebar ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minHeight: "100%" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Modèle IA de texte</label>
-                <select value={settings?.model || "sonnet-4.5"} onChange={() => {}} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12, color: "rgba(0,0,0,0.34)" }}>
-                  <option>{settings?.model || "Sonnet 4.6"}</option>
-                </select>
-              </div>
+              {selectedCarouselTemplate && selectedCarouselTemplateItem && selectedTemplateItemPage ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 6 }}>
+                  {selectedTemplateItemPage.fields.length > 0 ? selectedTemplateItemPage.fields.map(renderCarouselTemplateField) : null}
+                </div>
+              ) : null}
 
-              {carouselStudioTab === "pages" && selectedCarouselPage && (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom de la page</label>
-                    <input value={selectedCarouselPage.name} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { name: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Description</label>
-                    <input value={selectedCarouselPage.description} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { description: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt de page</label>
-                    <textarea rows={4} value={selectedCarouselPage.pagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { pagePrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt image</label>
-                    <textarea rows={3} value={selectedCarouselPage.imagePrompt} onChange={(event) => updateCarouselPageTemplate(selectedCarouselPage.id, { imagePrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
-                  </div>
-                  {selectedCarouselField && (
-                    <>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom du champ</label>
-                        <input value={selectedCarouselField.label} onChange={(event) => updateCarouselField(selectedCarouselPage.id, selectedCarouselField.id, { label: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Pré-prompt du champ</label>
-                        <textarea rows={3} value={selectedCarouselField.aiPrompt} onChange={(event) => updateCarouselField(selectedCarouselPage.id, selectedCarouselField.id, { aiPrompt: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-
-              {carouselStudioTab !== "pages" && selectedCarouselTemplate && (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom du template</label>
-                    <input value={selectedCarouselTemplate.name} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { name: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Description</label>
-                    <textarea rows={4} value={selectedCarouselTemplate.description} onChange={(event) => updateCarouselTemplate(selectedCarouselTemplate.id, { description: event.target.value })} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
-                  </div>
-                  {selectedCarouselTemplateItem && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e" }}>Nom de la page dans le template</label>
-                      <input value={selectedCarouselTemplateItem.label || ""} onChange={(event) => updateCarouselTemplateItem(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, { label: event.target.value })} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div style={{ marginTop: "auto", padding: 6, borderRadius: 15, background: "#e1e5ee", boxShadow: "inset 0 0 2px rgba(0,0,0,0.1)" }}>
-                <ClientBlueButton type="button" onClick={downloadCurrentCarousel} icon={<Download size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 52, fontSize: 14 }} disabled={generatedSlides.length === 0 && !generatedContent.trim()}>
-                  Télécharger
-                </ClientBlueButton>
+            </div>
+          ) : showCarouselGeneratedSidebar ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, minHeight: "100%" }}>
+              {renderGeneratedCarouselSlideFields()}
+              <button
+                type="button"
+                onClick={downloadCurrentCarousel}
+                disabled={generatedSlides.length === 0}
+                style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: "auto", opacity: generatedSlides.length === 0 ? 0.5 : 1 }}
+              >
+                <Download size={14} />
+                Télécharger
+              </button>
+            </div>
+          ) : postsMode === "carousel" ? (
+            <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+              <div style={{ paddingTop: 8, fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.46)" }}>
+                Choisis une template puis cree ton carrousel pour commencer.
               </div>
             </div>
           ) : rightEditorVisible ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Format du post</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {MANUAL_POST_FORMATS.map((format) => {
+                    const active = selectedPostFormat === format.value;
+                    return (
+                      <button key={format.value} type="button" onClick={() => setSelectedPostFormat(format.value)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? "1px solid rgba(1,71,255,0.34)" : inactiveStyleTag.border, background: active ? "rgba(45,110,253,0.1)" : inactiveStyleTag.background, color: active ? "#0147ff" : inactiveStyleTag.color, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                        {format.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Style du post</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
@@ -1212,32 +2012,14 @@ ${318 + stream.length + 17}
                   })}
                 </div>
               </div>
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
-                  <Clock size={10} /> Date de programmation
-                </label>
-                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
-              </div>
-              <label style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 12, background: "#f7f7f7", minHeight: 58, padding: 10, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                <ImageIcon size={16} style={{ color: "rgba(18,26,46,0.42)" }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(18,26,46,0.58)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{draftMedia ? draftMedia.fileName : "Ajouter une image"}</span>
-                <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleDraftMedia(file);
-                  event.currentTarget.value = "";
-                }} />
-              </label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <ClientBlueButton type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }} disabled={!generatedContent.trim()}>
+                <ClientBlueButton type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }} disabled={!generatedContent.trim() || !selectedPostFormat}>
                   Sauvegarder
                 </ClientBlueButton>
-                <button type="button" onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate || !generatedContent.trim()} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: scheduleDate && generatedContent.trim() ? 1 : 0.45 }}>
+                <button type="button" onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim() || !selectedPostFormat} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: generatedContent.trim() && selectedPostFormat ? 1 : 0.45 }}>
                   Programmer
                 </button>
               </div>
-              <button type="button" onClick={resetEditor} style={{ padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                Fermer l'éditeur
-              </button>
             </div>
           ) : (
           <>
@@ -1323,19 +2105,16 @@ ${318 + stream.length + 17}
             )}
           </div>
 
-          {postsMode === "carousel" && (
-            <div style={{ marginTop: "auto", padding: 6, borderRadius: 15, background: "#e1e5ee", boxShadow: "inset 0 0 2px rgba(0,0,0,0.1)" }}>
-              <ClientBlueButton
-                type="button"
-                onClick={downloadCurrentCarousel}
-                icon={<Download size={16} />}
-                wrapperStyle={{ width: "100%" }}
-                style={{ width: "100%", minHeight: 52, fontSize: 16 }}
-                disabled={generatedSlides.length === 0 && !generatedContent.trim()}
-              >
-                Télécharger
-              </ClientBlueButton>
-            </div>
+          {false && (
+            <button
+              type="button"
+              onClick={downloadCurrentCarousel}
+              disabled={generatedSlides.length === 0 && !generatedContent.trim()}
+              style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: "auto", opacity: generatedSlides.length === 0 && !generatedContent.trim() ? 0.5 : 1 }}
+            >
+              <Download size={14} />
+              Télécharger
+            </button>
           )}
 
           {generationError && (
@@ -1347,30 +2126,7 @@ ${318 + stream.length + 17}
           {/* Generated content */}
           {editorVisible && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {postType === "carousel" && generatedSlides.length > 0 ? (
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", margin: 0, display: "flex", alignItems: "center", gap: 5 }}>
-                      <Layers size={12} />{generatedSlides.length} slides
-                    </p>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      {generatedSlides.map((_, i) => (
-                        <button key={i} onClick={() => setActiveSlide(i)} style={{
-                          width: 24, height: 24, fontSize: 11, fontWeight: 500,
-                          cursor: "pointer", border: "none", fontFamily: '"Plus Jakarta Sans", sans-serif',
-                          ...(activeSlide === i
-                            ? { background: btnGrad.background, color: "#fff", borderRadius: "50%", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }
-                            : { background: "#f6f6f6", color: "rgba(18,26,46,0.5)", borderRadius: "50%" }),
-                        }}>
-                          {i + 1}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <SlidePreview content={generatedSlides[activeSlide] ?? ""} slideNum={activeSlide + 1} totalSlides={generatedSlides.length}
-                    onChange={val => { const updated = [...generatedSlides]; updated[activeSlide] = val; setGeneratedSlides(updated); }} />
-                </div>
-              ) : (
+              {postType !== "carousel" && (
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6, marginTop: 0 }}>Post généré</p>
                   <SmartSelectionTextarea
@@ -1386,7 +2142,7 @@ ${318 + stream.length + 17}
                 </div>
               )}
 
-              <label
+              {postType !== "carousel" && <label
                 style={{ border: "1px dashed rgba(18,26,46,0.14)", borderRadius: 12, background: "#f7f7f7", minHeight: draftMedia ? 82 : 58, padding: 10, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
               >
                 {draftMedia ? (
@@ -1410,34 +2166,17 @@ ${318 + stream.length + 17}
                     event.currentTarget.value = "";
                   }}
                 />
-              </label>
-
-              {/* Schedule */}
-              <div>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "rgba(18,26,46,0.5)", marginBottom: 4 }}>
-                  <Clock size={10} /> Programmer
-                </label>
-                <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} style={{ ...inp, fontSize: 12 }} />
-              </div>
+              </label>}
 
               {/* Save buttons */}
-              <div style={{ display: "flex", gap: 8 }}>
+              {postType !== "carousel" && <div style={{ display: "flex", gap: 8 }}>
                 <ClientBlueButton compact type="button" onClick={() => handleSave("draft")} loading={saving} wrapperStyle={{ flex: 1, width: "100%" }} style={{ width: "100%" }}>
                   Sauvegarder
                 </ClientBlueButton>
-                <button onClick={() => handleSave("scheduled")} disabled={saving || !scheduleDate} style={{ flex: 1, minHeight: 40, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 10, background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: scheduleDate ? 1 : 0.45 }}>
+                <button onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim()} style={{ flex: 1, minHeight: 40, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 10, background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: generatedContent.trim() ? 1 : 0.45 }}>
                     Planifier
                 </button>
-              </div>
-              {editingPostId && (
-                <button
-                  type="button"
-                  onClick={resetEditor}
-                  style={{ padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.55)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
-                >
-                  Fermer l&apos;edition
-                </button>
-              )}
+              </div>}
             </div>
           )}
           </>
@@ -1445,14 +2184,14 @@ ${318 + stream.length + 17}
         </div>
       </div>
 
-      {/* ── Right: Posts list ── */}
+      {/* Right: Posts list */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: "#fbfbfb" }}>
         {postsMode === "carousel" ? carouselStudioView : (
         <>
         {/* Stats bar */}
-        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 24, flexShrink: 0 }}>
+        <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "10px 24px", display: "none", alignItems: "center", gap: 24, flexShrink: 0 }}>
           {[
-            { label: "Brouillons", value: stats.drafts, color: "rgba(18,26,46,0.5)" },
+            { label: "Brouillons", value: "", color: "rgba(18,26,46,0.5)" },
             { label: "Planifiés", value: stats.scheduled, color: "#073e63" },
           ].map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1464,12 +2203,12 @@ ${318 + stream.length + 17}
 
         {/* Posts grid */}
         <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ display: rightEditorVisible ? "none" : "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed" }}>
               {([
                 ["draft", "Brouillons", stats.drafts],
                 ["scheduled", "Planifiés", stats.scheduled],
-              ] as const).map(([view, label, count]) => (
+              ] as const).map(([view, label]) => (
                 <button
                   key={view}
                   type="button"
@@ -1488,14 +2227,14 @@ ${318 + stream.length + 17}
                     fontFamily: '"Plus Jakarta Sans", sans-serif',
                   }}
                 >
-                  {label} ({count})
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
           {rightEditorVisible ? (
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 760px) 320px", gap: 18, alignItems: "start" }}>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 0, alignItems: "stretch", minHeight: "calc(100vh - 180px)" }}>
             <div
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
@@ -1503,18 +2242,17 @@ ${318 + stream.length + 17}
                 const file = event.dataTransfer.files?.[0];
                 if (file) void handleDraftMedia(file);
               }}
-              style={{ background: "#fff", border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, boxShadow: "0 30px 12px rgba(0,0,0,0.01), 0 17px 10px rgba(0,0,0,0.03), 0 7px 7px rgba(0,0,0,0.04), 0 2px 4.4px rgba(0,0,0,0.05)", padding: 22, display: "flex", flexDirection: "column", gap: 16, maxWidth: 760 }}
+              style={{ background: "transparent", border: "none", borderRadius: 0, boxShadow: "none", padding: "0 28px 0 0", display: "flex", flexDirection: "column", gap: 18, maxWidth: "none" }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{editingPostId ? "Modifier le brouillon" : "Nouveau brouillon manuel"}</h3>
-                  <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(18,26,46,0.48)" }}>Écris librement, puis sélectionne un passage pour le transformer avec l’IA.</p>
                 </div>
-                <button type="button" onClick={resetEditor} style={{ border: "1px solid rgba(18,26,46,0.12)", borderRadius: 999, background: "#fff", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  <X size={16} />
+                <button type="button" onClick={resetEditor} style={{ position: "absolute", top: 24, right: 344, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 999, background: "#fff", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <X size={12} />
                 </button>
               </div>
-              <div style={{ width: "100%", maxWidth: 552, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.05)", padding: 16 }}>
+              <div style={{ width: "100%", maxWidth: 700, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 20, background: "#fff", boxShadow: "none", padding: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg,#dbeafe,#eef2ff)", flexShrink: 0 }} />
                   <div>
@@ -1536,40 +2274,67 @@ ${318 + stream.length + 17}
                   model={settings?.model}
                   style={{ ...inp, minHeight: 42, background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: 0, resize: "none", whiteSpace: "pre-wrap", fontFamily: "Arial, Helvetica, sans-serif" }}
                 />
-              </div>
-              {draftMedia && <div style={{ width: "100%", maxWidth: 552, height: 240, borderRadius: 14, background: `url(${draftMedia.url}) center / cover`, boxShadow: "0 10px 22px rgba(18,26,46,0.12)" }} />}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 10 }}>
-                <label style={{ width: 34, height: 34, borderRadius: 10, background: "#f6f6f6", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.45)", cursor: "pointer" }}>
-                  <ImageIcon size={15} />
-                  <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleDraftMedia(file);
-                    event.currentTarget.value = "";
-                  }} />
-                </label>
-                <span style={{ fontSize: 12, color: "rgba(18,26,46,0.42)" }}>Glisse une image ici ou clique sur l’icône.</span>
-              </div>
-              <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runEditorChat(); }} placeholder="Parle à l’IA ou tape / pour une commande..." style={{ ...inp, minHeight: 42, background: "#fff", flex: 1 }} />
-                  <button type="button" onClick={() => void runEditorChat()} style={{ ...btnGrad, padding: "0 14px", minHeight: 42, fontSize: 12 }}>Envoyer</button>
-                </div>
-                {chatInput.startsWith("/") && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {["/corriger", "/hook", "/open-loop", "/condenser", "/développer", "/citation"].map((cmd) => (
-                      <button key={cmd} type="button" onClick={() => setChatInput(cmd + " ")} style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 999, background: "#fff", padding: "6px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{cmd}</button>
-                    ))}
+                <div style={{ marginTop: 16 }}>
+                  {draftMedia ? (
+                  <div onMouseEnter={() => setHoveredDraftImage(true)} onMouseLeave={() => setHoveredDraftImage(false)} style={{ position: "relative", width: "100%", minHeight: 240, borderRadius: 16, overflow: "hidden", background: "#f5f7fa" }}>
+                    <div style={{ width: "100%", height: 240, background: `url(${draftMedia.url}) center / cover` }} />
+                    <button type="button" onClick={() => setDraftMedia(null)} style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.14)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: hoveredDraftImage ? 1 : 0, transform: hoveredDraftImage ? "translateY(0px)" : "translateY(-6px)", transition: "opacity 0.18s ease, transform 0.18s ease" }}>
+                      <X size={14} />
+                    </button>
                   </div>
+                ) : (
+                  <label style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer" }}>
+                    <ImageIcon size={16} />
+                    <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleDraftMedia(file);
+                      event.currentTarget.value = "";
+                    }} />
+                  </label>
                 )}
+                </div>
+              </div>
+              <div style={{ width: "100%", maxWidth: 700, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                  <button type="button" style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
+                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runEditorChat(); }} placeholder="Taper un texte ici" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
+                </div>
+                <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 16 }}>
+                  <button type="button" onClick={() => setModelPickerOpen((current) => !current)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                    <span>{activeModelLabel}</span>
+                    <ChevronDown size={14} style={{ color: "rgba(18,26,46,0.52)" }} />
+                  </button>
+                  <button type="button" onClick={() => void runEditorChat()} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Send size={18} /></button>
+                  {modelPickerOpen ? (
+                    <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
+                        <Search size={14} style={{ color: "#6f7887" }} />
+                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modèle..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                      </div>
+                      <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {filteredModelOptions.map((model) => (
+                          <button key={model} type="button" onClick={() => updateActiveModel(model)} style={{ width: "100%", border: 0, borderRadius: 10, background: model === activeModelLabel ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                            {model}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-            <aside style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 18, background: "#fff", boxShadow: "0 18px 42px rgba(18,26,46,0.07)", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#121a2e" }}>Historique</p>
+            <aside style={{ borderLeft: "1px solid rgba(18,26,46,0.12)", borderRadius: 0, background: "#fff", boxShadow: "none", padding: "34px 24px 24px", display: "flex", flexDirection: "column", gap: 18, minHeight: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Récents</p>
+                <button type="button" style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(0,0,0,0.07)", background: "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                  <History size={16} />
+                </button>
+              </div>
               {editorHistory.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les modifications IA apparaîtront ici. Tu pourras restaurer une ancienne version.</p>
               ) : editorHistory.map((entry) => (
-                <button key={entry.id} type="button" onClick={() => setGeneratedContent(entry.after)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 13, background: "#f8f8f8", padding: 10, textAlign: "left", cursor: "pointer" }}>
-                  <strong style={{ display: "block", fontSize: 12, color: "#121a2e", marginBottom: 5 }}>{entry.label}</strong>
+                <button key={entry.id} type="button" onClick={() => setGeneratedContent(entry.after)} style={{ border: 0, borderBottom: "1px solid rgba(0,0,0,0.08)", background: "#fff", padding: "18px 0", textAlign: "left", cursor: "pointer" }}>
+                  <strong style={{ display: "block", fontSize: 13, color: "#121a2e", marginBottom: 5 }}>{entry.label}</strong>
                   <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{entry.after}</span>
                 </button>
               ))}
@@ -1611,20 +2376,11 @@ ${318 + stream.length + 17}
                         {post.styleName && <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{post.styleName}</span>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                        <button onClick={(event) => { event.stopPropagation(); copyPost(post); }} title="Copier" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}>
-                          {copiedId === post.id ? <Check size={13} style={{ color: "#168b64" }} /> : <Copy size={13} />}
-                        </button>
                         {post.status === "draft" && (
                           <button
                             onClick={(event) => {
                               event.stopPropagation();
-                              openPostForEdit(post);
-                              if (!post.scheduledAt) {
-                                const tomorrow = new Date();
-                                tomorrow.setDate(tomorrow.getDate() + 1);
-                                tomorrow.setHours(9, 0, 0, 0);
-                                setScheduleDate(isoToLocalInput(tomorrow.toISOString()));
-                              }
+                              openScheduleOverlay(post);
                             }}
                             title="Planifier"
                             style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", cursor: "pointer", color: "rgba(18,26,46,0.55)", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}
@@ -1633,17 +2389,7 @@ ${318 + stream.length + 17}
                             Planifier
                           </button>
                         )}
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            router.push(`/admin/linkedin/statistiques?postId=${encodeURIComponent(post.id)}`);
-                          }}
-                          title="Statistiques"
-                          style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.35)", display: "flex" }}
-                        >
-                          <BarChart2 size={13} />
-                        </button>
-                        <button onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.2)", display: "flex" }}>
+                        <button onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.72)", display: "flex" }}>
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -1703,6 +2449,31 @@ ${318 + stream.length + 17}
       </div>
 
       {/* Stats modal */}
+      {(scheduleOverlayPostId !== null || scheduleOverlayDate) && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 45, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={closeScheduleOverlay}>
+          <div style={{ width: "min(420px, 100%)", borderRadius: 20, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 22, display: "flex", flexDirection: "column", gap: 16 }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>Programmer le post</h3>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "rgba(18,26,46,0.5)" }}>Choisis la date de programmation avant validation.</p>
+              </div>
+              <button type="button" onClick={closeScheduleOverlay} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <input type="datetime-local" value={scheduleOverlayDate} onChange={(event) => setScheduleOverlayDate(event.target.value)} style={{ ...inp, minHeight: 46 }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="button" onClick={closeScheduleOverlay} style={{ flex: 1, minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Annuler
+              </button>
+              <ClientBlueButton type="button" onClick={confirmScheduleOverlay} wrapperStyle={{ flex: 1 }} style={{ width: "100%", minHeight: 44, fontSize: 13 }} disabled={!scheduleOverlayDate}>
+                Programmer
+              </ClientBlueButton>
+            </div>
+          </div>
+        </div>
+      )}
+
       {statsPost && (
         <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)" }}>
           <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0px 20px 40px rgba(0,0,0,0.15)", width: 560, padding: 24, display: "flex", flexDirection: "column", gap: 16, ...jk }}>
@@ -1752,12 +2523,12 @@ ${318 + stream.length + 17}
         </div>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .carousel-editor-strip::-webkit-scrollbar { display: none; }`}</style>
     </div>
   );
 }
 
-// ─── Slide preview component ──────────────────────────────────────────────────
+// Slide preview component
 
 const SLIDE_FIELD_LABELS: Record<string, { label: string; color: string }> = {
   TITRE: { label: "Titre", color: "font-semibold" },
@@ -1782,7 +2553,7 @@ function parseSlideFields(content: string): { key: string; value: string }[] | n
   const fields: { key: string; value: string }[] = [];
   let currentKey = "", currentValue: string[] = [];
   for (const line of lines) {
-    const match = line.match(/^([A-ZÀ-Ü\-]+)\s*:\s*(.*)/);
+    const match = line.match(/^([A-Z0-9_\-\s]{2,40})\s*:\s*(.*)$/i);
     if (match) {
       if (currentKey) fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
       currentKey = match[1]; currentValue = [match[2]];
@@ -1790,6 +2561,182 @@ function parseSlideFields(content: string): { key: string; value: string }[] | n
   }
   if (currentKey) fields.push({ key: currentKey, value: currentValue.join("\n").trim() });
   return fields.length >= 2 ? fields : null;
+}
+
+function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSlidePayload | null; raw: string; scale?: number }) {
+  const data = payload ?? { kind: "context" as CarouselSlideKind, label: "Slide", body: raw };
+  const isRed = data.kind === "argument-red";
+  const accent = isRed ? "#EF0C0C" : "#0147FF";
+  const gradient = isRed
+    ? "linear-gradient(89.57deg, #EF0C0C -1.45%, #FE5454 54.17%, #F01717 95.71%)"
+    : "linear-gradient(95.73deg, #0147FF 25.27%, #376EFF 45.55%, #0147FF 67.55%)";
+  const card: CSSProperties = {
+    width: 575,
+    height: 690,
+    position: "relative",
+    background: "#F6F6F6",
+    overflow: "hidden",
+    fontFamily: '"Plus Jakarta Sans", sans-serif',
+    color: "#121A2E",
+    transform: `scale(${scale})`,
+    transformOrigin: "top left",
+  };
+  const logo = (
+    <div style={{ position: "absolute", top: 20, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
+      <span style={{ background: "#1A1A1A", color: "#fff", borderRadius: 4, padding: "4px 7px", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "-6px 8px 6px rgba(0,0,0,0.08)" }}>RUFF</span>
+      <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 13 }}>Agency</span>
+    </div>
+  );
+  const footer = (
+    <div style={{ position: "absolute", left: 52, right: 52, bottom: 20, height: 40, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span style={{ width: 39, height: 39, borderRadius: 999, background: "#b3b3b3", border: "2px solid #fff", boxShadow: "0 10px 18px rgba(0,0,0,0.12)" }} />
+        <span>
+          <strong style={{ display: "block", fontFamily: "Inter, sans-serif", fontSize: 13, lineHeight: "16px" }}>Louis Staub</strong>
+          <span style={{ display: "block", fontWeight: 700, fontSize: 13, lineHeight: "16px", color: "rgba(18,26,46,0.8)" }}>J'optimise le taux de conversion de ta landing page</span>
+        </span>
+      </div>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(354.6deg,#000 49.96%,#303030 95.68%)", color: "#fff", borderRadius: 89, padding: "6px 6px 6px 12px", fontFamily: "Inter, sans-serif", fontSize: 14, boxShadow: "0 10px 14px rgba(0,0,0,0.18)" }}>
+        Swipe <span style={{ width: 35, height: 22, borderRadius: 999, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontWeight: 900 }}>→</span>
+      </span>
+    </div>
+  );
+
+  if (data.kind === "cta") {
+    if (!data.backgroundImage1 && !data.backgroundImage2) {
+      return (
+        <div style={card}>
+          <img src="/linkedin/slide-cta-reference.jpg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </div>
+      );
+    }
+    return (
+      <div style={{ ...card, background: "linear-gradient(115deg,#2D6EFD 0%,#0147FF 72%)", color: "#fff" }}>
+        {data.backgroundImage1 ? <img src={data.backgroundImage1} alt="" style={{ position: "absolute", right: -70, top: 48, width: 210, height: 290, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.9, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
+        {data.backgroundImage2 ? <img src={data.backgroundImage2} alt="" style={{ position: "absolute", right: -40, bottom: 80, width: 235, height: 250, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.92, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
+        {logo}
+        <div style={{ position: "absolute", left: 72, top: 96, display: "flex", alignItems: "center", gap: 18, fontSize: 28 }}>
+          <span style={{ display: "flex" }}><span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", marginLeft: -7 }} /></span>
+          <span>+30 clients satisfaits</span>
+        </div>
+        <h2 style={{ position: "absolute", left: 72, top: 155, width: 388, margin: 0, fontSize: 40, lineHeight: 1.08, letterSpacing: "-0.04em" }}>Votre landing optimisé conversion</h2>
+        <strong style={{ position: "absolute", left: 72, top: 242, fontSize: 70, lineHeight: 1 }}>1450€</strong>
+        {["Copywriting optimisé conversion", "Analyse stratégique et concurrentielle", "Assets 100% personnalisés avec animation en motion design", "Rapport avec des explications détaillées", "Livraison en 10 jours", "Support client 24h/24 et 7j/7"].map((item, index) => (
+          <p key={item} style={{ position: "absolute", left: 72, top: 335 + index * 48, margin: 0, fontSize: 24, lineHeight: 1.15, opacity: 0.86 }}>✓ {item}</p>
+        ))}
+        <div style={{ position: "absolute", left: 72, bottom: 74, width: 180, height: 48, borderRadius: 14, background: "#fff", color: "#121A2E", display: "grid", placeItems: "center", fontSize: 20, fontWeight: 700 }}>Réserver un appel</div>
+      </div>
+    );
+  }
+
+  if (data.kind === "before-after" || data.kind === "avis") {
+    return (
+      <div style={card}>
+        {logo}
+        {data.kind === "avis" && <div style={{ position: "absolute", left: 68, right: 68, top: 82, height: 69, borderRadius: 15, background: "#fff", border: "1px solid rgba(0,0,0,0.16)", boxShadow: "0 12px 20px rgba(0,0,0,0.07)", display: "grid", placeItems: "center", fontSize: 31, fontWeight: 700 }}>{data.title || "Tu preferes quelle version ?"}</div>}
+        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 184 : 92, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+          {data.beforeImage ? <img src={data.beforeImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+        </div>
+        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 405 : 353, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+          {data.afterImage ? <img src={data.afterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+        </div>
+        {data.kind === "before-after" && <span style={{ position: "absolute", left: 322, top: 300, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 14px", fontWeight: 700, fontSize: 13 }}>Ancienne version du site</span>}
+        {data.kind === "before-after" && <span style={{ position: "absolute", left: 322, top: 563, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 14px", fontWeight: 700, fontSize: 13 }}>Nouvelle version du site</span>}
+        {footer}
+      </div>
+    );
+  }
+
+  if (data.kind === "why-design") {
+    return (
+      <div style={card}>
+        {logo}
+        <div style={{ position: "absolute", left: 86, top: 184, width: 403, minHeight: 178, borderRadius: 21, background: "#0147FF", color: "#fff", padding: 24, boxShadow: "0 18px 24px rgba(10,132,255,0.08)" }}>
+          <h2 style={{ margin: 0, fontSize: 32, lineHeight: 1.06, letterSpacing: "-0.02em" }}>{data.body || data.title}</h2>
+          <span style={{ marginTop: 16, width: 65, height: 45, borderRadius: 8, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontSize: 32, fontWeight: 900 }}>→</span>
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
+  if (data.kind === "step") {
+    return (
+      <div style={card}>
+        {logo}
+        <div style={{ position: "absolute", left: 86, top: 184, width: 403 }}>
+          <div style={{ display: "inline-flex", height: 97, borderRadius: 26, background: "#fff", border: "1px solid rgba(0,0,0,0.22)", boxShadow: "0 12px 16px rgba(26,26,26,0.06)", alignItems: "center", padding: "0 26px", fontSize: 56, fontWeight: 700, letterSpacing: "-0.02em" }}>Etape {data.stepNumber || 1}</div>
+          <div style={{ marginTop: 15, height: 82, borderRadius: 19, background: "#0147FF", boxShadow: "0 18px 24px rgba(10,132,255,0.08)", color: "#fff", display: "flex", alignItems: "center", padding: "0 24px", fontSize: 32, fontWeight: 700, letterSpacing: "-0.02em" }}>{data.title}</div>
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
+  if (data.kind === "free") {
+    return (
+      <div style={card}>
+        {logo}
+        <div style={{ position: "absolute", left: 86, top: 112, width: 403, height: 488, borderRadius: 24, border: "1.5px dashed rgba(18,26,46,0.18)", background: "linear-gradient(45deg, rgba(255,255,255,0.72) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.72) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.72) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.72) 75%)", backgroundSize: "28px 28px", backgroundPosition: "0 0, 0 14px, 14px -14px, -14px 0", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
+          Libre
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
+  if (data.kind === "image") {
+    return (
+      <div style={card}>
+        {data.imageUrl ? (
+          <img src={data.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        ) : (
+          <>
+            {logo}
+            <div style={{ position: "absolute", left: 86, top: 112, width: 403, height: 488, borderRadius: 24, border: "1.5px dashed rgba(18,26,46,0.18)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              Image
+            </div>
+            {footer}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (data.kind === "argument-blue" || data.kind === "argument-red") {
+    return (
+      <div style={card}>
+        {logo}
+        <div style={{ position: "absolute", left: 86, top: 98, width: 403 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 66, height: 65, borderRadius: 15, background: "#e5e5e5", border: "1px solid rgba(0,0,0,0.06)", display: "grid", placeItems: "center" }}>
+              <span style={{ width: 56, height: 56, borderRadius: 11, background: "#fff", boxShadow: "0 6px 8px rgba(0,0,0,0.13), inset 0 3px 3px rgba(255,255,255,0.25)", display: "grid", placeItems: "center", fontFamily: "Inter, sans-serif", fontSize: 32, fontWeight: 700 }}>{data.pointNumber || 1}</span>
+            </span>
+            <span style={{ minHeight: 60, flex: 1, borderRadius: 14, background: gradient, color: "#fff", display: "flex", alignItems: "center", padding: "0 20px", boxShadow: `0 18px 24px ${isRed ? "rgba(150,13,13,0.12)" : "rgba(1,71,255,0.12)"}`, fontSize: 26, lineHeight: 1.06, fontWeight: 700 }}>{limitSlideTitle(data.title || "")}</span>
+          </div>
+          <p style={{ margin: "12px 0 0", minHeight: 99, fontSize: 21, lineHeight: 1.58, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)" }}>{data.subtitle}</p>
+          <div style={{ position: "relative", marginTop: 12, height: 264, borderRadius: data.imageMode === "full" ? 0 : 16, background: "#fff", border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)", overflow: "hidden" }}>
+            {data.imageUrl ? <img src={data.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: data.imageMode === "full" ? "cover" : "contain" }} /> : null}
+            <span style={{ position: "absolute", right: -6, top: -8, width: 32, height: 32, borderRadius: 999, background: isRed ? "linear-gradient(180deg,#F45151,#EF0C0C)" : "linear-gradient(180deg,#4176FF,#0147FF)", color: "#fff", display: "grid", placeItems: "center", boxShadow: `0 8px 12px ${isRed ? "rgba(150,13,13,0.25)" : "rgba(1,71,255,0.25)"}` }}>{isRed ? "×" : "✓"}</span>
+          </div>
+          {data.showResult && <p style={{ margin: "16px 0 0", display: "flex", alignItems: "center", gap: 16, fontSize: 18, lineHeight: 1.34, fontWeight: 700 }}><span style={{ color: accent, fontSize: 30 }}>→</span>{data.result}</p>}
+        </div>
+        {footer}
+      </div>
+    );
+  }
+
+  return (
+    <div style={card}>
+      {logo}
+      <div style={{ position: "absolute", left: 68, top: 118, width: 437 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", minHeight: 73, borderRadius: 20, background: "#fff", border: "1px solid rgba(0,0,0,0.22)", boxShadow: "0 12px 18px rgba(26,26,26,0.06)", padding: "0 20px", fontSize: 42, fontWeight: 700, letterSpacing: "-0.02em" }}>Contexte</div>
+        <p style={{ margin: "24px 0 0", whiteSpace: "pre-line", fontSize: 32, lineHeight: 1.26, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)" }}>{data.subtitle || data.body}</p>
+        {data.showStepCta && <div style={{ marginTop: 28, height: 56, borderRadius: 38, background: "#000", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 8px 8px 24px", boxShadow: "0 14px 18px rgba(0,0,0,0.2)", fontSize: 22, fontWeight: 700 }}>{data.stepCtaText}<span style={{ width: 57, height: 39, borderRadius: 32, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontSize: 28 }}>→</span></div>}
+      </div>
+      {footer}
+    </div>
+  );
 }
 
 function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: string; slideNum: number; totalSlides: number; onChange: (val: string) => void }) {
@@ -1800,10 +2747,9 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
   if (rawMode || !fields) {
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", ...jkSlide }}>Slide {slideNum}/{totalSlides} — mode brut</span>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
           {fields && (
-            <button onClick={() => setRawMode(false)} style={{ fontSize: 11, color: "#0147ff", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", ...jkSlide }}>Vue structurée</button>
+            <button onClick={() => setRawMode(false)} style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Vue structurée</button>
           )}
         </div>
         <textarea rows={8} value={content} onChange={e => onChange(e.target.value)}
@@ -1815,7 +2761,7 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
   return (
     <div style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 11, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f6f6f6", padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(18,26,46,0.5)", ...jkSlide }}>Slide {slideNum} / {totalSlides}</span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(18,26,46,0.5)", ...jkSlide }}></span>
         <button onClick={() => setRawMode(true)} style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Éditer brut</button>
       </div>
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
@@ -1833,3 +2779,4 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
     </div>
   );
 }
+
