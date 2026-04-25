@@ -104,28 +104,37 @@ export default function LinkedInParametresPage() {
       const localSettings = loadLinkedInSettings();
       const localWorkspace = loadLinkedInWorkspaceCache();
       const localPosts = loadLinkedInPosts();
-      setSettings(localSettings);
-      lastSavedSnapshotRef.current = JSON.stringify(localSettings);
 
-      await Promise.allSettled([
-        flushPendingRemoteLinkedInSettings(),
-        flushPendingRemoteLinkedInWorkspace(),
-        flushPendingRemoteLinkedInPosts(),
-      ]);
+      // Si on a des settings locaux avec une cle, on les affiche en attendant le remote
+      if (hasMeaningfulLinkedInSettings(localSettings)) {
+        setSettings(localSettings);
+        lastSavedSnapshotRef.current = JSON.stringify(localSettings);
+      }
 
       try {
+        // 1. D'abord, flush les pending
+        await Promise.allSettled([
+          flushPendingRemoteLinkedInSettings(),
+          flushPendingRemoteLinkedInWorkspace(),
+          flushPendingRemoteLinkedInPosts(),
+        ]);
+
+        // 2. Ensuite, fetch les donnees remote
         const [remoteSettingsResult, remoteWorkspaceResult, remotePostsResult] = await Promise.allSettled([
           fetchRemoteLinkedInSettings(),
           fetchRemoteLinkedInWorkspace(),
           fetchRemoteLinkedInPosts(),
         ]);
 
-        const nextSettings =
-          remoteSettingsResult.status === "fulfilled"
-            ? remoteSettingsResult.value
-            : hasMeaningfulLinkedInSettings(localSettings)
-              ? await persistRemoteLinkedInSettings(localSettings)
-              : localSettings;
+        if (remoteSettingsResult.status === "fulfilled") {
+          // Remote OK : on utilise les donnees du serveur
+          const remoteSettings = remoteSettingsResult.value;
+          setSettings(remoteSettings);
+          lastSavedSnapshotRef.current = JSON.stringify(remoteSettings);
+        } else if (hasMeaningfulLinkedInSettings(localSettings)) {
+          // Remote KO mais local OK : on push le local
+          await persistRemoteLinkedInSettings(localSettings);
+        }
 
         const nextWorkspace =
           remoteWorkspaceResult.status === "fulfilled" && remoteWorkspaceResult.value.hasStoredData
@@ -137,11 +146,11 @@ export default function LinkedInParametresPage() {
             ? remotePostsResult.value
             : localPosts;
 
-        setSettings(nextSettings);
-        lastSavedSnapshotRef.current = JSON.stringify(nextSettings);
         setSyncInfo(`Supabase actif · ${nextWorkspace.prospects.length} prospects · ${nextPosts.length} posts`);
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : "Initialisation LinkedIn impossible.");
+        const msg = error instanceof Error ? error.message : "Initialisation LinkedIn impossible.";
+        setSaveError(msg);
+        console.error("[LinkedIn Settings] Init failed:", error);
       } finally {
         setSyncingSupabase(false);
       }
@@ -152,34 +161,25 @@ export default function LinkedInParametresPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const queued = queueRemoteLinkedInSettingsSync(settings);
-    const snapshot = JSON.stringify(queued);
-    if (snapshot === lastSavedSnapshotRef.current) return;
-
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
-      void (async () => {
-        try {
-          const savedSettings = await persistRemoteLinkedInSettings(queued);
-          lastSavedSnapshotRef.current = JSON.stringify(savedSettings);
-        } catch (error) {
-          setSaveError(error instanceof Error ? error.message : "Sauvegarde impossible.");
-        }
-      })();
-    }, 250);
-  }, [settings]);
+  // Auto-save desactive - on sauvegarde uniquement sur clic "Enregistrer"
+  // pour eviter les boucles et les ecrasements accidentels
 
   const handleSave = async () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     setSaveError("");
+    setSyncingSupabase(true);
     try {
       const savedSettings = await persistRemoteLinkedInSettings(settings);
       lastSavedSnapshotRef.current = JSON.stringify(savedSettings);
+      setSettings(savedSettings); // Met a jour le state avec les donnees sauvegardees
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Sauvegarde impossible.");
+      const msg = error instanceof Error ? error.message : "Sauvegarde impossible.";
+      setSaveError(msg);
+      console.error("[LinkedIn Settings] Save failed:", error);
+    } finally {
+      setSyncingSupabase(false);
     }
   };
 
@@ -192,12 +192,15 @@ export default function LinkedInParametresPage() {
       const posts = loadLinkedInPosts();
       await saveRemoteLinkedInWorkspace(workspace);
       await persistRemoteLinkedInPosts(posts, true);
+      setSettings(syncedSettings);
       lastSavedSnapshotRef.current = JSON.stringify(syncedSettings);
       setSyncInfo(`Supabase actif · ${workspace.prospects.length} prospects · ${posts.length} posts`);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Synchronisation impossible.");
+      const msg = error instanceof Error ? error.message : "Synchronisation impossible.";
+      setSaveError(msg);
+      console.error("[LinkedIn Settings] Force sync failed:", error);
     } finally {
       setSyncingSupabase(false);
     }
@@ -215,7 +218,9 @@ export default function LinkedInParametresPage() {
       setSettings(remoteSettings);
       lastSavedSnapshotRef.current = JSON.stringify(remoteSettings);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Test impossible.");
+      const msg = error instanceof Error ? error.message : "Test impossible.";
+      setSaveError(msg);
+      console.error("[LinkedIn Settings] Test persistence failed:", error);
     } finally {
       setTestingPersistence(false);
     }
@@ -231,6 +236,12 @@ export default function LinkedInParametresPage() {
           </p>
         </div>
 
+        {saveError && (
+          <div style={{ borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", padding: "12px 16px", color: "#dc2626", fontSize: 13, fontWeight: 600 }}>
+            ⚠️ Erreur : {saveError}
+          </div>
+        )}
+
         <div style={{ borderRadius: 20, border: "1px solid rgba(10,102,194,0.12)", background: "linear-gradient(180deg, rgba(233,244,255,0.9) 0%, rgba(255,255,255,0.96) 100%)", padding: 18, display: "flex", gap: 14, alignItems: "flex-start" }}>
           <DatabaseZap size={18} style={{ color: "#0A66C2", marginTop: 2 }} />
           <div>
@@ -245,7 +256,16 @@ export default function LinkedInParametresPage() {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>OpenRouter</h2>
           <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Cle API OpenRouter</label>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>
+                Cle API OpenRouter{" "}
+                {settings.openrouterApiKey && settings.openrouterApiKey.startsWith("sk-or-") ? (
+                  <span style={{ color: "#22c55e", fontWeight: 700 }}>● Connecte</span>
+                ) : settings.openrouterApiKey ? (
+                  <span style={{ color: "#f59e0b", fontWeight: 700 }}>● Format invalide</span>
+                ) : (
+                  <span style={{ color: "#ef4444", fontWeight: 700 }}>● Non configure</span>
+                )}
+              </label>
               <div style={{ position: "relative" }}>
                 <input
                   type={showKey ? "text" : "password"}

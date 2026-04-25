@@ -1,30 +1,24 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
-
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { getAccessToken } from "@/lib/supabase/client";
 
 export async function linkedinFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const token = await getAccessToken();
 
   const headers: Record<string, string> = {
     ...((options.headers as Record<string, string> | undefined) ?? {}),
   };
 
-  if (session?.access_token) {
-    headers.Authorization = `Bearer ${session.access_token}`;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   return fetch(url, {
     ...options,
     headers,
+    credentials: "include",
   });
 }

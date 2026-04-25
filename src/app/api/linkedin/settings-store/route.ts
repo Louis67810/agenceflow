@@ -5,12 +5,62 @@ import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
 const DEFAULT_SETTINGS = {
   openrouterApiKey: "",
   model: "anthropic/claude-sonnet-4-6",
-  carouselTemplate: "",
+  carouselTemplate: `Pour chaque slide, genere exactement ce format :
+
+TITRE: [3-5 mots - accroche courte et percutante]
+SOUS-TITRE: [8-12 mots - developpe et complete le titre]
+TEXTE: [2-4 phrases - contenu principal du slide, concret et actionnable]
+VISUEL: [1 phrase - description precise du visuel ou image ideale pour ce slide]
+
+---
+
+Slide 1 = accroche / problematique principale
+Slides intermediaires = une idee cle par slide
+Dernier slide = resume + appel a l'action fort`,
+  carouselContentModel: "anthropic/claude-sonnet-4-6",
+  carouselImageModel: "openai/gpt-image-1",
+  carouselSkillPrompt: `# Role
+Tu es un systeme expert de generation de carrousels LinkedIn.
+
+# Objectif
+Genere un carrousel coherent slide par slide en respectant strictement :
+- le style selectionne
+- le nom du carrousel
+- la categorie
+- le prompt global du carrousel
+- le pre-prompt de chaque page
+- tous les champs et options de chaque page
+
+# Regles
+- N'invente aucun champ hors structure
+- Respecte exactement l'intention de chaque slide
+- Si une option permet d'afficher ou cacher un element, tiens-en compte dans le texte genere
+- Pour les slides avec image, decris precisement l'image attendue pour qu'un modele image puisse la produire
+- Garde un ton adapte a LinkedIn, clair, expert, impactant
+- Assure une progression logique entre les slides
+- Evite les repetitions entre slides`,
   language: "fr",
   prospectionBigModel: "anthropic/claude-sonnet-4-6",
   prospectionSmallModel: "google/gemini-2.0-flash-001",
-  prospectionBigPrompt: "",
-  prospectionSmallPrompt: "",
+  prospectionBigPrompt: `Analyse les donnees de prospection LinkedIn et cree 3 a 5 squelettes de messages optimises.
+
+Un squelette definit LA STRUCTURE d'un message (ordre des elements, ton, longueur), pas les mots exacts. Il doit capturer ce qui rend les messages performants dans les donnees.
+
+Pour chaque squelette, genere un objet JSON avec :
+- "name": nom court et memorable (ex: "Compliment -> Probleme -> Question directe")
+- "description": pourquoi ce squelette fonctionne (1-2 phrases)
+- "actionTypes": tableau parmi ["liked", "commented", "visited_profile"]
+- "structure": le squelette avec etapes numerotees et placeholders [NOM], [DETAIL_CONTEXTE], [QUESTION]
+- "promptFragment": instruction courte (2-4 phrases) a injecter dans le prompt de generation pour guider l'IA dans la personnalisation
+
+Reponds UNIQUEMENT avec un tableau JSON valide, sans markdown ni texte autour.`,
+  prospectionSmallPrompt: `Tu es un expert en prospection LinkedIn. Genere un message personnalise, authentique et court (3-5 phrases max).
+Regles absolues :
+- Commence par le prenom du prospect
+- Ne pitche JAMAIS dans le premier message
+- Termine par une seule question ouverte simple
+- Sonne comme un humain, pas un template
+- Si un squelette est fourni, respecte sa structure tout en personnalisant chaque element`,
   prospectionAutoAnalysis: false,
   prospectionAutoAnalysisEvery: 10,
   airtableKey: "",
@@ -65,7 +115,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const settings = { ...DEFAULT_SETTINGS, ...(body?.settings ?? {}) };
 
-    const { data, error: upsertError } = await supabase
+    // 1. Upsert
+    const { error: upsertError } = await supabase
       .from("linkedin_user_settings")
       .upsert(
         {
@@ -74,13 +125,20 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" }
-      )
-      .select("settings")
-      .single();
+      );
 
     if (upsertError) throw upsertError;
 
-    return NextResponse.json({ settings: data.settings });
+    // 2. Re-fetch fresh data (upsert+select can return stale data in Supabase)
+    const { data: freshData, error: fetchError } = await supabase
+      .from("linkedin_user_settings")
+      .select("settings")
+      .eq("user_id", user.id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(freshData?.settings ?? {}) } });
   } catch (e) {
     return NextResponse.json({ error: formatSupabaseError(e) }, { status: 500 });
   }
