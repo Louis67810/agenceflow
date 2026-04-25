@@ -11,9 +11,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
+  CAROUSEL_IMAGE_MODELS,
   DEFAULT_CAROUSEL_TEMPLATE,
   DEFAULT_SETTINGS,
   DEFAULT_BIG_PROMPT,
+  DEFAULT_CAROUSEL_SKILL_PROMPT,
   DEFAULT_SMALL_PROMPT,
   MODELS_BIG,
   MODELS_SMALL,
@@ -271,6 +273,44 @@ export default function LinkedInParametresPage() {
         </section>
 
         <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Carrousel IA</h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>
+                Reglages dedies a la generation des slides, des images et du format long LinkedIn.
+              </p>
+            </div>
+            <button type="button" onClick={() => setSettings((current) => ({ ...current, carouselContentModel: DEFAULT_SETTINGS.carouselContentModel, carouselImageModel: DEFAULT_SETTINGS.carouselImageModel, carouselSkillPrompt: DEFAULT_CAROUSEL_SKILL_PROMPT, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
+              Reinitialiser
+            </button>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Modele contenu carrousel</label>
+              <div style={{ position: "relative" }}>
+                <select value={settings.carouselContentModel} onChange={(e) => setSettings({ ...settings, carouselContentModel: e.target.value })} style={{ width: "100%", minHeight: 46, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: "0 40px 0 14px", fontSize: 14, appearance: "none", outline: "none", background: "#fff" }}>
+                  {OPENROUTER_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+                </select>
+                <ChevronDown size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "#6f7887", pointerEvents: "none" }} />
+              </div>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Modele image carrousel</label>
+              <div style={{ position: "relative" }}>
+                <select value={settings.carouselImageModel} onChange={(e) => setSettings({ ...settings, carouselImageModel: e.target.value })} style={{ width: "100%", minHeight: 46, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: "0 40px 0 14px", fontSize: 14, appearance: "none", outline: "none", background: "#fff" }}>
+                  {CAROUSEL_IMAGE_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+                </select>
+                <ChevronDown size={16} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "#6f7887", pointerEvents: "none" }} />
+              </div>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Prompt global carrousel (skill md)</label>
+              <textarea value={settings.carouselSkillPrompt} onChange={(e) => setSettings({ ...settings, carouselSkillPrompt: e.target.value })} rows={12} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
+            </div>
+          </div>
+        </section>
+
+        <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Prospection IA</h2>
           <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
             <div>
@@ -330,16 +370,6 @@ export default function LinkedInParametresPage() {
               <InlineToggle checked={settings.airtableAutoSync} onClick={() => setSettings((current) => ({ ...current, airtableAutoSync: !current.airtableAutoSync }))} />
             </div>
           </div>
-        </section>
-
-        <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Template de carrousel</h2>
-            <button type="button" onClick={() => setSettings((current) => ({ ...current, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE, prospectionBigPrompt: current.prospectionBigPrompt || DEFAULT_BIG_PROMPT, prospectionSmallPrompt: current.prospectionSmallPrompt || DEFAULT_SMALL_PROMPT }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
-              Reinitialiser
-            </button>
-          </div>
-          <textarea value={settings.carouselTemplate} onChange={(e) => setSettings({ ...settings, carouselTemplate: e.target.value })} rows={10} style={{ width: "100%", marginTop: 16, borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
         </section>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, paddingBottom: 28 }}>

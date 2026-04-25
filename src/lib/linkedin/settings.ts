@@ -6,6 +6,9 @@ export interface LinkedInSettings {
   openrouterApiKey: string;
   model: string;
   carouselTemplate: string;
+  carouselContentModel: string;
+  carouselImageModel: string;
+  carouselSkillPrompt: string;
   language: string;
   prospectionBigModel: string;
   prospectionSmallModel: string;
@@ -70,6 +73,32 @@ Slide 1 = accroche / problematique principale
 Slides intermediaires = une idee cle par slide
 Dernier slide = resume + appel a l'action fort`;
 
+export const CAROUSEL_IMAGE_MODELS = [
+  { id: "openai/gpt-image-1", label: "GPT Image 1 - visuels premium" },
+  { id: "google/gemini-2.0-flash-preview-image-generation", label: "Gemini Image - rapide" },
+];
+
+export const DEFAULT_CAROUSEL_SKILL_PROMPT = `# Role
+Tu es un systeme expert de generation de carrousels LinkedIn.
+
+# Objectif
+Genere un carrousel coherent slide par slide en respectant strictement :
+- le style selectionne
+- le nom du carrousel
+- la categorie
+- le prompt global du carrousel
+- le pre-prompt de chaque page
+- tous les champs et options de chaque page
+
+# Regles
+- N'invente aucun champ hors structure
+- Respecte exactement l'intention de chaque slide
+- Si une option permet d'afficher ou cacher un element, tiens-en compte dans le texte genere
+- Pour les slides avec image, decris precisement l'image attendue pour qu'un modele image puisse la produire
+- Garde un ton adapte a LinkedIn, clair, expert, impactant
+- Assure une progression logique entre les slides
+- Evite les repetitions entre slides`;
+
 export const DEFAULT_BIG_PROMPT = `Analyse les donnees de prospection LinkedIn et cree 3 a 5 squelettes de messages optimises.
 
 Un squelette definit LA STRUCTURE d'un message (ordre des elements, ton, longueur), pas les mots exacts. Il doit capturer ce qui rend les messages performants dans les donnees.
@@ -95,6 +124,9 @@ export const DEFAULT_SETTINGS: LinkedInSettings = {
   openrouterApiKey: "",
   model: "anthropic/claude-sonnet-4-6",
   carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE,
+  carouselContentModel: "anthropic/claude-sonnet-4-6",
+  carouselImageModel: "openai/gpt-image-1",
+  carouselSkillPrompt: DEFAULT_CAROUSEL_SKILL_PROMPT,
   language: "fr",
   prospectionBigModel: "anthropic/claude-sonnet-4-6",
   prospectionSmallModel: "google/gemini-2.0-flash-001",
