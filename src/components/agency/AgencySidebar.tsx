@@ -43,15 +43,14 @@ interface NavItem {
 }
 
 const agendaSubNav: NavItem[] = [
-  { href: "/admin/agenda", label: "Dashboard", icon: <LayoutDashboard size={13} /> },
-  { href: "/admin/agenda/calendar", label: "Calendrier", icon: <Calendar size={13} /> },
-  { href: "/admin/agenda/tasks", label: "Tâches", icon: <CheckSquare size={13} /> },
-  { href: "/admin/agenda/objectives", label: "Objectifs", icon: <Target size={13} /> },
-  { href: "/admin/agenda/habits", label: "Habitudes", icon: <Repeat size={13} /> },
-  { href: "/admin/agenda/recap", label: "Récap du jour", icon: <FileText size={13} /> },
-  { href: "/admin/agenda/stats", label: "Statistiques", icon: <BarChart2 size={13} /> },
-  { href: "/admin/agenda/pomodoro", label: "Pomodoro", icon: <Timer size={13} /> },
-  { href: "/admin/agenda/settings", label: "Paramètres", icon: <Settings size={13} /> },
+  { href: "/admin/agenda", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { href: "/admin/agenda/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
+  { href: "/admin/agenda/tasks", label: "Tâches", icon: <CheckSquare size={18} /> },
+  { href: "/admin/agenda/objectives", label: "Objectifs", icon: <Target size={18} /> },
+  { href: "/admin/agenda/habits", label: "Habitudes", icon: <Repeat size={18} /> },
+  { href: "/admin/agenda/recap", label: "Récap du jour", icon: <FileText size={18} /> },
+  { href: "/admin/agenda/pomodoro", label: "Pomodoro", icon: <Timer size={18} /> },
+  { href: "/admin/agenda/settings", label: "Paramètres", icon: <Settings size={18} /> },
 ];
 
 const linkedInSubNav: NavItem[] = [
@@ -108,8 +107,9 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   const [agendaOpen, setAgendaOpen] = useState(isOnAgenda);
 
   useEffect(() => {
-    if (isOnLinkedIn) setLinkedInOpen(true);
-  }, [isOnLinkedIn]);
+    if (isOnLinkedIn) { setLinkedInOpen(true); setAgendaOpen(false); }
+    if (isOnAgenda) { setAgendaOpen(true); setLinkedInOpen(false); }
+  }, [isOnLinkedIn, isOnAgenda]);
 
   const navItems = role === "admin" ? adminNav : role === "client" ? clientNav : designerNav;
 
@@ -291,6 +291,36 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               );
             })}
           </div>
+        ) : agendaOpen ? (
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setAgendaOpen(false)}
+              className="mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
+            >
+              <ArrowLeft size={15} />
+              <span>Retour</span>
+            </button>
+            {agendaSubNav.map((sub, index) => {
+              const subActive = sub.href === "/admin/agenda"
+                ? pathname === sub.href
+                : pathname.startsWith(sub.href);
+              return (
+                <Link
+                  key={sub.href}
+                  href={sub.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    subActive ? "bg-white/7 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                  )}
+                  style={{ animation: `linkedin-nav-enter 320ms ease ${index * 38}ms both` }}
+                >
+                  <span className="flex h-[18px] w-[18px] items-center justify-center shrink-0">{sub.icon}</span>
+                  <span>{sub.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         ) : (
           navItems.map((item) => {
             if (item.href === "/admin/calendar" && role === "admin") {
@@ -332,42 +362,20 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
               return (
                 <div key="agenda-group">
                   <button
-                    onClick={() => setAgendaOpen((o) => !o)}
+                    type="button"
+                    onClick={() => {
+                      setAgendaOpen(true);
+                      if (!isOnAgenda) router.push("/admin/agenda");
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                      isOnAgenda ? "bg-white/7 text-white rounded-lg" : "text-gray-400 hover:bg-white/5 hover:text-white"
+                      isOnAgenda ? "bg-white/7 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white"
                     )}
                   >
                     <CalendarDays size={18} />
                     <span className="flex-1 text-left">Habits</span>
-                    <ChevronDown
-                      size={15}
-                      className={`transition-transform ${agendaOpen ? "rotate-180" : ""}`}
-                    />
+                    <ChevronRight size={15} />
                   </button>
-                  {agendaOpen && (
-                    <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-700 pl-3">
-                      {agendaSubNav.map((sub) => {
-                        const subActive = sub.href === "/admin/agenda"
-                          ? pathname === sub.href
-                          : pathname.startsWith(sub.href);
-                        return (
-                          <Link
-                            key={sub.href}
-                            href={sub.href}
-                            className={cn(
-                              "flex items-center px-3 py-2 rounded-lg text-[14px] font-medium transition-colors",
-                              subActive
-                                ? "text-white bg-white/7"
-                                : "text-gray-400 hover:text-white hover:bg-white/5"
-                            )}
-                          >
-                            {sub.label}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               );
             }

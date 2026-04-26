@@ -2,11 +2,10 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState, type ReactNode } from "react";
-import { Save, Clock, Timer, Target, Bell, Calendar, ExternalLink, RefreshCw } from "lucide-react";
+import { Save, Clock, Timer, Bell, Calendar, ExternalLink, RefreshCw } from "lucide-react";
 import type { AgendaSettings } from "@/types/agenda";
 
 interface ExtSettings extends Partial<AgendaSettings> {
-  daily_points_pool?: number;
   google_calendar_connected?: boolean;
   google_calendar_email?: string;
 }
@@ -20,8 +19,6 @@ export default function AgendaSettingsPage() {
     pomodoro_short_break: 5,
     pomodoro_long_break: 15,
     pomodoro_sessions_before_long: 4,
-    weekly_points_goal: 500,
-    daily_points_pool: 100,
     auto_schedule_enabled: true,
     recap_reminder_time: "18:30",
     timezone: "Europe/Paris",
@@ -90,13 +87,13 @@ export default function AgendaSettingsPage() {
   if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto bg-[#fbfbfb]">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Paramètres Agenda</h1>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] disabled:opacity-50"
         >
           <Save size={15} />
           {saving ? "Sauvegarde..." : saved ? "Sauvegardé ✓" : "Sauvegarder"}
@@ -125,41 +122,9 @@ export default function AgendaSettingsPage() {
             </div>
             <div className="flex items-center gap-3 mt-4">
               <label className="text-xs text-gray-500">Auto-planification</label>
-              <button onClick={() => update("auto_schedule_enabled", !settings.auto_schedule_enabled)} className={`relative w-11 h-6 rounded-full transition-colors ${settings.auto_schedule_enabled ? "bg-indigo-500" : "bg-gray-200"}`}>
+              <button onClick={() => update("auto_schedule_enabled", !settings.auto_schedule_enabled)} className={`relative w-11 h-6 rounded-full transition-colors ${settings.auto_schedule_enabled ? "bg-[#0147FF]" : "bg-gray-200"}`}>
                 <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${settings.auto_schedule_enabled ? "translate-x-6" : "translate-x-1"}`} />
               </button>
-            </div>
-          </div>
-        </Section>
-
-        {/* Points */}
-        <Section icon={<Target size={16} />} title="Gamification & Points">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Pool de points journalier
-                <span className="ml-1 text-gray-400">(répartis entre les tâches selon leur importance)</span>
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range" min={20} max={500} step={10}
-                  value={settings.daily_points_pool ?? 100}
-                  onChange={e => update("daily_points_pool", parseInt(e.target.value))}
-                  className="flex-1 accent-indigo-500"
-                />
-                <span className="text-sm font-semibold text-indigo-600 w-20 text-right">{settings.daily_points_pool ?? 100} pts/jour</span>
-              </div>
-              <div className="mt-2 p-3 bg-indigo-50 rounded-lg text-xs text-indigo-700">
-                Exemple : 6 tâches (imp. 1,1,1,1,1,5), pool=100pts<br />
-                Tâche imp.5 complétée → <strong>{Math.round(5/10*100)}</strong>pts · Tâche imp.1 → <strong>{Math.round(1/10*100)}</strong>pts
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Objectif hebdomadaire de points</label>
-              <div className="flex items-center gap-3">
-                <input type="range" min={100} max={2000} step={50} value={settings.weekly_points_goal ?? 500} onChange={e => update("weekly_points_goal", parseInt(e.target.value))} className="flex-1 accent-indigo-500" />
-                <span className="text-sm font-semibold text-indigo-600 w-20 text-right">{settings.weekly_points_goal ?? 500} pts</span>
-              </div>
             </div>
           </div>
         </Section>
@@ -202,7 +167,7 @@ export default function AgendaSettingsPage() {
             <div className="flex gap-3">
               <button
                 onClick={handleGoogleConnect}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-sm text-gray-700 rounded-lg hover:bg-gray-50"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-sm text-gray-700 rounded-full hover:bg-gray-50"
               >
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -254,7 +219,7 @@ export default function AgendaSettingsPage() {
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+        <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] disabled:opacity-50">
           <Save size={15} />
           {saving ? "Sauvegarde..." : saved ? "Sauvegardé ✓" : "Sauvegarder"}
         </button>
@@ -267,7 +232,7 @@ function Section({ icon, title, children }: { icon: ReactNode; title: string; ch
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <h2 className="flex items-center gap-2 font-semibold text-gray-800 mb-4">
-        <span className="text-indigo-500">{icon}</span>
+        <span className="text-[#0147FF]">{icon}</span>
         {title}
       </h2>
       {children}

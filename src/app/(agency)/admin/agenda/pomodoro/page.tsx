@@ -14,13 +14,13 @@ const PHASE_LABELS: Record<PhaseType, string> = {
 };
 
 const PHASE_COLORS: Record<PhaseType, string> = {
-  work: "from-indigo-500 to-purple-600",
+  work: "from-[#0147FF] to-[#0147FF]",
   short_break: "from-green-400 to-emerald-500",
   long_break: "from-blue-400 to-cyan-500",
 };
 
 const PHASE_BG: Record<PhaseType, string> = {
-  work: "bg-indigo-50",
+  work: "bg-gray-50",
   short_break: "bg-green-50",
   long_break: "bg-blue-50",
 };
@@ -156,7 +156,7 @@ export default function PomodoroPage() {
   const circumference = 2 * Math.PI * 100;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto bg-[#fbfbfb]">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Pomodoro</h1>
 
       {/* Phase selector */}
@@ -192,8 +192,8 @@ export default function PomodoroPage() {
             />
             <defs>
               <linearGradient id="timerGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor={phase === "work" ? "#6366f1" : phase === "short_break" ? "#34d399" : "#38bdf8"} />
-                <stop offset="100%" stopColor={phase === "work" ? "#a855f7" : phase === "short_break" ? "#10b981" : "#06b6d4"} />
+                <stop offset="0%" stopColor={phase === "work" ? "#0147FF" : phase === "short_break" ? "#34d399" : "#38bdf8"} />
+                <stop offset="100%" stopColor={phase === "work" ? "#0147FF" : phase === "short_break" ? "#10b981" : "#06b6d4"} />
               </linearGradient>
             </defs>
           </svg>
@@ -210,7 +210,7 @@ export default function PomodoroPage() {
               key={i}
               className={`w-3 h-3 rounded-full transition-colors ${
                 i < (sessionsCompleted % (settings.pomodoro_sessions_before_long ?? 4))
-                  ? "bg-indigo-500"
+                  ? "bg-[#0147FF]"
                   : "bg-gray-200"
               }`}
             />
@@ -229,7 +229,7 @@ export default function PomodoroPage() {
         </button>
         <button
           onClick={running ? handlePause : handleStart}
-          className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-105 bg-gradient-to-br ${PHASE_COLORS[phase]}`}
+          className="w-16 h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-all hover:scale-105 bg-[#121A2E]"
         >
           {running ? <Pause size={24} /> : <Play size={24} className="ml-1" />}
         </button>
@@ -239,7 +239,7 @@ export default function PomodoroPage() {
       {/* Task selection */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
         <h3 className="font-medium text-gray-800 mb-3 flex items-center gap-2">
-          <CheckCircle2 size={16} className="text-indigo-500" />
+          <CheckCircle2 size={16} className="text-[#0147FF]" />
           Tâche en cours
         </h3>
         {tasks.length === 0 ? (
@@ -249,7 +249,7 @@ export default function PomodoroPage() {
             <button
               onClick={() => setSelectedTask(null)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                !selectedTask ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "text-gray-500 hover:bg-gray-50"
+                !selectedTask ? "bg-gray-50 text-gray-800 border border-gray-200" : "text-gray-500 hover:bg-gray-50"
               }`}
             >
               Sans tâche spécifique
@@ -259,11 +259,11 @@ export default function PomodoroPage() {
                 key={t.id}
                 onClick={() => setSelectedTask(t)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                  selectedTask?.id === t.id ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "text-gray-600 hover:bg-gray-50"
+                  selectedTask?.id === t.id ? "bg-gray-50 text-gray-800 border border-gray-200" : "text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 <span className="flex-1 truncate">{t.title}</span>
-                <span className="text-xs text-yellow-500 shrink-0">+{t.points}pts</span>
+                <span className="text-xs text-[#0147FF] shrink-0">+{t.points}pts</span>
               </button>
             ))}
           </div>
@@ -279,7 +279,7 @@ export default function PomodoroPage() {
               <div
                 key={i}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
-                  s.type === "work" ? "bg-indigo-100 text-indigo-700" :
+                  s.type === "work" ? "bg-gray-100 text-gray-700" :
                   s.type === "short_break" ? "bg-green-100 text-green-700" :
                   "bg-blue-100 text-blue-700"
                 }`}

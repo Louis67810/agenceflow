@@ -1,19 +1,17 @@
 import type { AgendaTask, AgendaHabit, AgendaDailyRecap } from "@/types/agenda";
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export function taskPoints(task: AgendaTask): number {
   return task.importance * 10;
 }
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export function habitPoints(habit: AgendaHabit): number {
   return habit.points;
 }
 
 /**
- * Calcule les points pondérés pour une tâche complétée,
- * en fonction de son poids relatif parmi toutes les tâches du jour.
- *
- * Ex : 6 tâches, tâche complétée avec importance 5, total_importance = 10
- * → points = (5/10) × pool = 50% × pool
+ * @deprecated Use calculateDayScore instead
  */
 export function computeWeightedTaskPoints(
   taskImportance: number,
@@ -25,10 +23,45 @@ export function computeWeightedTaskPoints(
   return Math.max(1, Math.round((taskImportance / totalImportance) * dailyPool));
 }
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export function recapBonusPoints(_: Partial<AgendaDailyRecap>): number {
   return 0;
 }
 
+/**
+ * Calculate a daily score out of 100 based on task and habit completion.
+ * 60% from tasks completion + 40% from habits completion.
+ */
+export function calculateDayScore(
+  tasksDone: number,
+  tasksTotal: number,
+  habitsDone: number,
+  habitsTotal: number,
+  habitImportances?: number[] // array of importances for done habits
+): number {
+  if (tasksTotal === 0 && habitsTotal === 0) return 0;
+
+  const taskRate = tasksTotal > 0 ? tasksDone / tasksTotal : 1;
+
+  // Habits weighted by importance
+  let habitRate = 1;
+  if (habitsTotal > 0) {
+    if (habitImportances && habitImportances.length > 0) {
+      const totalWeight = habitImportances.reduce((s, i) => s + i, 0);
+      const maxWeight = habitsTotal * 5; // max importance is 5
+      habitRate = totalWeight / maxWeight;
+    } else {
+      habitRate = habitsDone / habitsTotal;
+    }
+  }
+
+  const raw = taskRate * 60 + habitRate * 40;
+  return Math.round(Math.min(100, raw));
+}
+
+/**
+ * @deprecated Old score was out of 10. Use calculateDayScore (out of 100) instead.
+ */
 export function computeDayScore(
   tasksCompleted: number,
   tasksPlanned: number,
@@ -48,6 +81,7 @@ export function resolveTaskColor(task: Pick<AgendaTask, "color">, objectiveColor
   return objectiveColor || task.color || "#6366f1";
 }
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export function getLevelFromPoints(totalPoints: number): {
   level: number;
   label: string;
@@ -78,6 +112,7 @@ export function getLevelFromPoints(totalPoints: number): {
   };
 }
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export function getStreakBonus(streak: number): number {
   if (streak >= 30) return 3;
   if (streak >= 14) return 2;

@@ -2,18 +2,18 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Flame, Trophy, ShieldCheck, Star } from "lucide-react";
-import { computeDayScore, computeWeightedTaskPoints } from "@/lib/agenda/points";
+import { CheckCircle2, ChevronRight, Flame, Trophy, ShieldCheck, Star, Wrench, Target, Check, Zap, PartyPopper } from "lucide-react";
+import { calculateDayScore } from "@/lib/agenda/points";
 import type { AgendaTask, AgendaHabit, AgendaDailyRecap, AgendaTaskReviewOutcome } from "@/types/agenda";
 
 type Step = 0 | 1 | 2 | 3;
 
 const MOODS = [
-  { emoji: "😴", label: "Épuisé", value: "exhausted" },
-  { emoji: "😕", label: "Difficile", value: "hard" },
-  { emoji: "😐", label: "Correct", value: "okay" },
-  { emoji: "😊", label: "Bien", value: "good" },
-  { emoji: "🚀", label: "Excellent", value: "excellent" },
+  { label: "Épuisé", value: "exhausted" },
+  { label: "Difficile", value: "hard" },
+  { label: "Correct", value: "okay" },
+  { label: "Bien", value: "good" },
+  { label: "Excellent", value: "excellent" },
 ];
 
 type TaskReviewState = Record<string, { outcome: AgendaTaskReviewOutcome; justification: string }>;
@@ -84,7 +84,7 @@ export default function RecapPage() {
     } else {
       const doneTasks = loadedTasks.filter((t: AgendaTask) => t.status === "done").length;
       const doneHabits = loadedHabits.filter((h: AgendaHabit & { done_today: boolean }) => h.done_today).length;
-      const computedScore = computeDayScore(doneTasks, loadedTasks.length, doneHabits, loadedHabits.length);
+      const computedScore = calculateDayScore(doneTasks, loadedTasks.length, doneHabits, loadedHabits.length);
       setForm(f => ({ ...f, day_score: computedScore }));
     }
 
@@ -98,7 +98,7 @@ export default function RecapPage() {
       task_id: task.id,
       outcome: taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed"),
       justification: taskReviews[task.id]?.justification?.trim() ?? "",
-      points_awarded: taskPointShares[task.id] ?? 0,
+      points_awarded: 0,
     }));
     const doneTasks = reviewedTasks.filter((task) => task.outcome === "done").length;
     const doneHabits = habits.filter(h => h.done_today).length;
@@ -128,28 +128,14 @@ export default function RecapPage() {
     }
   }
 
-  const taskImportances = tasks.map((task) => task.importance);
-  const taskPointShares = Object.fromEntries(
-    tasks.map((task) => {
-      const outcome = taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed");
-      const points =
-        outcome === "done" || outcome === "justified"
-          ? computeWeightedTaskPoints(task.importance, taskImportances, 100)
-          : 0;
-      return [task.id, points];
-    })
-  ) as Record<string, number>;
   const doneTasks = tasks.filter((task) => (taskReviews[task.id]?.outcome ?? (task.status === "done" ? "done" : "missed")) === "done").length;
   const doneHabits = habits.filter(h => h.done_today).length;
-  const justifiedTasks = tasks.filter((task) => taskReviews[task.id]?.outcome === "justified").length;
-  const earnedTaskPoints = Object.values(taskPointShares).reduce((sum, value) => sum + value, 0);
-  const bonus = 0;
   const todayFmt = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto bg-[#fbfbfb] min-h-screen">
       <div className="mb-6">
         <p className="text-sm text-gray-400 capitalize">{todayFmt}</p>
         <h1 className="text-2xl font-bold text-gray-900">Récap du jour</h1>
@@ -162,14 +148,14 @@ export default function RecapPage() {
             <button
               onClick={() => !saved && setStep(i as Step)}
               className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold transition-colors ${
-                step === i ? "bg-indigo-600 text-white" :
+                step === i ? "bg-[#121A2E] text-white" :
                 step > i ? "bg-green-500 text-white" :
                 "bg-gray-100 text-gray-400"
               }`}
             >
-              {step > i ? "✓" : i + 1}
+              {step > i ? <Check size={14} /> : i + 1}
             </button>
-            <span className={`text-xs ${step === i ? "text-indigo-600 font-medium" : "text-gray-400"}`}>{label}</span>
+            <span className={`text-xs ${step === i ? "text-[#0147FF] font-medium" : "text-gray-400"}`}>{label}</span>
             {i < 3 && <ChevronRight size={12} className="text-gray-300" />}
           </div>
         ))}
@@ -210,7 +196,6 @@ export default function RecapPage() {
                             : <div className="w-3.5 h-3.5 rounded-full border border-gray-200 shrink-0" />
                           }
                           <span className="text-gray-700">{t.title}</span>
-                          <span className="ml-auto text-xs font-medium text-indigo-500">+{taskPointShares[t.id] ?? 0} pts</span>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {([
@@ -228,7 +213,7 @@ export default function RecapPage() {
                                 },
                               }))}
                               className={`rounded-full px-3 py-1 text-xs font-medium ${
-                                outcome === value ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500"
+                                outcome === value ? "bg-[#121A2E] text-white" : "bg-gray-100 text-gray-500"
                               }`}
                             >
                               {label}
@@ -287,9 +272,9 @@ export default function RecapPage() {
                 {Array.from({ length: 10 }).map((_, i) => (
                   <button
                     key={i}
-                    onClick={() => setForm(f => ({ ...f, day_score: i + 1 }))}
+                    onClick={() => setForm(f => ({ ...f, day_score: (i + 1) * 10 }))}
                     className={`w-7 h-7 rounded text-xs font-bold transition-colors ${
-                      i < form.day_score
+                      i < Math.round(form.day_score / 10)
                         ? i >= 7 ? "bg-green-500 text-white" : i >= 4 ? "bg-yellow-400 text-white" : "bg-red-400 text-white"
                         : "bg-gray-100 text-gray-400 hover:bg-gray-200"
                     }`}
@@ -299,13 +284,12 @@ export default function RecapPage() {
                 ))}
               </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-800">{form.day_score}/10</p>
-                  <p className="text-xs text-gray-400">La note du jour ne donne plus de points</p>
+                  <p className="text-2xl font-bold text-gray-800">{form.day_score}/100</p>
                 </div>
               </div>
             </div>
 
-          <button onClick={() => setStep(1)} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 flex items-center justify-center gap-2">
+          <button onClick={() => setStep(1)} className="w-full py-3 bg-[#121A2E] text-white rounded-full font-medium hover:bg-[#1a2540] flex items-center justify-center gap-2">
             Continuer la réflexion <ChevronRight size={16} />
           </button>
         </div>
@@ -322,7 +306,7 @@ export default function RecapPage() {
                   key={m.value}
                   onClick={() => setForm(f => ({ ...f, mood: m.value }))}
                   className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-colors ${
-                    form.mood === m.value ? "border-indigo-500 bg-indigo-50" : "border-gray-100 hover:border-gray-200"
+                    form.mood === m.value ? "border-[#0147FF] bg-[#0147FF]/5" : "border-gray-100 hover:border-gray-200"
                   }`}
                 >
                   <span className="text-xs font-medium text-gray-600">{m.label}</span>
@@ -332,8 +316,8 @@ export default function RecapPage() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <label className="block font-semibold text-gray-800 mb-2">
-              🏆 Quelles sont vos victoires du jour ?
+            <label className="block font-semibold text-gray-800 mb-2 flex items-center gap-2">
+              <Trophy size={16} className="text-[#0147FF]" /> Quelles sont vos victoires du jour ?
             </label>
             <textarea
               value={form.wins}
@@ -345,8 +329,8 @@ export default function RecapPage() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <label className="block font-semibold text-gray-800 mb-2">
-              🔧 Qu&apos;est-ce qui pourrait être amélioré ?
+            <label className="block font-semibold text-gray-800 mb-2 flex items-center gap-2">
+              <Wrench size={16} className="text-[#0147FF]" /> Qu&apos;est-ce qui pourrait être amélioré ?
             </label>
             <textarea
               value={form.improvements}
@@ -358,8 +342,8 @@ export default function RecapPage() {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => setStep(0)} className="px-4 py-3 border border-gray-200 text-gray-600 rounded-xl">Retour</button>
-            <button onClick={() => setStep(2)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 flex items-center justify-center gap-2">
+            <button onClick={() => setStep(0)} className="px-4 py-3 border border-gray-200 text-gray-600 rounded-full">Retour</button>
+            <button onClick={() => setStep(2)} className="flex-1 py-3 bg-[#121A2E] text-white rounded-full font-medium hover:bg-[#1a2540] flex items-center justify-center gap-2">
               Planifier demain <ChevronRight size={16} />
             </button>
           </div>
@@ -370,8 +354,8 @@ export default function RecapPage() {
       {step === 2 && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <label className="block font-semibold text-gray-800 mb-2">
-              🎯 Quelle est votre priorité principale pour demain ?
+            <label className="block font-semibold text-gray-800 mb-2 flex items-center gap-2">
+              <Target size={16} className="text-[#0147FF]" /> Quelle est votre priorité principale pour demain ?
             </label>
             <textarea
               value={form.tomorrow_priority}
@@ -382,24 +366,23 @@ export default function RecapPage() {
             />
           </div>
 
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-            <p className="text-sm font-medium text-indigo-700">Récapitulatif de la session</p>
-            <ul className="mt-2 space-y-1 text-sm text-indigo-600">
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-medium text-[#0147FF]">Récapitulatif de la session</p>
+            <ul className="mt-2 space-y-1 text-sm text-gray-600">
               <li>• {doneTasks}/{tasks.length} tâches complétées</li>
               <li>• {doneHabits}/{habits.length} habitudes maintenues</li>
-              <li>• Score du jour: {form.day_score}/10</li>
-              {bonus > 0 && <li>• Bonus: +{bonus} pts 🎉</li>}
+              <li>• Score du jour: {form.day_score}/100</li>
             </ul>
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="px-4 py-3 border border-gray-200 text-gray-600 rounded-xl">Retour</button>
+            <button onClick={() => setStep(1)} className="px-4 py-3 border border-gray-200 text-gray-600 rounded-full">Retour</button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 flex items-center justify-center gap-2 disabled:opacity-50"
+              className="flex-1 py-3 bg-[#121A2E] text-white rounded-full font-medium hover:bg-[#1a2540] flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {saving ? "Sauvegarde..." : "Terminer le récap"} ✓
+              {saving ? "Sauvegarde..." : "Terminer le récap"} <Check size={16} />
             </button>
           </div>
         </div>
@@ -408,44 +391,28 @@ export default function RecapPage() {
       {/* Step 3: Result */}
       {step === 3 && (
         <div className="text-center py-8">
-          <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Trophy size={40} className="text-yellow-500" />
+          <div className="w-20 h-20 bg-white border border-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Trophy size={40} className="text-[#0147FF]" />
           </div>
           <h2 className="text-xl font-bold text-gray-800 mb-2">Récap enregistré !</h2>
-          <p className="text-gray-500 mb-6">Score du jour: <strong>{form.day_score}/10</strong></p>
+          <p className="text-gray-500 mb-6">Score du jour: <strong>{form.day_score}/100</strong></p>
 
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-green-50 rounded-xl p-3">
+          <div className="grid grid-cols-2 gap-3 mb-6 max-w-xs mx-auto">
+            <div className="bg-white border border-gray-200 rounded-xl p-3">
               <p className="text-2xl font-bold text-green-600">{doneTasks}</p>
-              <p className="text-xs text-gray-500">tâches ✓</p>
+              <p className="text-xs text-gray-500 flex items-center justify-center gap-1">tâches <Check size={12} /></p>
             </div>
-            <div className="bg-orange-50 rounded-xl p-3">
+            <div className="bg-white border border-gray-200 rounded-xl p-3">
               <p className="text-2xl font-bold text-orange-500">{doneHabits}</p>
-              <p className="text-xs text-gray-500">habitudes 🔥</p>
-            </div>
-            <div className="bg-yellow-50 rounded-xl p-3">
-              <div className="flex items-center justify-center gap-1">
-                <p className="text-2xl font-bold text-yellow-600">{earnedTaskPoints}</p>
-              </div>
-              <p className="text-xs text-gray-500">points gagnés ⚡</p>
+              <p className="text-xs text-gray-500 flex items-center justify-center gap-1">habitudes <Flame size={12} /></p>
             </div>
           </div>
 
-          {bonus > 0 && (
-            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center gap-2 justify-center">
-                <Star size={20} className="text-yellow-500" />
-                <p className="font-semibold text-gray-800">Bonus journée !</p>
-              </div>
-              <p className="text-sm text-gray-600 mt-1">+{bonus} points pour votre excellent score de {form.day_score}/10</p>
-            </div>
-          )}
-
           <div className="flex gap-3 justify-center">
-            <button onClick={() => window.location.href = "/admin/agenda"} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700">
+            <button onClick={() => window.location.href = "/admin/agenda"} className="px-5 py-2.5 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]">
               Retour au dashboard
             </button>
-            <button onClick={() => window.location.href = "/admin/agenda/stats"} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50">
+            <button onClick={() => window.location.href = "/admin/agenda/stats"} className="px-5 py-2.5 border border-gray-200 text-gray-600 rounded-full text-sm hover:bg-gray-50">
               Voir les stats
             </button>
           </div>

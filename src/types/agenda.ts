@@ -20,6 +20,7 @@ export interface AgendaTask {
   recurrence_end?: string;
   tags?: string[];
   color?: string;
+  /** @deprecated Use day_score instead */
   points: number;
   created_at: string;
   updated_at: string;
@@ -53,6 +54,8 @@ export interface AgendaHabit {
   frequency: HabitFrequency;
   frequency_days?: number[];
   target_per_period: number;
+  importance: number;
+  /** @deprecated Use importance instead */
   points: number;
   color: string;
   icon: string;
@@ -127,6 +130,7 @@ export interface AgendaTaskReview {
   points_awarded: number;
 }
 
+/** @deprecated Points system replaced by day_score out of 100 */
 export interface AgendaPointsLog {
   id: string;
   user_id: string;
@@ -147,7 +151,9 @@ export interface AgendaSettings {
   pomodoro_short_break: number;
   pomodoro_long_break: number;
   pomodoro_sessions_before_long: number;
+  /** @deprecated */
   weekly_points_goal: number;
+  /** @deprecated */
   daily_points_pool?: number;
   auto_schedule_enabled: boolean;
   recap_reminder_time: string;

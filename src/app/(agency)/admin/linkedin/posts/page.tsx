@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import type { CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -8,7 +10,8 @@ import {
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
   ThumbsUp, MessageCircle, Eye, Calendar,
   FileText, Image as ImageIcon,
-  Search, Send, History, ChevronDown, ArrowLeft,
+  Search, Send, History, ChevronDown, ArrowLeft, ArrowRight, MoveRight,
+  Upload,
 } from "lucide-react";
 import type { LinkedInCarouselPageTemplate, LinkedInCarouselTemplate, LinkedInPost, LinkedInPostAnalytics, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
 import { DEFAULT_STYLES } from "@/types/linkedin";
@@ -57,6 +60,7 @@ type CarouselSlidePayload = {
   body?: string;
   result?: string;
   showResult?: boolean;
+  showCheck?: boolean;
   showStepCta?: boolean;
   stepCtaText?: string;
   imageMode?: "frame" | "full";
@@ -1190,48 +1194,89 @@ export default function PostsPage() {
     }
   }
 
-  function downloadCurrentCarousel() {
-    const content = generatedSlides.length > 0 ? generatedSlides.map((slide, index) => `Slide ${index + 1}\n${slide}`).join("\n\n---\n\n") : generatedContent;
-    if (!content.trim()) return;
+  async function downloadCurrentCarousel() {
+    if (generatedSlides.length === 0) return;
 
-    const lines = content.split("\n");
-    const escapePdf = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-    const pdfLines: string[] = [];
-    let y = 800;
-    for (const rawLine of lines) {
-      const line = rawLine || " ";
-      if (y < 60) break;
-      pdfLines.push(`BT /F1 12 Tf 48 ${y} Td (${escapePdf(line.slice(0, 110))}) Tj ET`);
-      y -= 18;
+    setGenerating(true);
+    setGenerationError("");
+
+    const offscreen = document.createElement("div");
+    offscreen.style.cssText = "position:fixed;top:0;left:0;width:575px;height:690px;opacity:0.001;pointer-events:none;z-index:-1;overflow:hidden;";
+    document.body.appendChild(offscreen);
+
+    try {
+      await document.fonts.ready;
+
+      const preloadImages = [
+        "/linkedin/logo-ruff-agency.png",
+        "/linkedin/profile.jpg",
+        "/linkedin/swipe-cta.png",
+        "/linkedin/check.png",
+        "/linkedin/croix.png",
+        "/linkedin/bars-left.svg",
+        "/linkedin/bars-right.svg",
+      ];
+      await Promise.all(
+        preloadImages.map((src) => new Promise<void>((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+          img.src = src;
+        }))
+      );
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [575, 690] });
+      const ReactDOM = await import("react-dom/client");
+
+      for (let i = 0; i < generatedSlides.length; i++) {
+        const wrapper = document.createElement("div");
+        wrapper.style.cssText = "width:575px;height:690px;position:relative;overflow:hidden;";
+        offscreen.appendChild(wrapper);
+
+        const payload = decodeCarouselSlide(generatedSlides[i]);
+        const root = ReactDOM.default.createRoot(wrapper);
+        root.render(<CarouselSlideCanvas payload={payload} raw={generatedSlides[i]} scale={1} />);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        const imgs = wrapper.querySelectorAll("img");
+        await Promise.all(
+          Array.from(imgs).map((img) => new Promise<void>((resolve) => {
+            if (img.complete && img.naturalWidth > 0) { resolve(); return; }
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          }))
+        );
+
+        const canvas = await html2canvas(wrapper, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#F6F6F6",
+          logging: false,
+          width: 575,
+          height: 690,
+        });
+
+        const imgData = canvas.toDataURL("image/png", 1.0);
+
+        if (i > 0) pdf.addPage([575, 690], "portrait");
+        pdf.addImage(imgData, "PNG", 0, 0, 575, 690);
+
+        root.unmount();
+        wrapper.remove();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      pdf.save("carousel-linkedin.pdf");
+    } catch (error) {
+      console.error("Erreur export carousel:", error);
+      setGenerationError("Erreur lors de l'export du PDF.");
+    } finally {
+      offscreen.remove();
+      setGenerating(false);
     }
-    const stream = pdfLines.join("\n");
-    const pdf = `%PDF-1.4
-1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
-2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj
-3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj
-4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
-5 0 obj << /Length ${stream.length} >> stream
-${stream}
-endstream endobj
-xref
-0 6
-0000000000 65535 f 
-0000000010 00000 n 
-0000000063 00000 n 
-0000000122 00000 n 
-0000000248 00000 n 
-0000000318 00000 n 
-trailer << /Size 6 /Root 1 0 R >>
-startxref
-${318 + stream.length + 17}
-%%EOF`;
-    const blob = new Blob([pdf], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = postType === "carousel" ? "carousel-linkedin.pdf" : "post-linkedin.pdf";
-    link.click();
-    URL.revokeObjectURL(url);
   }
 
   async function handleDraftMedia(file: File) {
@@ -1563,8 +1608,18 @@ ${318 + stream.length + 17}
       return (
         <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <label style={fieldLabelStyle}>{field.label}</label>
-          {value ? <img src={value} alt="" style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
-          <input type="file" accept="image/*,application/pdf" onChange={(event) => importCarouselTemplateItemImage(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, field.id, event.target.files?.[0])} style={{ fontSize: 12 }} />
+          {value ? (
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <img src={value} alt="" style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} />
+              <button type="button" onClick={() => updateCarouselTemplateItemField(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, field.id, "")} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 999, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+            </div>
+          ) : (
+            <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: 92, borderRadius: 12, border: "2px dashed rgba(18,26,46,0.2)", background: "#f8f8f8", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(1,71,255,0.4)"; e.currentTarget.style.background = "rgba(1,71,255,0.04)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(18,26,46,0.2)"; e.currentTarget.style.background = "#f8f8f8"; }}>
+              <Upload size={24} style={{ color: "rgba(18,26,46,0.4)" }} />
+              <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", fontWeight: 500 }}>Cliquer ou glisser une image</span>
+              <input type="file" accept="image/*,application/pdf" onChange={(event) => importCarouselTemplateItemImage(selectedCarouselTemplate.id, selectedCarouselTemplateItem.id, field.id, event.target.files?.[0])} style={{ display: "none" }} />
+            </label>
+          )}
         </div>
       );
     }
@@ -1639,6 +1694,24 @@ ${318 + stream.length + 17}
           </div>
         )}
 
+        {payload.kind === "context" && (
+          <>
+            <div>
+              <label style={labelStyle}>Afficher le bouton etape</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => update({ showStepCta: true })} style={chipStyle(payload.showStepCta !== false)}>Oui</button>
+                <button type="button" onClick={() => update({ showStepCta: false })} style={chipStyle(payload.showStepCta === false)}>Non</button>
+              </div>
+            </div>
+            {payload.showStepCta !== false && (
+              <div>
+                <label style={labelStyle}>Texte du bouton</label>
+                <input value={payload.stepCtaText ?? ""} onChange={(event) => update({ stepCtaText: event.target.value })} style={inputStyle} />
+              </div>
+            )}
+          </>
+        )}
+
         {payload.kind === "step" && (
           <div>
             <label style={labelStyle}>Texte de l'etape</label>
@@ -1656,9 +1729,39 @@ ${318 + stream.length + 17}
         {(payload.kind === "argument-blue" || payload.kind === "argument-red") && (
           <>
             <div>
+              <label style={labelStyle}>Afficher resultat</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => update({ showResult: true })} style={chipStyle(payload.showResult !== false)}>Oui</button>
+                <button type="button" onClick={() => update({ showResult: false })} style={chipStyle(payload.showResult === false)}>Non</button>
+              </div>
+            </div>
+            {payload.showResult !== false && (
+              <div>
+                <label style={labelStyle}>Texte resultat</label>
+                <input value={payload.result ?? ""} onChange={(event) => update({ result: event.target.value })} style={inputStyle} />
+              </div>
+            )}
+            <div>
+              <label style={labelStyle}>Afficher {payload.kind === "argument-red" ? "croix" : "check"}</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={() => update({ showCheck: true })} style={chipStyle(payload.showCheck !== false)}>Oui</button>
+                <button type="button" onClick={() => update({ showCheck: false })} style={chipStyle(payload.showCheck === false)}>Non</button>
+              </div>
+            </div>
+            <div>
               <label style={labelStyle}>Image</label>
-              {payload.imageUrl ? <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff" }} /> : null}
-              <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ fontSize: 12, marginTop: 8 }} />
+              {payload.imageUrl ? (
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff" }} />
+                  <button type="button" onClick={() => update({ imageUrl: undefined })} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 999, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+                </div>
+              ) : (
+                <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: 120, borderRadius: 12, border: "2px dashed rgba(18,26,46,0.2)", background: "#f8f8f8", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(1,71,255,0.4)"; e.currentTarget.style.background = "rgba(1,71,255,0.04)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(18,26,46,0.2)"; e.currentTarget.style.background = "#f8f8f8"; }}>
+                  <Upload size={24} style={{ color: "rgba(18,26,46,0.4)" }} />
+                  <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", fontWeight: 500 }}>Cliquer ou glisser une image</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ display: "none" }} />
+                </label>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Mode image</label>
@@ -1674,23 +1777,43 @@ ${318 + stream.length + 17}
           <>
             <div>
               <label style={labelStyle}>{payload.kind === "avis" ? "Image 1" : "Image avant"}</label>
-              {payload.beforeImage ? <img src={payload.beforeImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
-              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const preview = await fileToCompressedPreview(file);
-                update({ beforeImage: preview.url });
-              }} style={{ fontSize: 12, marginTop: 8 }} />
+              {payload.beforeImage ? (
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <img src={payload.beforeImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} />
+                  <button type="button" onClick={() => update({ beforeImage: undefined })} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 999, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+                </div>
+              ) : (
+                <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: 120, borderRadius: 12, border: "2px dashed rgba(18,26,46,0.2)", background: "#f8f8f8", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(1,71,255,0.4)"; e.currentTarget.style.background = "rgba(1,71,255,0.04)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(18,26,46,0.2)"; e.currentTarget.style.background = "#f8f8f8"; }}>
+                  <Upload size={24} style={{ color: "rgba(18,26,46,0.4)" }} />
+                  <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", fontWeight: 500 }}>Cliquer ou glisser une image</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const preview = await fileToCompressedPreview(file);
+                    update({ beforeImage: preview.url });
+                  }} style={{ display: "none" }} />
+                </label>
+              )}
             </div>
             <div>
               <label style={labelStyle}>{payload.kind === "avis" ? "Image 2" : "Image apres"}</label>
-              {payload.afterImage ? <img src={payload.afterImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
-              <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const preview = await fileToCompressedPreview(file);
-                update({ afterImage: preview.url });
-              }} style={{ fontSize: 12, marginTop: 8 }} />
+              {payload.afterImage ? (
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <img src={payload.afterImage} alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} />
+                  <button type="button" onClick={() => update({ afterImage: undefined })} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 999, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+                </div>
+              ) : (
+                <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: 120, borderRadius: 12, border: "2px dashed rgba(18,26,46,0.2)", background: "#f8f8f8", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(1,71,255,0.4)"; e.currentTarget.style.background = "rgba(1,71,255,0.04)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(18,26,46,0.2)"; e.currentTarget.style.background = "#f8f8f8"; }}>
+                  <Upload size={24} style={{ color: "rgba(18,26,46,0.4)" }} />
+                  <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", fontWeight: 500 }}>Cliquer ou glisser une image</span>
+                  <input type="file" accept="image/*,application/pdf" onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const preview = await fileToCompressedPreview(file);
+                    update({ afterImage: preview.url });
+                  }} style={{ display: "none" }} />
+                </label>
+              )}
             </div>
           </>
         )}
@@ -1698,8 +1821,18 @@ ${318 + stream.length + 17}
         {payload.kind === "image" && (
           <div>
             <label style={labelStyle}>Image</label>
-            {payload.imageUrl ? <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} /> : null}
-            <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ fontSize: 12, marginTop: 8 }} />
+            {payload.imageUrl ? (
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <img src={payload.imageUrl} alt="" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)" }} />
+                <button type="button" onClick={() => update({ imageUrl: undefined })} style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 999, background: "rgba(0,0,0,0.5)", color: "#fff", border: "none", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+              </div>
+            ) : (
+              <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: 160, borderRadius: 12, border: "2px dashed rgba(18,26,46,0.2)", background: "#f8f8f8", cursor: "pointer", transition: "all 0.2s ease" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(1,71,255,0.4)"; e.currentTarget.style.background = "rgba(1,71,255,0.04)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(18,26,46,0.2)"; e.currentTarget.style.background = "#f8f8f8"; }}>
+                <Upload size={24} style={{ color: "rgba(18,26,46,0.4)" }} />
+                <span style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", fontWeight: 500 }}>Cliquer ou glisser une image</span>
+                <input type="file" accept="image/*,application/pdf" onChange={(event) => importGeneratedCarouselSlideImage(activeSlide, event.target.files?.[0])} style={{ display: "none" }} />
+              </label>
+            )}
           </div>
         )}
       </div>
@@ -1789,15 +1922,18 @@ ${318 + stream.length + 17}
             )
           ) : carouselStudioTab === "templates" ? (
             <>
-              {carouselTemplates.map((template) => (
-                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
-                  {renderTemplateStackPreview(template)}
-                  <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</strong>
-                    <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
-                  </span>
-                </button>
-              ))}
+              {carouselTemplates.map((template) => {
+                const isSelected = template.id === selectedCarouselTemplateId;
+                return (
+                  <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: isSelected ? "rgba(0,0,0,0.03)" : "#fff", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
+                    {renderTemplateStackPreview(template)}
+                    <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</strong>
+                      <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
+                    </span>
+                  </button>
+                );
+              })}
               <div style={{ paddingTop: 20 }}><ClientBlueButton type="button" onClick={createCarouselTemplate} icon={<Plus size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 12 }}>Nouvelle Template</ClientBlueButton></div>
             </>
           ) : null}
@@ -1807,7 +1943,7 @@ ${318 + stream.length + 17}
   };
 
   const renderTemplateMode = () => (
-    <main onClick={() => setSelectedCarouselTemplateItemId("")} style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflowX: "hidden", overflowY: "auto", padding: "138px 40px 56px 46px" }}>
+    <main onClick={() => setSelectedCarouselTemplateItemId("")} style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflowX: "hidden", overflowY: "auto", padding: "40px 40px 56px 46px" }}>
       <div style={{ marginBottom: 22, display: "flex", flexDirection: "column", gap: 6 }}>
         <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 22, lineHeight: "28px", fontWeight: 700, color: "#121a2e" }}>Creer votre template</h2>
         <p style={{ margin: 0, fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Selectionne une page pour regler ses prompts et ses champs.</p>
@@ -1902,7 +2038,7 @@ ${318 + stream.length + 17}
   };
 
   const renderEditorMode = () => (
-    <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
+    <main data-carousel-editor style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
       <button type="button" onClick={() => { setCarouselStudioMode("builder"); setCarouselStudioTab("editor"); setModelPickerOpen(false); setCarouselGenerationPrompt(""); setSelectedCarouselTemplateItemId(""); }} style={{ position: "absolute", top: 24, right: 24, zIndex: 8, minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center", cursor: "pointer", padding: "0 14px", color: "#121a2e", fontSize: 13, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0 8px 20px rgba(18,26,46,0.08)" }} aria-label="Revenir aux carrousels">
         <ArrowLeft size={15} />
         Revenir aux carrousels
@@ -1948,7 +2084,7 @@ ${318 + stream.length + 17}
         style={{ position: "absolute", left: 0, right: 0, top: 84, height: 640, display: "flex", alignItems: "center", gap: 28, overflowX: "auto", overflowY: "hidden", padding: "0 max(32px, calc(50% - 215px))", scrollSnapType: "x proximity", scrollbarWidth: "none", cursor: "grab", userSelect: "none", WebkitUserSelect: "none", scrollBehavior: "smooth", WebkitOverflowScrolling: "touch" }}
       >
         {generatedSlides.map((slide, index) => (
-          <button key={`${index}-${slide.slice(0, 24)}`} type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 430, height: 516, borderRadius: 34, background: "#fff", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 0, flex: "0 0 430px", overflow: "hidden", scrollSnapAlign: "center", cursor: "grab", transition: "box-shadow 0.2s ease", userSelect: "none", WebkitUserSelect: "none" }}>
+          <button key={`${index}-${slide.slice(0, 24)}`} data-carousel-slide type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 430, height: 516, borderRadius: 34, background: "#fff", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 0, flex: "0 0 430px", overflow: "hidden", scrollSnapAlign: "center", cursor: "grab", transition: "box-shadow 0.2s ease", userSelect: "none", WebkitUserSelect: "none" }}>
             <CarouselSlideCanvas payload={decodeCarouselSlide(slide)} raw={slide} scale={430 / 575} />
           </button>
         ))}
@@ -2779,37 +2915,63 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
     transform: `scale(${scale})`,
     transformOrigin: "top left",
   };
+
   const logo = (
-    <div style={{ position: "absolute", top: 20, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-      <span style={{ background: "#1A1A1A", color: "#fff", borderRadius: 4, padding: "4px 7px", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "-6px 8px 6px rgba(0,0,0,0.08)" }}>RUFF</span>
-      <span style={{ fontFamily: "Inter, sans-serif", fontWeight: 700, fontSize: 13 }}>Agency</span>
+    <div style={{ position: "absolute", top: 20, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
+      <img src="/linkedin/logo-ruff-agency.png" alt="RUFF Agency" style={{ height: 64, objectFit: "contain" }} />
     </div>
   );
+  const leftBars = (
+    <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, display: "flex", alignItems: "center" }}>
+      <img src="/linkedin/bars-left.svg" alt="" style={{ height: "100%", width: "auto", objectFit: "contain" }} />
+    </div>
+  );
+  const rightBars = (
+    <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, display: "flex", alignItems: "center" }}>
+      <img src="/linkedin/bars-right.svg" alt="" style={{ height: "100%", width: "auto", objectFit: "contain" }} />
+    </div>
+  );
+  const swipeCta = (
+    <img
+      src="/linkedin/swipe-cta.png"
+      alt="Swipe"
+      style={{
+        position: "absolute",
+        right: 52,
+        bottom: 20,
+        height: 50,
+        objectFit: "contain",
+        zIndex: 10,
+        marginBottom: -6,
+      }}
+    />
+  );
   const footer = (
-    <div style={{ position: "absolute", left: 52, right: 52, bottom: 20, height: 40, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+    <div style={{ position: "absolute", left: 52, right: 52, bottom: 20, height: 56, display: "flex", alignItems: "flex-end", justifyContent: "flex-start", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span style={{ width: 39, height: 39, borderRadius: 999, background: "#b3b3b3", border: "2px solid #fff", boxShadow: "0 10px 18px rgba(0,0,0,0.12)" }} />
-        <span>
-          <strong style={{ display: "block", fontFamily: "Inter, sans-serif", fontSize: 13, lineHeight: "16px" }}>Louis Staub</strong>
-          <span style={{ display: "block", fontWeight: 700, fontSize: 13, lineHeight: "16px", color: "rgba(18,26,46,0.8)" }}>J'optimise le taux de conversion de ta landing page</span>
+        <img src="/linkedin/profile.jpg" alt="Louis Staub" style={{ width: 46, height: 46, borderRadius: 999, border: "1.72px solid #fff", objectFit: "cover", boxShadow: "0 21px 8.2px rgba(0,0,0,0.01), 0 11.71px 7.03px rgba(0,0,0,0.05), 0 4.68px 4.68px rgba(0,0,0,0.09), 0 1.17px 2.34px rgba(0,0,0,0.1)" }} />
+        <span style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 2 }}>
+          <strong style={{ display: "block", fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 700, fontSize: 13.33, lineHeight: "16px", color: "#121A2E" }}>Louis Staub</strong>
+          <span style={{ display: "block", fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 700, fontSize: 11.5, lineHeight: "15px", color: "#121A2E" }}>J'optimise le taux de conversion de ta landing page</span>
         </span>
       </div>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(354.6deg,#000 49.96%,#303030 95.68%)", color: "#fff", borderRadius: 89, padding: "6px 6px 6px 12px", fontFamily: "Inter, sans-serif", fontSize: 14, boxShadow: "0 10px 14px rgba(0,0,0,0.18)" }}>
-        Swipe <span style={{ width: 35, height: 22, borderRadius: 999, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontWeight: 900 }}>→</span>
-      </span>
     </div>
   );
 
   if (data.kind === "cta") {
     if (!data.backgroundImage1 && !data.backgroundImage2) {
       return (
-        <div style={card}>
+        <div style={card} data-carousel-slide-inner>
+          {leftBars}
+          {rightBars}
           <img src="/linkedin/slide-cta-reference.jpg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         </div>
       );
     }
     return (
       <div style={{ ...card, background: "linear-gradient(115deg,#2D6EFD 0%,#0147FF 72%)", color: "#fff" }}>
+        {leftBars}
+        {rightBars}
         {data.backgroundImage1 ? <img src={data.backgroundImage1} alt="" style={{ position: "absolute", right: -70, top: 48, width: 210, height: 290, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.9, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
         {data.backgroundImage2 ? <img src={data.backgroundImage2} alt="" style={{ position: "absolute", right: -40, bottom: 80, width: 235, height: 250, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.92, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
         {logo}
@@ -2829,7 +2991,9 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
 
   if (data.kind === "before-after" || data.kind === "avis") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {logo}
         {data.kind === "avis" && <div style={{ position: "absolute", left: 68, right: 68, top: 82, height: 69, borderRadius: 15, background: "#fff", border: "1px solid rgba(0,0,0,0.16)", boxShadow: "0 12px 20px rgba(0,0,0,0.07)", display: "grid", placeItems: "center", fontSize: 31, fontWeight: 700 }}>{data.title || "Tu preferes quelle version ?"}</div>}
         <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 184 : 92, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
@@ -2838,54 +3002,94 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
         <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 405 : 353, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
           {data.afterImage ? <img src={data.afterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
         </div>
-        {data.kind === "before-after" && <span style={{ position: "absolute", left: 322, top: 300, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 14px", fontWeight: 700, fontSize: 13 }}>Ancienne version du site</span>}
-        {data.kind === "before-after" && <span style={{ position: "absolute", left: 322, top: 563, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 14px", fontWeight: 700, fontSize: 13 }}>Nouvelle version du site</span>}
-        {footer}
+        {data.kind === "before-after" && <span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: 300, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 18px", fontWeight: 700, fontSize: 13, boxShadow: "0 4px 8px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}>Ancienne version du site</span>}
+        {data.kind === "before-after" && <span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: 563, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 18px", fontWeight: 700, fontSize: 13, boxShadow: "0 4px 8px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}>Nouvelle version du site</span>}
+        {swipeCta}{footer}
       </div>
     );
   }
 
   if (data.kind === "why-design") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {logo}
         <div style={{ position: "absolute", left: 86, top: 184, width: 403, minHeight: 178, borderRadius: 21, background: "#0147FF", color: "#fff", padding: 24, boxShadow: "0 18px 24px rgba(10,132,255,0.08)" }}>
           <h2 style={{ margin: 0, fontSize: 32, lineHeight: 1.06, letterSpacing: "-0.02em" }}>{data.body || data.title}</h2>
-          <span style={{ marginTop: 16, width: 65, height: 45, borderRadius: 8, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontSize: 32, fontWeight: 900 }}>→</span>
+          <span style={{ marginTop: 16, width: 65, height: 45, borderRadius: 8, background: "#fff", color: "#000", display: "grid", placeItems: "center" }}><MoveRight size={28} strokeWidth={3} style={{ color: "#121A2E" }} /></span>
         </div>
-        {footer}
+        {swipeCta}{footer}
       </div>
     );
   }
 
   if (data.kind === "step") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {logo}
-        <div style={{ position: "absolute", left: 86, top: 184, width: 403 }}>
-          <div style={{ display: "inline-flex", height: 97, borderRadius: 26, background: "#fff", border: "1px solid rgba(0,0,0,0.22)", boxShadow: "0 12px 16px rgba(26,26,26,0.06)", alignItems: "center", padding: "0 26px", fontSize: 56, fontWeight: 700, letterSpacing: "-0.02em" }}>Etape {data.stepNumber || 1}</div>
-          <div style={{ marginTop: 15, height: 82, borderRadius: 19, background: "#0147FF", boxShadow: "0 18px 24px rgba(10,132,255,0.08)", color: "#fff", display: "flex", alignItems: "center", padding: "0 24px", fontSize: 32, fontWeight: 700, letterSpacing: "-0.02em" }}>{data.title}</div>
+        <div style={{ position: "absolute", left: 86, top: 184, width: 403, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 15 }}>
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            minHeight: 97,
+            borderRadius: 26,
+            background: "#fff",
+            border: "1px solid rgba(0,0,0,0.22)",
+            padding: "16px 26px",
+            fontFamily: '"Plus Jakarta Sans", sans-serif',
+            fontSize: 56,
+            fontWeight: 700,
+            color: "#121A2E",
+            letterSpacing: "-0.02em",
+            boxShadow: "0 12px 16px rgba(26,26,26,0.06)",
+          }}>
+            Etape {data.stepNumber || 1}
+          </div>
+          <div style={{
+            minHeight: 82,
+            borderRadius: 19,
+            background: "#0147FF",
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "16px 24px",
+            fontFamily: '"Plus Jakarta Sans", sans-serif',
+            fontSize: 32,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            boxShadow: "0 18px 24px rgba(10,132,255,0.08)",
+            textAlign: "left",
+          }}>
+            {data.title}
+          </div>
         </div>
-        {footer}
+        {swipeCta}{footer}
       </div>
     );
   }
 
   if (data.kind === "free") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {logo}
         <div style={{ position: "absolute", left: 86, top: 112, width: 403, height: 488, borderRadius: 24, border: "1.5px dashed rgba(18,26,46,0.18)", background: "linear-gradient(45deg, rgba(255,255,255,0.72) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,0.72) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.72) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.72) 75%)", backgroundSize: "28px 28px", backgroundPosition: "0 0, 0 14px, 14px -14px, -14px 0", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.42)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
           Libre
         </div>
-        {footer}
+        {swipeCta}{footer}
       </div>
     );
   }
 
   if (data.kind === "image") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {data.imageUrl ? (
           <img src={data.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
@@ -2899,36 +3103,173 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
 
   if (data.kind === "argument-blue" || data.kind === "argument-red") {
     return (
-      <div style={card}>
+      <div style={card} data-carousel-slide-inner>
+        {leftBars}
+        {rightBars}
         {logo}
-        <div style={{ position: "absolute", left: 86, top: 98, width: 403 }}>
+        <div style={{ position: "absolute", left: 86, top: 98, width: 403, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 66, height: 65, borderRadius: 15, background: "#e5e5e5", border: "1px solid rgba(0,0,0,0.06)", display: "grid", placeItems: "center" }}>
-              <span style={{ width: 56, height: 56, borderRadius: 11, background: "#fff", boxShadow: "0 6px 8px rgba(0,0,0,0.13), inset 0 3px 3px rgba(255,255,255,0.25)", display: "grid", placeItems: "center", fontFamily: "Inter, sans-serif", fontSize: 32, fontWeight: 700 }}>{data.pointNumber || 1}</span>
+            {/* Case numéro */}
+            <span style={{
+              width: 66,
+              height: 65,
+              borderRadius: 15,
+              background: "#e5e5e5",
+              border: "1px solid rgba(0,0,0,0.06)",
+              display: "grid",
+              placeItems: "center",
+            }}>
+              <span style={{
+                width: 56,
+                height: 56,
+                borderRadius: 11,
+                background: "#fff",
+                display: "grid",
+                placeItems: "center",
+                fontFamily: "Inter, sans-serif",
+                fontSize: 31.86,
+                fontWeight: 700,
+                color: "#121A2E",
+                border: "1px solid rgba(0,0,0,0.06)",
+                boxShadow: "0 6px 2px rgba(0,0,0,0.02), 0 3px 2px rgba(0,0,0,0.08), 0 1.5px 1.5px rgba(0,0,0,0.13)",
+              }}>{data.pointNumber || 1}</span>
             </span>
-            <span style={{ minHeight: 60, flex: 1, borderRadius: 14, background: gradient, color: "#fff", display: "flex", alignItems: "center", padding: "0 20px", boxShadow: `0 18px 24px ${isRed ? "rgba(150,13,13,0.12)" : "rgba(1,71,255,0.12)"}`, fontSize: 26, lineHeight: 1.06, fontWeight: 700 }}>{limitSlideTitle(data.title || "")}</span>
+            {/* Conteneur titre */}
+            <span style={{
+              minHeight: 60,
+              borderRadius: 14,
+              background: gradient,
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "0 20px",
+              fontSize: 26,
+              lineHeight: 1.06,
+              fontWeight: 700,
+              boxShadow: isRed
+                ? "0 24px 9.38px rgba(150,13,13,0.02), 0 13.39px 8.04px rgba(150,13,13,0.08), 0 6.03px 6.03px rgba(150,13,13,0.13), 0 1.34px 3.35px rgba(150,13,13,0.15)"
+                : "0 24px 9.38px rgba(1,71,255,0.02), 0 13.39px 8.04px rgba(1,71,255,0.08), 0 6.03px 6.03px rgba(1,71,255,0.13), 0 1.34px 3.35px rgba(1,71,255,0.15)",
+            }}>{limitSlideTitle(data.title || "")}</span>
           </div>
-          <p style={{ margin: "12px 0 0", minHeight: 99, fontSize: 21, lineHeight: 1.58, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)" }}>{data.subtitle}</p>
-          <div style={{ position: "relative", marginTop: 12, height: 264, borderRadius: data.imageMode === "full" ? 0 : 16, background: "#fff", border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)", overflow: "hidden" }}>
+          <p style={{
+            margin: "12px 0 0",
+            minHeight: 99,
+            fontFamily: '"Plus Jakarta Sans", sans-serif',
+            fontSize: 21,
+            lineHeight: 1.58,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            color: "rgba(18,26,46,0.8)",
+            textAlign: "left",
+          }}>{data.subtitle}</p>
+          <div style={{
+            position: "relative",
+            marginTop: 12,
+            height: 264,
+            borderRadius: data.imageMode === "full" ? 0 : 16,
+            background: "#fff",
+            border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)",
+            overflow: data.showCheck === false ? "hidden" : "visible",
+          }}>
             {data.imageUrl ? <img src={data.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-            <span style={{ position: "absolute", right: -6, top: -8, width: 32, height: 32, borderRadius: 999, background: isRed ? "linear-gradient(180deg,#F45151,#EF0C0C)" : "linear-gradient(180deg,#4176FF,#0147FF)", color: "#fff", display: "grid", placeItems: "center", boxShadow: `0 8px 12px ${isRed ? "rgba(150,13,13,0.25)" : "rgba(1,71,255,0.25)"}` }}>{isRed ? "×" : "✓"}</span>
+            {data.showCheck !== false && (
+              <img
+                src={isRed ? "/linkedin/croix.png" : "/linkedin/check.png"}
+                alt=""
+                style={{
+                  position: "absolute",
+                  right: -10,
+                  top: -12,
+                  width: 52,
+                  height: 52,
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            )}
           </div>
-          {data.showResult && <p style={{ margin: "16px 0 0", display: "flex", alignItems: "center", gap: 16, fontSize: 18, lineHeight: 1.34, fontWeight: 700 }}><span style={{ color: accent, fontSize: 30 }}>→</span>{data.result}</p>}
+          {data.showResult && (
+            <p style={{ margin: "16px 0 0", display: "flex", alignItems: "center", gap: 16, fontSize: 18, lineHeight: 1.34, fontWeight: 700 }}>
+              <MoveRight size={24} strokeWidth={3} style={{ color: accent }} />
+              {data.result}
+            </p>
+          )}
         </div>
-        {footer}
+        {swipeCta}{footer}
       </div>
     );
   }
 
   return (
-    <div style={card}>
+    <div style={card} data-carousel-slide-inner>
+      {leftBars}
+      {rightBars}
       {logo}
-      <div style={{ position: "absolute", left: 68, top: 118, width: 437 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", minHeight: 73, borderRadius: 20, background: "#fff", border: "1px solid rgba(0,0,0,0.22)", boxShadow: "0 12px 18px rgba(26,26,26,0.06)", padding: "0 20px", fontSize: 42, fontWeight: 700, letterSpacing: "-0.02em" }}>Contexte</div>
-        <p style={{ margin: "24px 0 0", whiteSpace: "pre-line", fontSize: 32, lineHeight: 1.26, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)" }}>{data.subtitle || data.body}</p>
-        {data.showStepCta && <div style={{ marginTop: 28, height: 56, borderRadius: 38, background: "#000", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 8px 8px 24px", boxShadow: "0 14px 18px rgba(0,0,0,0.2)", fontSize: 22, fontWeight: 700 }}>{data.stepCtaText}<span style={{ width: 57, height: 39, borderRadius: 32, background: "#fff", color: "#000", display: "grid", placeItems: "center", fontSize: 28 }}>→</span></div>}
+      <div style={{ position: "absolute", left: 86, top: 118, width: 403, display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          minHeight: 73,
+          borderRadius: 20,
+          background: "#fff",
+          border: "1px solid rgba(0,0,0,0.22)",
+          padding: "0 20px",
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
+          fontSize: 42,
+          fontWeight: 700,
+          color: "#121A2E",
+          letterSpacing: "-0.02em",
+          boxShadow: "0 9px 4px rgba(26,26,26,0.01), 0 5px 3px rgba(26,26,26,0.03), 0 2px 2px rgba(26,26,26,0.04), 0 1px 1px rgba(26,26,26,0.05)",
+        }}>
+          Contexte
+        </div>
+        <p style={{
+          margin: "24px 0 0",
+          whiteSpace: "pre-line",
+          fontFamily: '"Plus Jakarta Sans", sans-serif',
+          fontSize: 32,
+          fontWeight: 700,
+          lineHeight: 1.26,
+          letterSpacing: "-0.02em",
+          color: "rgba(18,26,46,0.8)",
+        }}>
+          {data.subtitle || data.body}
+        </p>
+        {data.showStepCta && (
+          <div style={{
+            marginTop: 28,
+            height: 56,
+            borderRadius: 38,
+            background: "#000",
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            gap: 12,
+            padding: "8px 8px 8px 24px",
+            fontFamily: '"Plus Jakarta Sans", sans-serif',
+            fontSize: 22,
+            fontWeight: 700,
+            textAlign: "left",
+            boxShadow: "0 15px 6px rgba(0,0,0,0.02), 0 8.65px 5.19px rgba(0,0,0,0.08), 0 4px 4px rgba(0,0,0,0.13), 0 0.86px 2.16px rgba(0,0,0,0.15)",
+          }}>
+            <span style={{ textAlign: "left" }}>{data.stepCtaText}</span>
+            <span style={{
+              width: 57,
+              height: 39,
+              borderRadius: 32,
+              background: "#fff",
+              color: "#000",
+              display: "grid",
+              placeItems: "center",
+              border: "1px solid rgba(0,0,0,0.06)",
+            }}>
+              <MoveRight size={24} strokeWidth={3} />
+            </span>
+          </div>
+        )}
       </div>
-      {footer}
+      {swipeCta}{footer}
     </div>
   );
 }

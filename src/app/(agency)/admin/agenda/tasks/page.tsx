@@ -2,7 +2,7 @@
 
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import { useEffect, useState } from "react";
-import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star, Sparkles, Palette } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star, Sparkles, Palette, Clock, Check, X, Minus } from "lucide-react";
 import type { AgendaTask, AgendaObjective } from "@/types/agenda";
 import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 import { resolveTaskColor } from "@/lib/agenda/points";
@@ -125,7 +125,7 @@ export default function TasksPage() {
   if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto bg-[#fbfbfb] min-h-screen">
       {pageError && <SqlMissingBanner error={pageError} />}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Tâches</h1>
@@ -138,7 +138,7 @@ export default function TasksPage() {
           </button>
           <button
             onClick={() => setShowForm(s => !s)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] transition-colors"
           >
             <Plus size={16} />
             Nouvelle tâche
@@ -173,7 +173,7 @@ export default function TasksPage() {
 
       {/* Form */}
       {showForm && (
-        <div className="bg-white border border-indigo-200 rounded-xl p-5 mb-5 shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5 shadow-sm">
           <h3 className="font-semibold text-gray-800 mb-4">Nouvelle tâche</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -222,7 +222,7 @@ export default function TasksPage() {
                     key={i}
                     onClick={() => setForm(f => ({ ...f, importance: i }))}
                     className={`flex-1 py-1.5 rounded text-xs font-medium border transition-colors ${
-                      form.importance === i ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-200 text-gray-500 hover:border-indigo-300"
+                      form.importance === i ? "bg-[#121A2E] text-white border-[#121A2E]" : "border-gray-200 text-gray-500 hover:border-gray-300"
                     }`}
                   >
                     {i}
@@ -311,7 +311,7 @@ export default function TasksPage() {
             </button>
             <button
               onClick={handleCreate}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+              className="px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]"
             >
               Créer la tâche
             </button>
@@ -327,7 +327,7 @@ export default function TasksPage() {
           <p>Aucune tâche</p>
           <button
             onClick={() => setShowForm(true)}
-            className="mt-3 text-sm text-indigo-500 hover:underline"
+            className="mt-3 text-sm text-[#0147FF] hover:underline"
           >
             + Créer votre première tâche
           </button>
@@ -401,15 +401,15 @@ function TaskRow({
   const taskColor = resolveTaskColor(task, objective?.color);
   return (
     <div
-      className={`flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-indigo-100 transition-colors ${
+      className={`flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-300 transition-colors ${
         task.status === "done" ? "opacity-60" : ""
-      } ${isSubtask ? "border-l-2 border-l-indigo-200" : ""}`}
+      } ${isSubtask ? "border-l-2 border-l-gray-200" : ""}`}
       style={{ borderLeftWidth: 4, borderLeftColor: taskColor }}
     >
       <button onClick={() => onToggle(task)} className="shrink-0">
         {task.status === "done"
           ? <CheckCircle2 size={18} className="text-green-500" />
-          : <Circle size={18} className="text-gray-300 hover:text-indigo-400" />
+          : <Circle size={18} className="text-gray-300 hover:text-[#0147FF]" />
         }
       </button>
 
@@ -434,7 +434,7 @@ function TaskRow({
         </div>
         <div className="flex items-center gap-3 mt-0.5">
           {task.date && <span className="text-xs text-gray-400">{new Date(task.date).toLocaleDateString("fr-FR")}</span>}
-          {task.start_time && <span className="text-xs text-gray-400">⏰ {task.start_time.slice(0,5)}{task.end_time ? ` - ${task.end_time.slice(0,5)}` : ""}</span>}
+          {task.start_time && <span className="text-xs text-gray-400 inline-flex items-center gap-1"><Clock size={10} /> {task.start_time.slice(0,5)}{task.end_time ? ` - ${task.end_time.slice(0,5)}` : ""}</span>}
           {subtasks.length > 0 && <span className="text-xs text-gray-400">{subtasks.filter(s => s.status === "done").length}/{subtasks.length} sous-tâches</span>}
         </div>
       </div>
@@ -451,7 +451,7 @@ function TaskRow({
           task.status === "cancelled" ? "bg-red-100 text-red-500" :
           "bg-gray-100 text-gray-500"
         }`}>
-          {task.status === "done" ? "✓" : task.status === "in_progress" ? "⏳" : task.status === "cancelled" ? "✗" : "·"}
+          {task.status === "done" ? <Check size={10} /> : task.status === "in_progress" ? <Clock size={10} /> : task.status === "cancelled" ? <X size={10} /> : <Minus size={10} />}
         </span>
         <button onClick={() => onDelete(task.id)} className="text-gray-300 hover:text-red-400 transition-colors">
           <Trash2 size={14} />
