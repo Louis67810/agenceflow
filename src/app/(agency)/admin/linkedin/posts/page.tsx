@@ -929,7 +929,7 @@ export default function PostsPage() {
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
     const nextTemplate = nextTemplates.find((template) => template.id === templateId);
     if (nextTemplate && carouselStudioMode === "generate" && generatedSlides.length > 0) {
-      setGeneratedSlides(buildCarouselSlidesFromTemplate(nextTemplate, carouselGenerationPrompt));
+      setGeneratedSlides(buildCarouselSlidesFromTemplate(nextTemplate, carouselGenerationPrompt, {}));
     }
   }
 
@@ -1007,9 +1007,10 @@ export default function PostsPage() {
     return carouselPageTemplates.find((entry) => entry.id === pageTemplateId) ?? null;
   }
 
-  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string) {
+  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string, aiPoints?: Record<string, string[]>) {
     let stepIndex = 0;
-    let pointIndex = 0;
+    let bluePointIndex = 0;
+    let redPointIndex = 0;
     const instructionPoints = splitInstructionPoints(prompt);
     const slides = template.items.flatMap((item, itemIndex) => {
       if (item.pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
@@ -1020,17 +1021,23 @@ export default function PostsPage() {
       const kind = getSlideKind(page.id);
       const getField = (fieldId: string, fallback = "") => getCarouselTemplateItemField(item, page, fieldId, fallback);
       const isArgument = kind === "argument-blue" || kind === "argument-red";
-      const dynamicPoints = item.mode === "repeat_ai" || isArgument ? instructionPoints : [];
-      const count = dynamicPoints.length > 0 ? dynamicPoints.length : item.mode === "repeat_ai" ? 3 : 1;
+      const isRepeatAi = item.mode === "repeat_ai";
+      // Pour les arguments en mode repeat_ai, utiliser les points generes par l'IA
+      const aiSectionKey = `SECTION_${itemIndex + 1}`;
+      const aiGeneratedPoints = (isRepeatAi && aiPoints?.[aiSectionKey]) || [];
+      const dynamicPoints = isRepeatAi ? (aiGeneratedPoints.length > 0 ? aiGeneratedPoints : instructionPoints) : [];
+      const count = dynamicPoints.length > 0 ? dynamicPoints.length : isRepeatAi ? 3 : 1;
       return Array.from({ length: count }).map((_, repeatIndex) => {
         const pointText = dynamicPoints[repeatIndex] ?? prompt;
-        if (kind === "step") stepIndex += 1;
-        if (isArgument) pointIndex += 1;
+        if (kind === "step") { stepIndex += 1; bluePointIndex = 0; redPointIndex = 0; }
+        if (kind === "why-design") { stepIndex = 0; bluePointIndex = 0; redPointIndex = 0; }
+        if (kind === "argument-blue") bluePointIndex += 1;
+        if (kind === "argument-red") redPointIndex += 1;
         const payload: CarouselSlidePayload = {
           kind,
           label: page.name,
           stepNumber: kind === "step" ? stepIndex : undefined,
-          pointNumber: isArgument ? pointIndex : undefined,
+          pointNumber: kind === "argument-blue" ? bluePointIndex : kind === "argument-red" ? redPointIndex : undefined,
           title: kind === "avis" ? getField("avis-title") : limitSlideTitle(isArgument ? (pointText || getField("arg-title")) : getField("step-title")),
           subtitle: isArgument ? getField("arg-subtitle", pointText) : getField("context-subtitle"),
           body: kind === "why-design" ? getField("why-text") : pointText,
@@ -1052,7 +1059,7 @@ export default function PostsPage() {
     return slides;
   }
 
-  function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
+  async function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
     const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
     if (!carouselDraftName.trim() || !carouselDraftCategory) return;
     setCarouselStudioMode("generate");
@@ -1065,7 +1072,21 @@ export default function PostsPage() {
       setShowCarouselTemplatePicker(false);
       setCarouselGenerationTemplateId(selected.id);
       setSelectedCarouselTemplateId(selected.id);
-      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt);
+
+      const hasRepeatAi = selected.items.some((item) => {
+        const page = resolveCarouselPage(item.pageTemplateId);
+        const kind = getSlideKind(page?.id ?? "");
+        return item.mode === "repeat_ai" && (kind === "argument-blue" || kind === "argument-red");
+      });
+
+      let aiPoints: Record<string, string[]> = {};
+      if (hasRepeatAi && carouselGenerationPrompt.trim()) {
+        setGenerating(true);
+        aiPoints = await generateArgumentPointsWithAI(selected, carouselGenerationPrompt);
+        setGenerating(false);
+      }
+
+      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt, aiPoints);
       setGeneratedSlides(slides);
       setActiveSlide(0);
       setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
@@ -1107,17 +1128,85 @@ export default function PostsPage() {
     setEditingPostId(null);
     setCarouselGenerationTemplateId(selected.id);
     setSelectedCarouselTemplateId(selected.id);
-    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, ""));
+    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, "", {}));
     setActiveSlide(0);
     setShowCarouselTemplatePicker(false);
   }
 
-  function runCarouselGenerationChat() {
+  async function generateArgumentPointsWithAI(template: LinkedInCarouselTemplate, userPrompt: string): Promise<Record<string, string[]>> {
+    const currentSettings = settings ?? loadLinkedInSettings();
+    const repeatAiItems = template.items.filter((item) => {
+      const page = resolveCarouselPage(item.pageTemplateId);
+      const kind = getSlideKind(page?.id ?? "");
+      return item.mode === "repeat_ai" && (kind === "argument-blue" || kind === "argument-red");
+    });
+    if (repeatAiItems.length === 0) return {};
+
+    const apiKey = currentSettings.openrouterApiKey?.trim() || "";
+    const model = currentSettings.model || "anthropic/claude-sonnet-4";
+
+    const pointsRequest = repeatAiItems.map((item, idx) => {
+      const page = resolveCarouselPage(item.pageTemplateId);
+      const kind = getSlideKind(page?.id ?? "");
+      const meta = decodeCarouselTemplateItemMeta(item.label);
+      const pagePrompt = meta.pagePrompt || page?.pagePrompt || "";
+      return `SECTION_${idx + 1} (${kind === "argument-blue" ? "Point positif" : "Point négatif"}): ${pagePrompt}`;
+    }).join("\n");
+
+    const systemPrompt = `Tu es un expert en creation de carrousels LinkedIn. Pour chaque section demandee, genere une liste de points concis et percutants (1 phrase par point). Le nombre de points doit etre adapte au sujet — entre 3 et 8 points par section. Reponds UNIQUEMENT au format JSON suivant, sans autre texte :\n{\n  "SECTION_1": ["point 1", "point 2", ...],\n  "SECTION_2": ["point 1", "point 2", ...]\n}`;
+
+    const userPromptText = `Sujet : ${userPrompt}\n\nGenere les points pour ces sections :\n${pointsRequest}`;
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "https://agenceflow.app",
+          "X-Title": "AgenceFlow LinkedIn",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPromptText },
+          ],
+          temperature: 0.8,
+          max_tokens: 2000,
+        }),
+      });
+      if (!res.ok) return {};
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content ?? "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]) as Record<string, string[]>;
+      }
+    } catch {}
+    return {};
+  }
+
+  async function runCarouselGenerationChat() {
     const prompt = carouselGenerationPrompt.trim();
     const template = carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId);
     if (!prompt || !template) return;
     const before = generatedSlides;
-    const nextSlides = buildCarouselSlidesFromTemplate(template, prompt);
+
+    const hasRepeatAi = template.items.some((item) => {
+      const page = resolveCarouselPage(item.pageTemplateId);
+      const kind = getSlideKind(page?.id ?? "");
+      return item.mode === "repeat_ai" && (kind === "argument-blue" || kind === "argument-red");
+    });
+
+    let aiPoints: Record<string, string[]> = {};
+    if (hasRepeatAi) {
+      setGenerating(true);
+      aiPoints = await generateArgumentPointsWithAI(template, prompt);
+      setGenerating(false);
+    }
+
+    const nextSlides = buildCarouselSlidesFromTemplate(template, prompt, aiPoints);
     setGeneratedSlides(nextSlides);
     setActiveSlide(0);
     setCarouselGenerationChat((current) => [
@@ -1945,8 +2034,8 @@ export default function PostsPage() {
   const renderTemplateMode = () => (
     <main onClick={() => setSelectedCarouselTemplateItemId("")} style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflowX: "hidden", overflowY: "auto", padding: "40px 40px 56px 46px" }}>
       <div style={{ marginBottom: 22, display: "flex", flexDirection: "column", gap: 6 }}>
-        <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 22, lineHeight: "28px", fontWeight: 700, color: "#121a2e" }}>Creer votre template</h2>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Selectionne une page pour regler ses prompts et ses champs.</p>
+        <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 28, lineHeight: "34px", fontWeight: 700, color: "#121a2e" }}>Creer votre template</h2>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Selectionne une page pour regler ses prompts et ses champs.</p>
       </div>
       <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", overflow: "visible", paddingBottom: 8 }}>
         {(selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : []).slice(0, 10).map((item, index) => {
@@ -1987,6 +2076,35 @@ export default function PostsPage() {
               </span>
               {renderSlideMiniPreview(previewPayload, 132, 174, 18)}
               <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e", maxWidth: 150, minHeight: 42, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", textAlign: "center" }}>{getCarouselTemplateItemLabel(item, page, index)}</strong>
+              {(page?.id === "builtin:argument-blue" || page?.id === "builtin:argument-red") && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (!selectedCarouselTemplate) return;
+                    const nextMode = item.mode === "repeat_ai" ? "single" : "repeat_ai";
+                    updateCarouselTemplateItem(selectedCarouselTemplate.id, item.id, { mode: nextMode });
+                  }}
+                  style={{
+                    position: "absolute",
+                    bottom: 10,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: 20,
+                    border: "1px solid",
+                    cursor: "pointer",
+                    background: item.mode === "repeat_ai" ? "rgba(1,71,255,0.08)" : "#f6f6f6",
+                    color: item.mode === "repeat_ai" ? "#0147ff" : "rgba(18,26,46,0.55)",
+                    borderColor: item.mode === "repeat_ai" ? "rgba(1,71,255,0.32)" : "rgba(18,26,46,0.1)",
+                    zIndex: 3,
+                  }}
+                >
+                  {item.mode === "repeat_ai" ? "Répéter (IA)" : "1x"}
+                </button>
+              )}
             </button>
           );
         })}
@@ -1999,18 +2117,28 @@ export default function PostsPage() {
 
   const renderEditorBeforeClick = () => (
     <main style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      <div style={{ position: "absolute", left: 46, top: 92, right: 40, display: "flex", flexDirection: "column", gap: 6 }}>
-        <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 22, lineHeight: "28px", fontWeight: 700, color: "#121a2e" }}>Selectionner un carrousel</h2>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Ouvre un carrousel existant ou cree-en un nouveau.</p>
+      <div style={{ position: "absolute", left: 46, top: 32, right: 40, display: "flex", flexDirection: "column", gap: 6, zIndex: 2 }}>
+        <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 28, lineHeight: "34px", fontWeight: 700, color: "#121a2e" }}>Selectionner un carrousel</h2>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Ouvre un carrousel existant ou cree-en un nouveau.</p>
       </div>
-      <div style={{ position: "absolute", left: 46, top: 138, right: 40, display: "flex", gap: 24, flexWrap: "wrap", overflow: "visible" }}>
-        {carouselPosts.slice(0, 8).map((post) => {
+      <div style={{ position: "absolute", left: 46, top: 108, right: 40, display: "flex", gap: 24, flexWrap: "wrap", overflow: "visible" }}>
+        {carouselPosts
+          .sort((a, b) => {
+            const aScheduled = a.status === "scheduled" ? 1 : 0;
+            const bScheduled = b.status === "scheduled" ? 1 : 0;
+            return aScheduled - bScheduled;
+          })
+          .slice(0, 8)
+          .map((post) => {
           const slides = post.slides?.length ? post.slides : [post.content];
           return (
             <button key={post.id} type="button" onClick={() => { setGeneratedSlides(slides); setActiveSlide(0); setCarouselStudioMode("generate"); setCarouselStudioTab("editor"); setEditingPostId(post.id); setPostType("carousel"); setManualEditorStarted(true); setCarouselDraftName(post.sourceTitle ?? ""); setCarouselDraftCategory(post.styleId ?? ""); setModelPickerOpen(false); }} style={{ position: "relative", width: 280, minHeight: 292, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
               <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); deletePost(post.id); } }} style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.04)", background: "#fff", color: "rgba(18,26,46,0.72)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(18,26,46,0.08)", cursor: "pointer", zIndex: 3 }}>
                 <Trash2 size={13} />
               </span>
+              {post.status === "scheduled" && (
+                <span style={{ position: "absolute", top: 12, left: 12, fontSize: 10, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: "#d5eeff", color: "#073e63", zIndex: 3 }}>Planifie</span>
+              )}
               {renderGeneratedCarouselStackPreview(slides)}
               <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e", maxWidth: 180, minHeight: 42, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", textAlign: "center" }}>{post.sourceTitle || (post.content ? `${post.content.slice(0, 36)}${post.content.length > 36 ? "..." : ""}` : "Carrousel")}</strong>
             </button>
@@ -2156,7 +2284,7 @@ export default function PostsPage() {
       )}
       {showCarouselTemplatePicker && (
         <div onClick={() => setShowCarouselTemplatePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 31, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div onClick={(event) => event.stopPropagation()} style={{ width: "fit-content", maxWidth: "min(96vw, 1120px)", maxHeight: "84vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: "fit-content", maxWidth: "min(96vw, 1200px)", maxHeight: "90vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
               <Search size={16} />
               <input value={carouselTemplateSearch} onChange={(event) => setCarouselTemplateSearch(event.target.value)} placeholder="Rechercher une template..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} />
@@ -2190,7 +2318,7 @@ export default function PostsPage() {
               </select>
               {selectedCarouselTemplateForPicker ? (
                 <>
-                  <ClientBlueButton type="button" onClick={() => startCarouselGeneration(selectedCarouselTemplateForPicker)} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
+                  <ClientBlueButton type="button" onClick={() => void startCarouselGeneration(selectedCarouselTemplateForPicker)} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
                     Generer avec l'IA
                   </ClientBlueButton>
                   <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
@@ -2271,18 +2399,18 @@ export default function PostsPage() {
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 6 }}>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#121a2e" }}>Prompt global carrousel (skill md)</label>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#121a2e" }}>Prompt global du carrousel</label>
                   <textarea
                     rows={14}
-                    value={settings?.carouselSkillPrompt ?? ""}
-                    onChange={(event) => {
-                      const nextSettings = { ...(settings ?? loadLinkedInSettings()), carouselSkillPrompt: event.target.value };
-                      setSettings(nextSettings);
-                      queueRemoteLinkedInSettingsSync(nextSettings);
-                      void persistRemoteLinkedInSettings(nextSettings);
-                    }}
+                    readOnly
+                    value={selectedCarouselTemplate ? selectedCarouselTemplate.items.map((item) => {
+                      const page = resolveCarouselPage(item.pageTemplateId);
+                      const prompt = getCarouselTemplateItemPrompt(item, page, "pagePrompt");
+                      return prompt;
+                    }).filter(Boolean).join("\n\n---\n\n") : ""}
                     style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.5, minHeight: 280, fontFamily: "monospace" }}
                   />
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(18,26,46,0.45)" }}>Ce prompt est la concatenation automatique de tous les pre-prompts des pages du template.</p>
                 </div>
               )}
 
@@ -2959,32 +3087,11 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
   );
 
   if (data.kind === "cta") {
-    if (!data.backgroundImage1 && !data.backgroundImage2) {
-      return (
-        <div style={card} data-carousel-slide-inner>
-          {leftBars}
-          {rightBars}
-          <img src="/linkedin/slide-cta-reference.jpg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        </div>
-      );
-    }
     return (
-      <div style={{ ...card, background: "linear-gradient(115deg,#2D6EFD 0%,#0147FF 72%)", color: "#fff" }}>
+      <div style={card} data-carousel-slide-inner>
         {leftBars}
         {rightBars}
-        {data.backgroundImage1 ? <img src={data.backgroundImage1} alt="" style={{ position: "absolute", right: -70, top: 48, width: 210, height: 290, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.9, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
-        {data.backgroundImage2 ? <img src={data.backgroundImage2} alt="" style={{ position: "absolute", right: -40, bottom: 80, width: 235, height: 250, objectFit: "cover", borderRadius: 26, transform: "rotate(13deg)", opacity: 0.92, boxShadow: "0 20px 42px rgba(0,0,0,0.2)" }} /> : null}
-        {logo}
-        <div style={{ position: "absolute", left: 72, top: 96, display: "flex", alignItems: "center", gap: 18, fontSize: 28 }}>
-          <span style={{ display: "flex" }}><span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", marginLeft: -7 }} /></span>
-          <span>+30 clients satisfaits</span>
-        </div>
-        <h2 style={{ position: "absolute", left: 72, top: 155, width: 388, margin: 0, fontSize: 40, lineHeight: 1.08, letterSpacing: "-0.04em" }}>Votre landing optimisé conversion</h2>
-        <strong style={{ position: "absolute", left: 72, top: 242, fontSize: 70, lineHeight: 1 }}>1450€</strong>
-        {["Copywriting optimisé conversion", "Analyse stratégique et concurrentielle", "Assets 100% personnalisés avec animation en motion design", "Rapport avec des explications détaillées", "Livraison en 10 jours", "Support client 24h/24 et 7j/7"].map((item, index) => (
-          <p key={item} style={{ position: "absolute", left: 72, top: 335 + index * 48, margin: 0, fontSize: 24, lineHeight: 1.15, opacity: 0.86 }}>✓ {item}</p>
-        ))}
-        <div style={{ position: "absolute", left: 72, bottom: 74, width: 180, height: 48, borderRadius: 14, background: "#fff", color: "#121A2E", display: "grid", placeItems: "center", fontSize: 20, fontWeight: 700 }}>Réserver un appel</div>
+        <img src="/linkedin/slide-cta-reference.jpg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       </div>
     );
   }
@@ -2995,15 +3102,15 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
         {leftBars}
         {rightBars}
         {logo}
-        {data.kind === "avis" && <div style={{ position: "absolute", left: 68, right: 68, top: 82, height: 69, borderRadius: 15, background: "#fff", border: "1px solid rgba(0,0,0,0.16)", boxShadow: "0 12px 20px rgba(0,0,0,0.07)", display: "grid", placeItems: "center", fontSize: 31, fontWeight: 700 }}>{data.title || "Tu preferes quelle version ?"}</div>}
-        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 184 : 92, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+        {data.kind === "avis" && <div style={{ position: "absolute", left: 68, right: 68, top: 82, height: 69, borderRadius: 15, background: "#fff", border: "1px solid rgba(0,0,0,0.16)", boxShadow: "0 9px 4px rgba(26,26,26,0.01), 0 5px 3px rgba(26,26,26,0.03), 0 2px 2px rgba(26,26,26,0.04), 0 1px 1px rgba(26,26,26,0.05)", display: "grid", placeItems: "center", fontSize: 31, fontWeight: 700 }}>{data.title || "Tu preferes quelle version ?"}</div>}
+        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 184 : 92, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 17px 17px rgba(59,59,59,0.01), 0 10px 6px rgba(59,59,59,0.03), 0 4px 4px rgba(59,59,59,0.05), 0 1px 2px rgba(59,59,59,0.06)", overflow: "hidden" }}>
           {data.beforeImage ? <img src={data.beforeImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
         </div>
-        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 405 : 353, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 18px 24px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+        <div style={{ position: "absolute", left: 86, right: 86, top: data.kind === "avis" ? 405 : 353, height: data.kind === "avis" ? 204 : 243, borderRadius: 16, background: "#fff", border: "1px solid rgba(0,0,0,0.18)", boxShadow: "0 17px 17px rgba(59,59,59,0.01), 0 10px 6px rgba(59,59,59,0.03), 0 4px 4px rgba(59,59,59,0.05), 0 1px 2px rgba(59,59,59,0.06)", overflow: "hidden" }}>
           {data.afterImage ? <img src={data.afterImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
         </div>
-        {data.kind === "before-after" && <span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: 300, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 18px", fontWeight: 700, fontSize: 13, boxShadow: "0 4px 8px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}>Ancienne version du site</span>}
-        {data.kind === "before-after" && <span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: 563, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "12px 18px", fontWeight: 700, fontSize: 13, boxShadow: "0 4px 8px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}>Nouvelle version du site</span>}
+        {data.kind === "before-after" && <span style={{ position: "absolute", right: 72, top: 300, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "10px 16px", fontWeight: 700, fontSize: 12, boxShadow: "0 17px 17px rgba(59,59,59,0.01), 0 10px 6px rgba(59,59,59,0.03), 0 4px 4px rgba(59,59,59,0.05), 0 1px 2px rgba(59,59,59,0.06)", whiteSpace: "nowrap", zIndex: 5 }}>Ancienne version du site</span>}
+        {data.kind === "before-after" && <span style={{ position: "absolute", right: 72, top: 563, border: "1px solid #0147FF", borderRadius: 999, background: "#fff", padding: "10px 16px", fontWeight: 700, fontSize: 12, boxShadow: "0 17px 17px rgba(59,59,59,0.01), 0 10px 6px rgba(59,59,59,0.03), 0 4px 4px rgba(59,59,59,0.05), 0 1px 2px rgba(59,59,59,0.06)", whiteSpace: "nowrap", zIndex: 5 }}>Nouvelle version du site</span>}
         {swipeCta}{footer}
       </div>
     );
@@ -3015,8 +3122,8 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
         {leftBars}
         {rightBars}
         {logo}
-        <div style={{ position: "absolute", left: 86, top: 184, width: 403, minHeight: 178, borderRadius: 21, background: "#0147FF", color: "#fff", padding: 24, boxShadow: "0 18px 24px rgba(10,132,255,0.08)" }}>
-          <h2 style={{ margin: 0, fontSize: 32, lineHeight: 1.06, letterSpacing: "-0.02em" }}>{data.body || data.title}</h2>
+        <div style={{ position: "absolute", left: 86, top: 184, width: 403, minHeight: 178, borderRadius: 21, background: "#0147FF", color: "#fff", padding: 24, boxShadow: "0 2px 3.96px rgba(0,0,0,0.19)" }}>
+          <h2 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 32, lineHeight: 1.06, letterSpacing: "-0.02em", textAlign: "left", fontWeight: 700 }}>{data.body || data.title}</h2>
           <span style={{ marginTop: 16, width: 65, height: 45, borderRadius: 8, background: "#fff", color: "#000", display: "grid", placeItems: "center" }}><MoveRight size={28} strokeWidth={3} style={{ color: "#121A2E" }} /></span>
         </div>
         {swipeCta}{footer}
@@ -3034,17 +3141,17 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
           <div style={{
             display: "inline-flex",
             alignItems: "center",
-            minHeight: 97,
+            height: 97,
             borderRadius: 26,
             background: "#fff",
             border: "1px solid rgba(0,0,0,0.22)",
-            padding: "16px 26px",
+            padding: "0 26px",
             fontFamily: '"Plus Jakarta Sans", sans-serif',
             fontSize: 56,
             fontWeight: 700,
             color: "#121A2E",
             letterSpacing: "-0.02em",
-            boxShadow: "0 12px 16px rgba(26,26,26,0.06)",
+            boxShadow: "0 9px 4px rgba(26,26,26,0.01), 0 5px 3px rgba(26,26,26,0.03), 0 2px 2px rgba(26,26,26,0.04), 0 1px 1px rgba(26,26,26,0.05)",
           }}>
             Etape {data.stepNumber || 1}
           </div>
@@ -3131,7 +3238,7 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
                 fontWeight: 700,
                 color: "#121A2E",
                 border: "1px solid rgba(0,0,0,0.06)",
-                boxShadow: "0 6px 2px rgba(0,0,0,0.02), 0 3px 2px rgba(0,0,0,0.08), 0 1.5px 1.5px rgba(0,0,0,0.13)",
+                boxShadow: "inset 0 2.93px 2.93px rgba(255,255,255,0.25), inset 0 -2.93px 1.61px rgba(0,0,0,0.09), 0 5.87px 2.2px rgba(0,0,0,0.02), 0 2.93px 2.2px rgba(0,0,0,0.08), 0 1.47px 1.47px rgba(0,0,0,0.13)",
               }}>{data.pointNumber || 1}</span>
             </span>
             {/* Conteneur titre */}

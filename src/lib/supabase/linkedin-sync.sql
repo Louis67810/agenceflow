@@ -123,12 +123,21 @@ on public.linkedin_posts
 for delete
 using (auth.uid() = user_id);
 
+-- Enable pgvector extension
+create extension if not exists vector;
+
 create table if not exists public.linkedin_style_examples (
   id uuid primary key default gen_random_uuid(),
   style_id text not null,
   content text not null,
+  embedding vector(3072),
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_linkedin_style_examples_style_id
   on public.linkedin_style_examples(style_id);
+
+create index if not exists idx_linkedin_style_examples_embedding
+  on public.linkedin_style_examples
+  using hnsw (embedding vector_cosine_ops)
+  with (m = 16, ef_construction = 64);
