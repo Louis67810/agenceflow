@@ -13,7 +13,7 @@ export async function PATCH(
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const allowed = ["title", "description", "parent_id", "target_date", "status", "progress", "color"];
+    const allowed = ["title", "description", "parent_id", "target_date", "status", "progress", "color", "icon"];
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const k of allowed) {
       if (k in body) updates[k] = body[k];

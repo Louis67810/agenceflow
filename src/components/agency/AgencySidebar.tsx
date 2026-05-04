@@ -71,6 +71,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/clients", label: "Clients", icon: <Users size={18} /> },
   { href: "/admin/designers", label: "Prestataires", icon: <Palette size={18} /> },
   { href: "/admin/copywriting", label: "Copywriting", icon: <PenLine size={18} /> },
+  { href: "/admin/articles", label: "Articles", icon: <FileText size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
   { href: "/admin/agenda", label: "Habits", icon: <CalendarDays size={18} /> },

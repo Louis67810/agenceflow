@@ -19,6 +19,7 @@ export type CarouselSlidePayload = {
   imageMode?: "frame" | "full";
   imageSource?: "manual" | "ai";
   imageUrl?: string;
+  imageDescription?: string;
   beforeImage?: string;
   afterImage?: string;
   backgroundImage1?: string;

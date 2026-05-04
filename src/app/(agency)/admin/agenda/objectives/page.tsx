@@ -12,6 +12,7 @@ import {
   Link2,
   Plus,
   Search,
+  Sparkles,
   Target,
   Trash2,
   X,
@@ -23,6 +24,16 @@ interface ObjectiveWithChildren extends AgendaObjective {
 }
 
 type ObjectiveFilter = "active" | "completed" | "all";
+type ObjectiveTextModalState = { type: "child" | "task"; objectiveId: string } | null;
+
+const OBJECTIVE_ICON_OPTIONS = [
+  { id: "target", label: "Objectif", icon: Target },
+  { id: "sparkles", label: "Focus", icon: Sparkles },
+  { id: "check", label: "Validation", icon: CheckCircle2 },
+  { id: "circle", label: "Simple", icon: Circle },
+  { id: "plus", label: "Ajout", icon: Plus },
+  { id: "link", label: "Lie", icon: Link2 },
+];
 
 const filterLabels: Record<ObjectiveFilter, string> = {
   active: "Objectifs actifs",
@@ -52,8 +63,8 @@ export default function ObjectivesPage() {
     load();
   }, []);
 
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!silent) setLoading(true);
     const [objRes, tasksRes] = await Promise.all([
       agendaFetch("/api/agenda/objectives").then((response) => response.json()),
       agendaFetch("/api/agenda/tasks").then((response) => response.json()),
@@ -62,7 +73,7 @@ export default function ObjectivesPage() {
     setObjectives(objRes.objectives ?? []);
     setFlat(objRes.flat ?? []);
     setTasks(tasksRes.tasks ?? []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
 
   async function handleCreate() {
@@ -84,7 +95,7 @@ export default function ObjectivesPage() {
       setForm({ title: "", description: "", parent_id: "", target_date: "" });
       setShowForm(false);
       setSelectedObjectiveId(data.objective.id);
-      await load();
+      await load(true);
     }
   }
 
@@ -104,13 +115,44 @@ export default function ObjectivesPage() {
     });
 
     const data = await res.json();
-    if (data.objective) await load();
+    if (data.objective) await load(true);
+  }
+
+  async function handleCreateTask(objectiveId: string, title: string) {
+    if (!title.trim()) return;
+
+    const res = await agendaFetch("/api/agenda/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title.trim(),
+        description: "",
+        objective_id: objectiveId,
+        importance: 3,
+        status: "todo",
+      }),
+    });
+
+    const data = await res.json();
+    if (data.task) await load(true);
+  }
+
+  async function handleUpdateObjectiveIcon(objectiveId: string, icon: string) {
+    if (!icon.trim()) return;
+    setFlat((current) => current.map((objective) => objective.id === objectiveId ? { ...objective, icon: icon.trim() } : objective));
+    setObjectives((current) => patchObjectiveTree(current, objectiveId, { icon: icon.trim() }));
+    await agendaFetch(`/api/agenda/objectives/${objectiveId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ icon: icon.trim() }),
+    });
+    await load(true);
   }
 
   async function handleDelete(id: string) {
     await agendaFetch(`/api/agenda/objectives/${id}`, { method: "DELETE" });
     if (selectedObjectiveId === id) setSelectedObjectiveId(null);
-    await load();
+    await load(true);
   }
 
   async function handleComplete(id: string) {
@@ -119,7 +161,7 @@ export default function ObjectivesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed", progress: 100 }),
     });
-    await load();
+    await load(true);
   }
 
   async function handleLinkTasks(objectiveId: string, taskIds: string[]) {
@@ -132,25 +174,28 @@ export default function ObjectivesPage() {
         })
       )
     );
-    await load();
+    await load(true);
   }
 
   async function handleUnlinkTask(taskId: string) {
+    setTasks((current) => current.map((task) => task.id === taskId ? { ...task, objective_id: undefined } : task));
     await agendaFetch(`/api/agenda/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ objective_id: null }),
     });
-    await load();
+    await load(true);
   }
 
   async function handleToggleTaskStatus(task: AgendaTask) {
+    const nextStatus = task.status === "done" ? "todo" : "done";
+    setTasks((current) => current.map((entry) => entry.id === task.id ? { ...entry, status: nextStatus } : entry));
     await agendaFetch(`/api/agenda/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
+      body: JSON.stringify({ status: nextStatus }),
     });
-    await load();
+    await load(true);
   }
 
   const visibleObjectives = useMemo(() => {
@@ -269,6 +314,8 @@ export default function ObjectivesPage() {
           tasks={tasks}
           onClose={() => setSelectedObjectiveId(null)}
           onCreateChild={handleCreateChild}
+          onCreateTask={handleCreateTask}
+          onUpdateIcon={handleUpdateObjectiveIcon}
           onOpenLinkModal={setLinkModalObjectiveId}
           onDelete={handleDelete}
           onUnlinkTask={handleUnlinkTask}
@@ -402,8 +449,8 @@ function ObjectiveCard({
       className="min-h-[218px] rounded-[21px] border border-black/10 bg-white p-[26px] shadow-[0_20px_12px_rgba(0,0,0,0.02),0_9px_9px_rgba(0,0,0,0.03),0_2px_5px_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5"
     >
       <div className="mb-5 flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-black/10 bg-[#ededed] text-[#a5a5a5] shadow-[0_20px_12px_rgba(0,0,0,0.02),0_9px_9px_rgba(0,0,0,0.03),0_2px_5px_rgba(0,0,0,0.03)]">
-          <CheckCircle2 size={19} strokeWidth={2.2} />
+        <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-black/10 bg-[#ededed] text-[#0147FF]">
+          <ObjectiveIcon icon={objective.icon} size={19} />
         </div>
         <button
           type="button"
@@ -423,7 +470,7 @@ function ObjectiveCard({
       <div className="mt-6 h-4 overflow-hidden rounded-[5px] bg-[#f3f3f3]">
         <div
           className="h-full rounded-[4px] bg-[#0147FF] transition-all duration-500"
-          style={{ width: `${Math.max(3, progress)}%` }}
+          style={{ width: `${progress}%` }}
         />
       </div>
     </article>
@@ -436,6 +483,8 @@ function ObjectiveDetailsPanel({
   tasks,
   onClose,
   onCreateChild,
+  onCreateTask,
+  onUpdateIcon,
   onOpenLinkModal,
   onDelete,
   onUnlinkTask,
@@ -446,20 +495,27 @@ function ObjectiveDetailsPanel({
   tasks: AgendaTask[];
   onClose: () => void;
   onCreateChild: (parentId: string, title: string) => Promise<void>;
+  onCreateTask: (objectiveId: string, title: string) => Promise<void>;
+  onUpdateIcon: (objectiveId: string, icon: string) => Promise<void>;
   onOpenLinkModal: (objectiveId: string) => void;
   onDelete: (id: string) => void;
   onUnlinkTask: (taskId: string) => void;
   onToggleTaskStatus: (task: AgendaTask) => void;
 }) {
-  const linkedTasks = getLinkedTasks(objective.id, tasks);
   const children = findChildren(objective.id, objectives);
-  const progress = getObjectiveProgress(objective, tasks);
-  const [childTitle, setChildTitle] = useState("");
+  const [textModal, setTextModal] = useState<ObjectiveTextModalState>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
-  async function submitChild() {
-    if (!childTitle.trim()) return;
-    await onCreateChild(objective.id, childTitle);
-    setChildTitle("");
+  async function submitTextModal(title: string) {
+    if (!textModal || !title.trim()) return;
+    if (textModal.type === "child") await onCreateChild(textModal.objectiveId, title.trim());
+    else await onCreateTask(textModal.objectiveId, title.trim());
+    setTextModal(null);
+  }
+
+  async function selectIcon(icon: string) {
+    await onUpdateIcon(objective.id, icon);
+    setIconPickerOpen(false);
   }
 
   return (
@@ -469,8 +525,19 @@ function ObjectiveDetailsPanel({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold tracking-[-0.02em] text-[#121A2E]">{objective.title}</h2>
+          <div className="min-w-0">
+            <div className="mb-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIconPickerOpen(true)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-black/10 bg-[#ededed] text-[#0147FF]"
+                aria-label="Personnaliser l'icone"
+                title="Personnaliser l'icone"
+              >
+                <ObjectiveIcon icon={objective.icon} />
+              </button>
+              <h2 className="min-w-0 text-2xl font-bold tracking-[-0.02em] text-[#121A2E]">{objective.title}</h2>
+            </div>
             {objective.description && <p className="mt-2 text-sm font-medium leading-6 text-slate-500">{objective.description}</p>}
           </div>
           <div className="flex items-center gap-1">
@@ -483,115 +550,97 @@ function ObjectiveDetailsPanel({
           </div>
         </div>
 
-        <div className="mb-6 rounded-[18px] border border-black/10 bg-white p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-500">Progression globale</span>
-            <span className="text-xl font-bold text-[#0147FF]">{progress}%</span>
-          </div>
-          <div className="h-3 overflow-hidden rounded-full bg-[#f1f1f1]">
-            <div className="h-full rounded-full bg-[#0147FF]" style={{ width: `${Math.max(3, progress)}%` }} />
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={() => onOpenLinkModal(objective.id)}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#121A2E] hover:bg-[#f6f6f6]"
-          >
-            <Link2 size={15} />
-            Lier des taches
-          </button>
-        </div>
-
-        <div className="mb-6">
-          {linkedTasks.length === 0 ? (
-            <p className="text-sm font-medium text-slate-400">Aucune tache liee.</p>
-          ) : (
-            <div className="space-y-2">
-              {linkedTasks.map((task) => (
-                <div key={task.id} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white p-3">
-                  <button type="button" onClick={() => onToggleTaskStatus(task)}>
-                    {task.status === "done" ? (
-                      <CheckCircle2 size={18} className="text-[#0147FF]" />
-                    ) : (
-                      <Circle size={18} className="text-slate-300" />
-                    )}
-                  </button>
-                  <span className={`flex-1 text-sm font-medium ${task.status === "done" ? "text-slate-400 line-through" : "text-[#121A2E]"}`}>
-                    {task.title}
-                  </span>
-                  <button type="button" onClick={() => onUnlinkTask(task.id)} className="text-slate-300 hover:text-red-500">
-                    <X size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="mb-6">
-          <div className="mb-3 flex items-center gap-2">
-            <input
-              value={childTitle}
-              onChange={(event) => setChildTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submitChild();
-              }}
-              placeholder="Ajouter un sous-objectif"
-              className="h-10 flex-1 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
-            />
-            <button
-              type="button"
-              onClick={submitChild}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-white text-[#121A2E] hover:bg-[#f6f6f6]"
-              aria-label="Ajouter le sous-objectif"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-          {children.length > 0 && (
-            <div className="space-y-2">
-              {children.map((child) => (
-                <ChildObjectiveRow
-                  key={child.id}
-                  objective={child}
-                  tasks={tasks}
-                  onOpenLinkModal={onOpenLinkModal}
-                  onUnlinkTask={onUnlinkTask}
-                  onToggleTaskStatus={onToggleTaskStatus}
-                />
-              ))}
-            </div>
-          )}
+        <div className="mb-6 space-y-2">
+          <ObjectiveTreeNode
+            objective={{ ...objective, children }}
+            tasks={tasks}
+            depth={0}
+            defaultOpen
+            onCreateChild={(objectiveId) => setTextModal({ type: "child", objectiveId })}
+            onCreateTask={(objectiveId) => setTextModal({ type: "task", objectiveId })}
+            onOpenLinkModal={onOpenLinkModal}
+            onUnlinkTask={onUnlinkTask}
+            onToggleTaskStatus={onToggleTaskStatus}
+          />
         </div>
       </aside>
+      {textModal ? (
+        <ObjectiveTextModal
+          type={textModal.type}
+          onClose={() => setTextModal(null)}
+          onSubmit={submitTextModal}
+        />
+      ) : null}
+      {iconPickerOpen ? (
+        <ObjectiveIconModal
+          currentIcon={objective.icon}
+          onClose={() => setIconPickerOpen(false)}
+          onSelect={selectIcon}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ChildObjectiveRow({
+function ObjectiveTreeNode({
   objective,
   tasks,
+  depth,
+  defaultOpen = false,
+  onCreateChild,
+  onCreateTask,
   onOpenLinkModal,
   onUnlinkTask,
   onToggleTaskStatus,
 }: {
   objective: AgendaObjective;
   tasks: AgendaTask[];
+  depth: number;
+  defaultOpen?: boolean;
+  onCreateChild: (parentId: string) => void;
+  onCreateTask: (objectiveId: string) => void;
   onOpenLinkModal: (objectiveId: string) => void;
   onUnlinkTask: (taskId: string) => void;
   onToggleTaskStatus: (task: AgendaTask) => void;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   const linkedTasks = getLinkedTasks(objective.id, tasks);
+  const children = (objective.children ?? []) as AgendaObjective[];
   const progress = getObjectiveProgress(objective, tasks);
+  const hasContent = children.length > 0 || linkedTasks.length > 0;
 
   return (
-    <div className="rounded-xl border border-black/10 bg-white p-3">
+    <div className="rounded-xl border border-black/10 bg-white p-3" style={{ marginLeft: depth ? 12 : 0 }}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-bold text-[#121A2E]">{objective.title}</span>
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f6f6f6] text-[#0147FF]"><ObjectiveIcon icon={objective.icon} size={15} /></span>
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#121A2E]">{objective.title}</span>
+          {hasContent && <ChevronDown size={15} className={`shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`} />}
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
           <span className="text-sm font-bold text-[#0147FF]">{progress}%</span>
+          <button
+            type="button"
+            onClick={() => onCreateChild(objective.id)}
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-[#f6f6f6] hover:text-[#0147FF]"
+            aria-label="Ajouter un sous-objectif"
+            title="Ajouter un sous-objectif"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onCreateTask(objective.id)}
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-[#f6f6f6] hover:text-[#0147FF]"
+            aria-label="Ajouter une tache"
+            title="Ajouter une tache"
+          >
+            <Sparkles size={14} />
+          </button>
           <button
             type="button"
             onClick={() => onOpenLinkModal(objective.id)}
@@ -602,23 +651,42 @@ function ChildObjectiveRow({
           </button>
         </div>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#f1f1f1]">
-        <div className="h-full rounded-full bg-[#0147FF]" style={{ width: `${Math.max(3, progress)}%` }} />
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f1f1f1]">
+        <div className="h-full rounded-full bg-[#0147FF]" style={{ width: `${progress}%` }} />
       </div>
-      {linkedTasks.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {linkedTasks.map((task) => (
-            <div key={task.id} className="flex items-center gap-2 text-sm">
-              <button type="button" onClick={() => onToggleTaskStatus(task)}>
-                {task.status === "done" ? <CheckCircle2 size={16} className="text-[#0147FF]" /> : <Circle size={16} className="text-slate-300" />}
-              </button>
-              <span className={`flex-1 truncate font-medium ${task.status === "done" ? "text-slate-400 line-through" : "text-[#121A2E]"}`}>
-                {task.title}
-              </span>
-              <button type="button" onClick={() => onUnlinkTask(task.id)} className="text-slate-300 hover:text-red-500">
-                <X size={13} />
-              </button>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {linkedTasks.length > 0 ? (
+            <div className="space-y-1.5">
+              {linkedTasks.map((task) => (
+                <div key={task.id} className="flex items-center gap-2 rounded-lg bg-[#fbfbfb] px-2 py-2 text-sm">
+                  <button type="button" onClick={() => onToggleTaskStatus(task)}>
+                    {task.status === "done" ? <CheckCircle2 size={16} className="text-[#0147FF]" /> : <Circle size={16} className="text-slate-300" />}
+                  </button>
+                  <span className={`flex-1 truncate font-medium ${task.status === "done" ? "text-slate-400 line-through" : "text-[#121A2E]"}`}>
+                    {task.title}
+                  </span>
+                  <button type="button" onClick={() => onUnlinkTask(task.id)} className="text-slate-300 hover:text-red-500">
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
             </div>
+          ) : null}
+
+          {children.map((child) => (
+            <ObjectiveTreeNode
+              key={child.id}
+              objective={child}
+              tasks={tasks}
+              depth={depth + 1}
+              onCreateChild={onCreateChild}
+              onCreateTask={onCreateTask}
+              onOpenLinkModal={onOpenLinkModal}
+              onUnlinkTask={onUnlinkTask}
+              onToggleTaskStatus={onToggleTaskStatus}
+            />
           ))}
         </div>
       )}
@@ -716,6 +784,109 @@ function LinkTasksModal({
   );
 }
 
+function ObjectiveTextModal({
+  type,
+  onClose,
+  onSubmit,
+}: {
+  type: "child" | "task";
+  onClose: () => void;
+  onSubmit: (title: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const label = type === "child" ? "Nouveau sous-objectif" : "Nouvelle tache";
+  const placeholder = type === "child" ? "Nom du sous-objectif" : "Nom de la tache";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-[420px] rounded-[22px] border border-black/10 bg-white p-5 shadow-[0_24px_70px_rgba(18,26,46,0.18)]" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-base font-bold tracking-[-0.02em] text-[#121A2E]">{label}</h3>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-[#f6f6f6]">
+            <X size={17} />
+          </button>
+        </div>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && title.trim()) onSubmit(title);
+          }}
+          placeholder={placeholder}
+          autoFocus
+          className="h-12 w-full rounded-xl border border-black/10 bg-[#fbfbfb] px-4 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
+        />
+        <div className="mt-5 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-[#f6f6f6]">
+            Annuler
+          </button>
+          <ClientBlueButton
+            type="button"
+            onClick={() => onSubmit(title)}
+            disabled={!title.trim()}
+            wrapperStyle={{ width: "auto" }}
+            style={{ minHeight: 42, padding: "0 18px", fontSize: 13 }}
+          >
+            Ajouter
+          </ClientBlueButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ObjectiveIconModal({
+  currentIcon,
+  onClose,
+  onSelect,
+}: {
+  currentIcon?: string;
+  onClose: () => void;
+  onSelect: (icon: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="w-full max-w-[460px] rounded-[22px] border border-black/10 bg-white p-5 shadow-[0_24px_70px_rgba(18,26,46,0.18)]" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-base font-bold tracking-[-0.02em] text-[#121A2E]">Choisir une icone</h3>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-[#f6f6f6]">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {OBJECTIVE_ICON_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            const active = (currentIcon || "target") === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => onSelect(option.id)}
+                className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${active ? "border-[#0147FF] bg-[#0147FF]/5" : "border-black/10 bg-white hover:bg-[#f6f6f6]"}`}
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#ededed] text-[#0147FF]">
+                  <Icon size={19} />
+                </span>
+                <span className="text-sm font-semibold text-[#121A2E]">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ObjectiveIcon({ icon, size = 20 }: { icon?: string; size?: number }) {
+  const key = (icon || "target").trim().toLowerCase();
+  if (key === "sparkles") return <Sparkles size={size} />;
+  if (key === "check") return <CheckCircle2 size={size} />;
+  if (key === "circle") return <Circle size={size} />;
+  if (key === "plus") return <Plus size={size} />;
+  if (key === "link") return <Link2 size={size} />;
+  return <Target size={size} />;
+}
+
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-[21px] border border-black/10 bg-white py-16 text-center shadow-[0_18px_35px_rgba(18,26,46,0.06)]">
@@ -740,13 +911,27 @@ function getObjectiveProgress(objective: AgendaObjective, tasks: AgendaTask[]) {
   return Math.max(0, Math.min(100, Math.round(objective.progress ?? 0)));
 }
 
-function findChildren(objectiveId: string, objectives: ObjectiveWithChildren[]): AgendaObjective[] {
+function findChildren(objectiveId: string, objectives: ObjectiveWithChildren[]): ObjectiveWithChildren[] {
   for (const objective of objectives) {
     if (objective.id === objectiveId) return objective.children ?? [];
     const nested = findChildren(objectiveId, objective.children ?? []);
     if (nested.length > 0) return nested;
   }
   return [];
+}
+
+function patchObjectiveTree(
+  objectives: ObjectiveWithChildren[],
+  objectiveId: string,
+  patch: Partial<AgendaObjective>
+): ObjectiveWithChildren[] {
+  return objectives.map((objective) => {
+    const next = objective.id === objectiveId ? { ...objective, ...patch } : objective;
+    return {
+      ...next,
+      children: patchObjectiveTree((next.children ?? []) as ObjectiveWithChildren[], objectiveId, patch),
+    };
+  });
 }
 
 function formatDate(value: string) {

@@ -57,6 +57,7 @@ type PostsView = "draft" | "scheduled" | "auto";
 type PostsMode = "post" | "carousel";
 type CarouselStudioTab = "templates" | "editor";
 type CarouselStudioMode = "builder" | "generate";
+type CarouselCreateStep = "setup" | "ai-source" | "ai-assets" | "ai-options";
 type ManualPostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
 type CarouselTemplateItemMeta = {
   label?: string;
@@ -71,6 +72,12 @@ type CarouselHistoryEntry = {
   createdAt: string;
   details?: string[];
 };
+type CarouselImageAsset = {
+  id: string;
+  url: string;
+  fileName: string;
+  description: string;
+};
 
 const MANUAL_POST_FORMATS: Array<{ value: ManualPostFormat; label: string }> = [
   { value: "text", label: "Texte" },
@@ -81,6 +88,7 @@ const MANUAL_POST_FORMATS: Array<{ value: ManualPostFormat; label: string }> = [
 
 const FREE_CAROUSEL_PAGE_ID = "__free_carousel_page__";
 const SLIDE_KIND_PREFIX = "builtin:";
+const AI_CAROUSEL_TEMPLATE_ID = "__ai_carousel_template__";
 
 const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
   {
@@ -163,11 +171,11 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Avant / Apres",
     description: "Deux images fixes avant et apres.",
     figmaNodeId: "slide:before-after",
-    pagePrompt: "Genere une slide avant/apres en conservant la structure fixe. Utilise uniquement les deux visuels compares et garde une lecture immediate de la transformation.",
+    pagePrompt: "",
     imagePrompt: "",
     fields: [
-      { id: "before-image", label: "Image avant", kind: "image", required: true, aiPrompt: "Image avant." },
-      { id: "after-image", label: "Image apres", kind: "image", required: true, aiPrompt: "Image apres." },
+      { id: "before-image", label: "Image avant", kind: "image", required: true, aiPrompt: "" },
+      { id: "after-image", label: "Image apres", kind: "image", required: true, aiPrompt: "" },
     ],
     createdAt: "builtin",
   },
@@ -176,10 +184,10 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Pourquoi ce design fonctionne",
     description: "Slide bleue dont seul le texte est modifiable.",
     figmaNodeId: "slide:why-design",
-    pagePrompt: "Genere uniquement le texte principal de la slide pourquoi ce design fonctionne mieux. Ne cree pas de titre additionnel et respecte la structure fixe.",
+    pagePrompt: "",
     imagePrompt: "",
     fields: [
-      { id: "why-text", label: "Texte", kind: "text", required: true, aiPrompt: "Texte de la carte bleue.", defaultValue: "Pourquoi ce design fonctionne-t-il mieux ?" },
+      { id: "why-text", label: "Texte", kind: "text", required: true, aiPrompt: "", defaultValue: "Pourquoi ce design fonctionne-t-il mieux ?" },
     ],
     createdAt: "builtin",
   },
@@ -188,12 +196,12 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Avis",
     description: "Slide avis fixe.",
     figmaNodeId: "slide:avis",
-    pagePrompt: "Genere une slide avis ou question de preference. Respecte la structure fixe et concentre-toi sur l'intention de comparaison ou de choix.",
+    pagePrompt: "",
     imagePrompt: "",
     fields: [
-      { id: "avis-title", label: "Question", kind: "text", required: true, aiPrompt: "Question de preference.", defaultValue: "Tu preferes quelle version ?" },
-      { id: "avis-image-1", label: "Image version 1", kind: "image", required: false, aiPrompt: "Premiere image." },
-      { id: "avis-image-2", label: "Image version 2", kind: "image", required: false, aiPrompt: "Deuxieme image." },
+      { id: "avis-title", label: "Question", kind: "text", required: true, aiPrompt: "", defaultValue: "Tu preferes quelle version ?" },
+      { id: "avis-image-1", label: "Image version 1", kind: "image", required: false, aiPrompt: "" },
+      { id: "avis-image-2", label: "Image version 2", kind: "image", required: false, aiPrompt: "" },
     ],
     createdAt: "builtin",
   },
@@ -402,8 +410,15 @@ export default function PostsPage() {
   const [carouselGenerationPrompt, setCarouselGenerationPrompt] = useState("");
   const [carouselDraftName, setCarouselDraftName] = useState("");
   const [carouselDraftCategory, setCarouselDraftCategory] = useState("");
-  const [carouselCreateStep, setCarouselCreateStep] = useState<"setup" | "ai-options">("setup");
+  const [carouselCreateStep, setCarouselCreateStep] = useState<CarouselCreateStep>("setup");
   const [carouselGenerateImagesWithAI, setCarouselGenerateImagesWithAI] = useState(false);
+  const [carouselUseTemplate, setCarouselUseTemplate] = useState(true);
+  const [carouselSourceTab, setCarouselSourceTab] = useState<SourceTab>("idea");
+  const [carouselSourceIdeaId, setCarouselSourceIdeaId] = useState("");
+  const [carouselSourceValue, setCarouselSourceValue] = useState("");
+  const [carouselSourceLoading, setCarouselSourceLoading] = useState(false);
+  const [carouselImageAssets, setCarouselImageAssets] = useState<CarouselImageAsset[]>([]);
+  const [carouselAssetsDragActive, setCarouselAssetsDragActive] = useState(false);
   const [carouselGenerationChat, setCarouselGenerationChat] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([]);
   const [carouselGenerationHistory, setCarouselGenerationHistory] = useState<CarouselHistoryEntry[]>([]);
   const [carouselHistoryDetails, setCarouselHistoryDetails] = useState<CarouselHistoryEntry | null>(null);
@@ -1207,10 +1222,11 @@ export default function PostsPage() {
     return carouselPageTemplates.find((entry) => entry.id === pageTemplateId) ?? null;
   }
 
-  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string, aiPoints?: Record<string, string[]>, generateImagesWithAI = false) {
+  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string, aiPoints?: Record<string, string[]>, generateImagesWithAI = false, imageAssets: CarouselImageAsset[] = []) {
     let stepIndex = 0;
     let bluePointIndex = 0;
     let redPointIndex = 0;
+    let imageAssetIndex = 0;
     const instructionPoints = splitInstructionPoints(prompt);
     const slides = template.items.flatMap((item, itemIndex) => {
       if (item.pageTemplateId === FREE_CAROUSEL_PAGE_ID) {
@@ -1233,6 +1249,10 @@ export default function PostsPage() {
         if (kind === "why-design") { stepIndex = 0; bluePointIndex = 0; redPointIndex = 0; }
         if (kind === "argument-blue") bluePointIndex += 1;
         if (kind === "argument-red") redPointIndex += 1;
+        const nextAsset = imageAssets[imageAssetIndex];
+        const shouldUseAsset = Boolean(nextAsset) && (kind === "image" || isArgument);
+        if (shouldUseAsset) imageAssetIndex += 1;
+        const assetDescription = nextAsset ? [nextAsset.description, nextAsset.fileName].filter(Boolean).join(" - ") : "";
         const payload: CarouselSlidePayload = {
           kind,
           label: page.name,
@@ -1247,7 +1267,8 @@ export default function PostsPage() {
           stepCtaText: getField("context-step-text", "Voici les 3 etapes pour y remedier"),
           imageMode: getField("arg-image-mode", "frame") === "full" ? "full" : "frame",
           imageSource: generateImagesWithAI || isEnabled(getField("arg-image-source", "non")) ? "ai" : "manual",
-          imageUrl: kind === "image" ? getField("image-src") : getField("arg-image"),
+          imageUrl: shouldUseAsset ? nextAsset.url : kind === "image" ? getField("image-src") : getField("arg-image"),
+          imageDescription: shouldUseAsset ? assetDescription : undefined,
           beforeImage: kind === "avis" ? getField("avis-image-1") : getField("before-image"),
           afterImage: kind === "avis" ? getField("avis-image-2") : getField("after-image"),
           backgroundImage1: getField("cta-bg-1"),
@@ -1260,18 +1281,36 @@ export default function PostsPage() {
   }
 
   async function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
-    const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
     if (!carouselDraftName.trim() || !carouselDraftCategory) return;
-    setCarouselStudioMode("generate");
-    setCarouselStudioTab("editor");
-    setPostType("carousel");
-    setSelectedStyleId(carouselDraftCategory);
-    setManualEditorStarted(true);
-    setEditingPostId(null);
+    const selectedTemplate = carouselUseTemplate
+      ? template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0]
+      : null;
+    if (carouselUseTemplate && !selectedTemplate) return;
+    let selected = selectedTemplate;
+    setGenerationError("");
+    let sourcePrompt = "";
+    try {
+      sourcePrompt = await resolveCarouselGenerationSource();
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Source impossible a recuperer.");
+      return;
+    }
+    const effectivePrompt = sourcePrompt.trim() || carouselDraftName.trim();
+    if (!selected) {
+      setGenerating(true);
+      selected = await generateCarouselTemplatePlanWithAI(effectivePrompt, carouselImageAssets);
+      setGenerating(false);
+    }
     if (selected) {
+      setCarouselStudioMode("generate");
+      setCarouselStudioTab("editor");
+      setPostType("carousel");
+      setSelectedStyleId(carouselDraftCategory);
+      setManualEditorStarted(true);
+      setEditingPostId(null);
       setShowCarouselTemplatePicker(false);
       setCarouselGenerationTemplateId(selected.id);
-      setSelectedCarouselTemplateId(selected.id);
+      if (selected.id !== AI_CAROUSEL_TEMPLATE_ID) setSelectedCarouselTemplateId(selected.id);
 
       const hasRepeatAi = selected.items.some((item) => {
         const page = resolveCarouselPage(item.pageTemplateId);
@@ -1280,21 +1319,28 @@ export default function PostsPage() {
       });
 
       let aiPoints: Record<string, string[]> = {};
-      if (hasRepeatAi && carouselGenerationPrompt.trim()) {
+      if (hasRepeatAi && effectivePrompt) {
         setGenerating(true);
-        aiPoints = await generateArgumentPointsWithAI(selected, carouselGenerationPrompt);
+        aiPoints = await generateArgumentPointsWithAI(selected, effectivePrompt);
         setGenerating(false);
       }
 
-      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt, aiPoints, carouselGenerateImagesWithAI);
+      const slides = buildCarouselSlidesFromTemplate(selected, effectivePrompt, aiPoints, carouselGenerateImagesWithAI, carouselImageAssets);
       setGeneratedSlides(slides);
       setActiveSlide(0);
       setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
       setCarouselGenerationChat([]);
       setCarouselChatTargetSlides([]);
       setCarouselChatTargetField("");
+      setCarouselGenerationPrompt("");
       setCarouselGenerateImagesWithAI(false);
+      setCarouselUseTemplate(true);
       setCarouselCreateStep("setup");
+      setCarouselSourceTab("idea");
+      setCarouselSourceIdeaId("");
+      setCarouselSourceValue("");
+      setCarouselImageAssets([]);
+      setCarouselAssetsDragActive(false);
     }
   }
 
@@ -1324,6 +1370,13 @@ export default function PostsPage() {
     setShowCarouselHistory(false);
     setCarouselCreateStep("setup");
     setCarouselGenerateImagesWithAI(false);
+    setCarouselUseTemplate(true);
+    setCarouselSourceTab("idea");
+    setCarouselSourceIdeaId("");
+    setCarouselSourceValue("");
+    setCarouselSourceLoading(false);
+    setCarouselImageAssets([]);
+    setCarouselAssetsDragActive(false);
   }
 
   function getCarouselEditableFields(payload: CarouselSlidePayload | null): Array<{ key: keyof CarouselSlidePayload; label: string; value: string }> {
@@ -1387,18 +1440,21 @@ export default function PostsPage() {
       const meta = decodeCarouselTemplateItemMeta(item.label);
       const pagePrompt = (meta.pagePrompt || page.pagePrompt || "").trim();
       const imagePrompt = (meta.imagePrompt || page.imagePrompt || "").trim();
+      if (!pagePrompt && !imagePrompt && page.fields.every((field) => !field.aiPrompt?.trim())) return "";
       const fieldLines = page.fields
         .filter((field) => field.kind === "text")
         .map((field) => {
           const value = getCarouselTemplateItemField(item, page, field.id, field.defaultValue || "");
-          return value ? `- ${field.label}: ${value}` : "";
+          const aiPrompt = field.aiPrompt?.trim();
+          return value || aiPrompt ? `  - **${field.label}**${value ? `: ${value}` : ""}${aiPrompt ? `\n    - Prompt champ: ${aiPrompt}` : ""}` : "";
         })
         .filter(Boolean);
       const sections = [
-        `Page ${index + 1} - ${page.name}`,
-        pagePrompt ? `Prompt page: ${pagePrompt}` : "",
-        imagePrompt ? `Prompt image: ${imagePrompt}` : "",
-        fieldLines.length ? `Champs:\n${fieldLines.join("\n")}` : "",
+        `## Page ${index + 1} - ${page.name}`,
+        item.mode === "repeat_ai" ? "- **Mode generation**: repeter cette page avec l'IA. Genere plusieurs slides distinctes pour cette section, sans repetition d'idee, d'angle ou de formulation." : "- **Mode generation**: une seule slide.",
+        pagePrompt ? `- **Prompt page**: ${pagePrompt}` : "",
+        imagePrompt ? `- **Prompt image**: ${imagePrompt}` : "",
+        fieldLines.length ? `- **Champs**:\n${fieldLines.join("\n")}` : "",
       ].filter(Boolean);
       return sections.length > 1 ? sections.join("\n") : "";
     }).filter(Boolean).join("\n\n---\n\n");
@@ -1432,6 +1488,7 @@ export default function PostsPage() {
       { field: "imageMode", label: "Mode image", value: payload.imageMode },
       { field: "imageSource", label: "Source image", value: payload.imageSource },
       { field: "imageUrl", label: "Image / description image", value: payload.imageUrl },
+      { field: "imageDescription", label: "Description de l'image", value: payload.imageDescription },
       { field: "beforeImage", label: "Image avant / image 1", value: payload.beforeImage },
       { field: "afterImage", label: "Image apres / image 2", value: payload.afterImage },
     ];
@@ -1459,7 +1516,7 @@ export default function PostsPage() {
   }
 
   function applyCarouselAiEdits(edits: Array<{ slideIndex?: number; field?: string; value?: unknown }>) {
-    const validFields = new Set<keyof CarouselSlidePayload>(["title", "subtitle", "body", "result", "showResult", "showCheck", "showStepCta", "stepCtaText", "imageMode", "imageSource", "imageUrl", "beforeImage", "afterImage"]);
+    const validFields = new Set<keyof CarouselSlidePayload>(["title", "subtitle", "body", "result", "showResult", "showCheck", "showStepCta", "stepCtaText", "imageMode", "imageSource", "imageUrl", "imageDescription", "beforeImage", "afterImage"]);
     let changed = false;
     const details: string[] = [];
     const nextSlides = generatedSlides.map((slide, index) => {
@@ -1543,6 +1600,162 @@ export default function PostsPage() {
     setCarouselChatTargetField("");
   }
 
+  async function resolveCarouselGenerationSource() {
+    const selectedIdea = ideas.find((idea) => idea.id === carouselSourceIdeaId);
+    if (carouselSourceTab === "idea") {
+      return selectedIdea
+        ? `${selectedIdea.title}\n\n${selectedIdea.description}`.trim()
+        : carouselSourceValue.trim();
+    }
+    if (carouselSourceTab === "manual") return carouselSourceValue.trim();
+    if (!carouselSourceValue.trim()) return "";
+
+    setCarouselSourceLoading(true);
+    try {
+      if (carouselSourceTab === "youtube") {
+        const res = await fetch("/api/linkedin/youtube-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: carouselSourceValue.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Impossible de recuperer la video YouTube.");
+        return [
+          `Titre: ${data.title}`,
+          data.author ? `Auteur: ${data.author}` : "",
+          data.description || "Pas de description disponible.",
+        ].filter(Boolean).join("\n");
+      }
+
+      const res = await fetch("/api/linkedin/scrape-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: carouselSourceValue.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Impossible de recuperer le site.");
+      return [data.title ? `Titre: ${data.title}` : "", data.content].filter(Boolean).join("\n\n");
+    } finally {
+      setCarouselSourceLoading(false);
+    }
+  }
+
+  async function addCarouselImageFiles(files: FileList | File[]) {
+    const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) return;
+    const previews = await Promise.all(images.map(async (file) => {
+      const preview = await fileToCompressedPreview(file);
+      return {
+        id: crypto.randomUUID(),
+        url: preview.url,
+        fileName: file.name,
+        description: "",
+      } satisfies CarouselImageAsset;
+    }));
+    setCarouselImageAssets((current) => [...current, ...previews]);
+    setCarouselAssetsDragActive(false);
+  }
+
+  function updateCarouselImageAsset(assetId: string, patch: Partial<CarouselImageAsset>) {
+    setCarouselImageAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, ...patch } : asset));
+  }
+
+  function removeCarouselImageAsset(assetId: string) {
+    setCarouselImageAssets((current) => current.filter((asset) => asset.id !== assetId));
+  }
+
+  function buildCarouselImageAssetsPrompt(assets = carouselImageAssets) {
+    if (assets.length === 0) return "Aucune photo importee.";
+    return assets.map((asset, index) => [
+      `Asset ${index + 1}`,
+      `- id: ${asset.id}`,
+      `- fichier: ${asset.fileName}`,
+      asset.description.trim() ? `- description: ${asset.description.trim()}` : "- description: non renseignee",
+    ].join("\n")).join("\n\n");
+  }
+
+  async function generateCarouselTemplatePlanWithAI(sourcePrompt: string, imageAssets: CarouselImageAsset[] = []): Promise<LinkedInCarouselTemplate> {
+    const currentSettings = settings ?? loadLinkedInSettings();
+    const apiKey = currentSettings.openrouterApiKey?.trim() || "";
+    const fallbackKinds: Array<{ kind: CarouselSlideKind; mode: "single" | "repeat_ai" }> = [
+      { kind: "image", mode: "single" },
+      { kind: "context", mode: "single" },
+      { kind: "argument-blue", mode: "repeat_ai" },
+      { kind: "why-design", mode: "single" },
+      { kind: "cta", mode: "single" },
+    ];
+
+    const buildTemplate = (items: Array<{ kind?: string; mode?: string }>) => {
+      const allowed = new Set<CarouselSlideKind>(["image", "context", "step", "argument-blue", "argument-red", "why-design", "cta", "free"]);
+      const cleaned = items
+        .map((item) => ({
+          kind: item.kind as CarouselSlideKind,
+          mode: item.mode === "repeat_ai" ? "repeat_ai" as const : "single" as const,
+        }))
+        .filter((item) => allowed.has(item.kind) && item.kind !== "avis" && item.kind !== "before-after")
+        .slice(0, 8);
+      const sequence = cleaned.length >= 3 ? cleaned : fallbackKinds;
+      const normalized = [
+        { kind: "image" as CarouselSlideKind, mode: "single" as const },
+        ...sequence.filter((item) => item.kind !== "image" && item.kind !== "cta"),
+        { kind: "cta" as CarouselSlideKind, mode: "single" as const },
+      ].slice(0, 10);
+
+      return {
+        id: AI_CAROUSEL_TEMPLATE_ID,
+        name: "Template IA automatique",
+        description: "Sequence generee automatiquement par l'IA.",
+        createdAt: new Date().toISOString(),
+        items: normalized.map((item) => ({
+          id: crypto.randomUUID(),
+          pageTemplateId: `${SLIDE_KIND_PREFIX}${item.kind}`,
+          mode: item.kind === "argument-blue" || item.kind === "argument-red" ? item.mode : "single",
+        })),
+      };
+    };
+
+    if (!apiKey) return buildTemplate(fallbackKinds);
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "https://agenceflow.app",
+          "X-Title": "AgenceFlow LinkedIn",
+        },
+        body: JSON.stringify({
+          model: currentSettings.carouselContentModel || currentSettings.model,
+          messages: [
+            {
+              role: "system",
+              content: [
+                currentSettings.carouselSkillPrompt?.trim() ? `Skill stable:\n${currentSettings.carouselSkillPrompt.trim()}` : "",
+                `Tu choisis une structure de carrousel LinkedIn. Reponds uniquement en JSON valide: {"items":[{"kind":"image","mode":"single"},{"kind":"context","mode":"single"}]}. Kinds autorises: image, context, step, argument-blue, argument-red, why-design, cta. Interdits: avis, before-after. La premiere slide doit toujours etre image. La derniere slide doit toujours etre cta. Utilise repeat_ai uniquement sur argument-blue ou argument-red quand une section doit produire plusieurs slides. Maximum 8 items avant normalisation. Si des photos sont importees, prevois assez de slides image ou argument pour les placer naturellement, sans forcer toutes les photos si elles ne servent pas le propos.`,
+              ].filter(Boolean).join("\n\n"),
+            },
+            {
+              role: "user",
+              content: `Sujet/source du carrousel:\n${sourcePrompt}\n\nPhotos importees:\n${buildCarouselImageAssetsPrompt(imageAssets)}`,
+            },
+          ],
+          temperature: 0.35,
+          max_tokens: 900,
+        }),
+      });
+      if (!res.ok) return buildTemplate(fallbackKinds);
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content ?? "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return buildTemplate(fallbackKinds);
+      const parsed = JSON.parse(jsonMatch[0]) as { items?: Array<{ kind?: string; mode?: string }> };
+      return buildTemplate(Array.isArray(parsed.items) ? parsed.items : fallbackKinds);
+    } catch {
+      return buildTemplate(fallbackKinds);
+    }
+  }
+
   async function generateArgumentPointsWithAI(template: LinkedInCarouselTemplate, userPrompt: string): Promise<Record<string, string[]>> {
     const currentSettings = settings ?? loadLinkedInSettings();
     const repeatAiItems = template.items.filter((item) => {
@@ -1563,9 +1776,15 @@ export default function PostsPage() {
       return `SECTION_${idx + 1} (${kind === "argument-blue" ? "Point positif" : "Point negatif"}): ${pagePrompt}`;
     }).join("\n");
 
-    const systemPrompt = `Tu es un expert en creation de carrousels LinkedIn. Pour chaque section demandee, genere une liste de points concis et percutants (1 phrase par point). Le nombre de points doit etre adapte au sujet, entre 3 et 8 points par section. Reponds UNIQUEMENT au format JSON suivant, sans autre texte :\n{\n  "SECTION_1": ["point 1", "point 2", ...],\n  "SECTION_2": ["point 1", "point 2", ...]\n}`;
+    const systemPrompt = `Tu es un expert en creation de carrousels LinkedIn. Pour chaque section demandee, genere une liste de points concis et percutants (1 phrase par point). Le nombre de points doit etre adapte au sujet, entre 3 et 8 points par section. Chaque point doit etre unique: interdiction de repeter la meme idee, le meme angle ou la meme formulation. Reponds UNIQUEMENT au format JSON suivant, sans autre texte :\n{\n  "SECTION_1": ["point 1", "point 2", ...],\n  "SECTION_2": ["point 1", "point 2", ...]\n}`;
 
-    const userPromptText = `Sujet : ${userPrompt}\n\nGenere les points pour ces sections :\n${pointsRequest}`;
+    const userPromptText = [
+      currentSettings.carouselSkillPrompt?.trim() ? `Skill stable:\n${currentSettings.carouselSkillPrompt.trim()}` : "",
+      `Prompt global du template en MD:\n${buildCarouselGlobalPrompt(template) || "Aucun prompt global."}`,
+      `Photos importees:\n${buildCarouselImageAssetsPrompt()}`,
+      `Sujet : ${userPrompt}`,
+      `Genere les points pour ces sections :\n${pointsRequest}`,
+    ].filter(Boolean).join("\n\n");
 
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -3105,22 +3324,27 @@ export default function PostsPage() {
       ) : null}
       {showCarouselTemplatePicker && (
         <div onClick={() => setShowCarouselTemplatePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 31, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div onClick={(event) => event.stopPropagation()} style={{ width: "fit-content", maxWidth: "min(98vw, 1360px)", maxHeight: "94vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: "min(92vw, 1200px)", maxHeight: "94vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
               <Search size={16} />
               <input value={carouselTemplateSearch} onChange={(event) => setCarouselTemplateSearch(event.target.value)} placeholder="Rechercher une template..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} />
               <button type="button" onClick={() => setShowCarouselTemplatePicker(false)} style={{ border: 0, background: "transparent", cursor: "pointer", display: "flex" }}><X size={18} /></button>
             </div>
-            <div style={{ padding: 20, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 320px))", justifyContent: "center", gap: 18, alignItems: "start" }}>
+            <div style={{ padding: 22, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 280px))", justifyContent: "center", gap: 24, alignItems: "start", minHeight: 0 }}>
+              <button type="button" onClick={() => { setCarouselUseTemplate(false); setCarouselGenerationTemplateId(""); setSelectedCarouselTemplateId(""); }} style={{ position: "relative", width: 280, minHeight: 292, borderRadius: 24, border: !carouselUseTemplate ? "1px solid rgba(1,71,255,0.34)" : "1px dashed rgba(18,26,46,0.16)", background: !carouselUseTemplate ? "rgba(1,71,255,0.05)" : "#fbfbfb", boxShadow: !carouselUseTemplate ? "0px 20px 12px rgba(1,71,255,0.02), 0px 9px 9px rgba(1,71,255,0.03), 0px 2px 5px rgba(1,71,255,0.03)" : carouselPanelShadow, padding: 28, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, overflow: "visible" }}>
+                <span style={{ width: 54, height: 54, borderRadius: 18, background: "#121a2e", color: "#fff", display: "grid", placeItems: "center", boxShadow: "0 12px 26px rgba(18,26,46,0.16)" }}><Wand2 size={22} /></span>
+                <strong style={{ display: "block", fontSize: 14, lineHeight: "19px", color: "#121a2e", textAlign: "center" }}>Sans template</strong>
+                <span style={{ maxWidth: 250, fontSize: 12, lineHeight: 1.45, color: "rgba(18,26,46,0.52)" }}>L'IA choisit une sequence JSON controlee: image au debut, CTA a la fin, sans avis ni avant/apres.</span>
+              </button>
               {filteredCarouselTemplates.map((template) => (
-                <button key={template.id} type="button" onContextMenu={(event) => { event.preventDefault(); setCarouselTemplateMenu({ id: template.id, x: event.clientX, y: event.clientY }); }} onClick={() => { setSelectedCarouselTemplateId(template.id); setCarouselGenerationTemplateId(template.id); }} style={{ width: 320, border: template.id === (carouselGenerationTemplateId || selectedCarouselTemplateId) ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", padding: 16, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <button key={template.id} type="button" onContextMenu={(event) => { event.preventDefault(); setCarouselTemplateMenu({ id: template.id, x: event.clientX, y: event.clientY }); }} onClick={() => { setCarouselUseTemplate(true); setSelectedCarouselTemplateId(template.id); setCarouselGenerationTemplateId(template.id); }} style={{ position: "relative", width: 280, minHeight: 292, borderRadius: 24, border: carouselUseTemplate && template.id === (carouselGenerationTemplateId || selectedCarouselTemplateId) ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, padding: 28, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, overflow: "visible" }}>
                   <span style={{ display: "flex", justifyContent: "center" }}>
                     {renderTemplateStackPreview(template)}
                   </span>
                   {renamingCarouselTemplateId === template.id ? (
                     <input value={renamingCarouselTemplateName} onClick={(event) => event.stopPropagation()} onChange={(event) => setRenamingCarouselTemplateName(event.target.value)} onBlur={commitRenameCarouselTemplate} onKeyDown={(event) => { if (event.key === "Enter") commitRenameCarouselTemplate(); if (event.key === "Escape") { setRenamingCarouselTemplateId(""); setRenamingCarouselTemplateName(""); } }} autoFocus style={{ width: "100%", border: "1px solid rgba(18,26,46,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 13, fontWeight: 700, color: "#121a2e", textAlign: "center" }} />
                   ) : (
-                    <strong style={{ display: "block", fontSize: 13, lineHeight: "18px", color: "#121a2e", textAlign: "center" }}>{template.name}</strong>
+                    <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e", maxWidth: 190, minHeight: 42, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", textAlign: "center" }}>{template.name}</strong>
                   )}
                 </button>
               ))}
@@ -3141,19 +3365,128 @@ export default function PostsPage() {
                   </option>
                 ))}
               </select>
-              {selectedCarouselTemplateForPicker ? (
+              {selectedCarouselTemplateForPicker || !carouselUseTemplate ? (
                 <>
-                  <ClientBlueButton type="button" onClick={() => setCarouselCreateStep("ai-options")} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
+                  <ClientBlueButton type="button" onClick={() => setCarouselCreateStep("ai-source")} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
                     Generer avec l'IA
                   </ClientBlueButton>
-                  <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  {carouselUseTemplate && selectedCarouselTemplateForPicker ? <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     Demarrer manuellement
-                  </button>
+                  </button> : null}
                 </>
               ) : null}
             </div>
-            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "ai-options" ? "flex" : "none", flexDirection: "column", gap: 14 }}>
+            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "ai-source" ? "flex" : "none", flexDirection: "column", gap: 14 }}>
               <button type="button" onClick={() => setCarouselCreateStep("setup")} style={{ alignSelf: "flex-start", border: 0, background: "transparent", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <ArrowLeft size={14} /> Retour
+              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ fontSize: 16, color: "#121a2e" }}>Source du carrousel</strong>
+                <span style={{ fontSize: 13, color: "rgba(18,26,46,0.52)", lineHeight: 1.5 }}>Choisis la matiere premiere. Les URLs et YouTube sont recuperes avant d'envoyer le contenu au modele de carrousel.</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {([
+                  { id: "idea", icon: <Lightbulb size={14} />, label: "Idee" },
+                  { id: "manual", icon: <AlignLeft size={14} />, label: "Libre" },
+                  { id: "url", icon: <Link2 size={14} />, label: "Site" },
+                  { id: "youtube", icon: <Youtube size={14} />, label: "YouTube" },
+                ] as { id: SourceTab; icon: React.ReactNode; label: string }[]).map((item) => (
+                  <button key={item.id} type="button" onClick={() => setCarouselSourceTab(item.id)} style={{ minHeight: 44, borderRadius: 14, border: carouselSourceTab === item.id ? "1px solid rgba(1,71,255,0.34)" : "1px solid rgba(18,26,46,0.12)", background: carouselSourceTab === item.id ? "rgba(1,71,255,0.08)" : "#fff", color: carouselSourceTab === item.id ? "#0147ff" : "#121a2e", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              {carouselSourceTab === "idea" ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <select value={carouselSourceIdeaId} onChange={(event) => setCarouselSourceIdeaId(event.target.value)} style={{ ...inp, minHeight: 44, background: "#f2f2f2", borderRadius: 12 }}>
+                    <option value="">Choisir une idee existante</option>
+                    {ideas.map((idea) => (
+                      <option key={idea.id} value={idea.id}>{idea.title}</option>
+                    ))}
+                  </select>
+                  <textarea value={carouselSourceValue} onChange={(event) => setCarouselSourceValue(event.target.value)} rows={3} placeholder="Ou ecris une idee libre..." style={{ ...inp, minHeight: 92, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+                </div>
+              ) : carouselSourceTab === "manual" ? (
+                <textarea value={carouselSourceValue} onChange={(event) => setCarouselSourceValue(event.target.value)} rows={5} placeholder="Ecris librement la matiere du carrousel..." style={{ ...inp, minHeight: 132, background: "#f2f2f2", borderRadius: 12, resize: "vertical" }} />
+              ) : (
+                <input value={carouselSourceValue} onChange={(event) => setCarouselSourceValue(event.target.value)} placeholder={carouselSourceTab === "youtube" ? "URL YouTube" : "URL du site"} style={{ ...inp, minHeight: 44, background: "#f2f2f2", borderRadius: 12 }} />
+              )}
+              <ClientBlueButton type="button" onClick={() => setCarouselCreateStep("ai-assets")} icon={<ArrowRight size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={carouselSourceTab === "idea" ? (!carouselSourceIdeaId && !carouselSourceValue.trim()) : !carouselSourceValue.trim()}>
+                Continuer
+              </ClientBlueButton>
+            </div>
+            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "ai-assets" ? "flex" : "none", flexDirection: "column", gap: 14 }}>
+              <button type="button" onClick={() => setCarouselCreateStep("ai-source")} style={{ alignSelf: "flex-start", border: 0, background: "transparent", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <ArrowLeft size={14} /> Retour
+              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ fontSize: 16, color: "#121a2e" }}>Photos du carrousel</strong>
+                <span style={{ fontSize: 13, color: "rgba(18,26,46,0.52)", lineHeight: 1.5 }}>Importe les photos disponibles. L'IA les recoit comme assets, puis le code les place dans les slides image ou argument.</span>
+              </div>
+              <label
+                onDragOver={(event) => { event.preventDefault(); setCarouselAssetsDragActive(true); }}
+                onDragLeave={() => setCarouselAssetsDragActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  void addCarouselImageFiles(event.dataTransfer.files);
+                }}
+                style={{
+                  minHeight: 118,
+                  padding: "20px 12px",
+                  boxSizing: "border-box",
+                  borderRadius: 9,
+                  border: carouselAssetsDragActive ? "1px dashed rgba(18,26,46,0.45)" : "1px dashed rgba(0,0,0,0.16)",
+                  background: carouselAssetsDragActive ? "#f1f3f5" : "#f6f6f6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  cursor: "pointer",
+                  transition: "background 0.18s ease, border 0.18s ease",
+                }}
+              >
+                <span style={{ display: "flex", flexDirection: "column", gap: 13, alignItems: "center" }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", border: "1px solid #e1e4e8", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(18,26,46,0.08)" }}>
+                    <Upload size={16} style={{ color: "#6f7887" }} />
+                  </span>
+                  <span style={{ fontSize: 16, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>Importer des photos ici</span>
+                  <span style={{ fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.5)" }}>Clique ici ou glisse des fichiers ici</span>
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    if (event.target.files) void addCarouselImageFiles(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {carouselImageAssets.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+                  {carouselImageAssets.map((asset, index) => (
+                    <div key={asset.id} style={{ borderRadius: 14, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: 10, display: "grid", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ width: 54, height: 60, borderRadius: 8, background: `url(${asset.url}) center / cover`, border: "2px solid #fff", boxShadow: "0 8px 18px rgba(18,26,46,0.1)", flexShrink: 0 }} />
+                        <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                          <strong style={{ fontSize: 12, color: "#121a2e" }}>Photo {index + 1}</strong>
+                          <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asset.fileName}</span>
+                        </span>
+                        <button type="button" onClick={() => removeCarouselImageAsset(asset.id)} style={{ marginLeft: "auto", width: 28, height: 28, borderRadius: 999, border: 0, background: "#FBFBFB", color: "rgba(18,26,46,0.72)", display: "grid", placeItems: "center", cursor: "pointer" }}><X size={14} /></button>
+                      </div>
+                      <input value={asset.description} onChange={(event) => updateCarouselImageAsset(asset.id, { description: event.target.value })} placeholder="Description optionnelle pour aider l'IA" style={{ ...inp, minHeight: 38, background: "#f6f6f6", borderRadius: 10, fontSize: 12 }} />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <ClientBlueButton type="button" onClick={() => setCarouselCreateStep("ai-options")} icon={<ArrowRight size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }}>
+                Continuer
+              </ClientBlueButton>
+            </div>
+            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "ai-options" ? "flex" : "none", flexDirection: "column", gap: 14 }}>
+              <button type="button" onClick={() => setCarouselCreateStep("ai-assets")} style={{ alignSelf: "flex-start", border: 0, background: "transparent", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <ArrowLeft size={14} /> Retour
               </button>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3166,8 +3499,8 @@ export default function PostsPage() {
                   <span style={{ width: 16, height: 16, borderRadius: 999, background: "#fff" }} />
                 </span>
               </button>
-              <ClientBlueButton type="button" onClick={() => selectedCarouselTemplateForPicker ? void startCarouselGeneration(selectedCarouselTemplateForPicker) : undefined} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!selectedCarouselTemplateForPicker}>
-                Demarrer la generation
+              <ClientBlueButton type="button" onClick={() => void startCarouselGeneration(selectedCarouselTemplateForPicker ?? undefined)} icon={carouselSourceLoading || generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={(carouselUseTemplate && !selectedCarouselTemplateForPicker) || carouselSourceLoading || generating}>
+                {carouselSourceLoading ? "Recuperation..." : generating ? "Generation..." : "Demarrer la generation"}
               </ClientBlueButton>
             </div>
           </div>
@@ -3294,11 +3627,7 @@ export default function PostsPage() {
               </button>
             </div>
           ) : postsMode === "carousel" ? (
-            <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-              <div style={{ paddingTop: 8, fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.46)" }}>
-                Choisis une template puis cree ton carrousel pour commencer.
-              </div>
-            </div>
+            <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }} />
           ) : rightEditorVisible ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "none" }}>
