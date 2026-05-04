@@ -156,7 +156,8 @@ export default function PomodoroPage() {
   const circumference = 2 * Math.PI * 100;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto bg-[#fbfbfb]">
+    <div className="min-h-screen bg-[#fbfbfb] p-6">
+      <div className="mx-auto max-w-2xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Pomodoro</h1>
 
       {/* Phase selector */}
@@ -291,6 +292,7 @@ export default function PomodoroPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

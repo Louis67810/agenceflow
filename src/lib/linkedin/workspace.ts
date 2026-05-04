@@ -25,6 +25,8 @@ export const DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES: LinkedInWorkspacePreference
   prospectionLanguage: "fr",
   autoRecycleEnabled: true,
   autoRecycleDelayDays: 120,
+  autoRecycleMinLikes: 20,
+  autoRecyclePrompt: "Recree une version quasi identique du post LinkedIn. Garde le hook et les deux premieres phrases inchanges. Change seulement quelques synonymes dans le corps du texte pour eviter une copie exacte. Le CTA doit rester presque identique. Ne change ni le fond, ni la structure, ni le ton.",
 };
 
 export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
@@ -138,6 +140,8 @@ function readLegacyWorkspace(): Partial<LinkedInWorkspaceData> {
       prospectionLanguage: prospectionLanguage === "en" ? "en" : "fr",
       autoRecycleEnabled: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled,
       autoRecycleDelayDays: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays,
+      autoRecycleMinLikes: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes,
+      autoRecyclePrompt: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt,
     },
   };
 }
@@ -217,7 +221,9 @@ export function hasMeaningfulLinkedInWorkspaceData(data: LinkedInWorkspaceData):
     data.preferences.prospectionLanguage !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.prospectionLanguage ||
     Boolean(data.preferences.ideasLastGenerated) ||
     data.preferences.autoRecycleEnabled !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled ||
-    data.preferences.autoRecycleDelayDays !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays
+    data.preferences.autoRecycleDelayDays !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays ||
+    data.preferences.autoRecycleMinLikes !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes ||
+    data.preferences.autoRecyclePrompt !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt
   );
 }
 

@@ -38,6 +38,7 @@ export interface LinkedInPostAnalytics {
 
 export interface LinkedInPost {
   id: string;
+  title?: string;
   content: string;
   type: "post" | "carousel";
   slides?: string[];
@@ -56,6 +57,19 @@ export interface LinkedInPost {
   status: "draft" | "scheduled" | "published";
   tags: string[];
   createdAt: string;
+  editorHistory?: Array<{
+    id: string;
+    label: string;
+    before: string;
+    after: string;
+    createdAt: string;
+  }>;
+  editorChat?: Array<{
+    id: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+    createdAt: string;
+  }>;
 }
 
 export interface LinkedInStyle {
@@ -122,6 +136,8 @@ export interface LinkedInWorkspacePreferences {
   prospectionLanguage: "fr" | "en";
   autoRecycleEnabled: boolean;
   autoRecycleDelayDays: number;
+  autoRecycleMinLikes: number;
+  autoRecyclePrompt: string;
 }
 
 export interface LinkedInWorkspaceData {

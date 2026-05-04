@@ -6,6 +6,7 @@ import { Plus, Trash2, CheckCircle2, Circle, ChevronDown, ChevronRight, Star, Sp
 import type { AgendaTask, AgendaObjective } from "@/types/agenda";
 import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
 import { resolveTaskColor } from "@/lib/agenda/points";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 type SortBy = "date" | "importance" | "status";
 
@@ -136,13 +137,15 @@ export default function TasksPage() {
           >
             <span className="inline-flex items-center gap-2"><Sparkles size={14} /> Auto-planifier aujourd&apos;hui</span>
           </button>
-          <button
+          <ClientBlueButton
+            type="button"
             onClick={() => setShowForm(s => !s)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] transition-colors"
+            icon={<Plus size={16} />}
+            wrapperStyle={{ width: "auto" }}
+            style={{ minHeight: 48, padding: "0 22px", fontSize: 14 }}
           >
-            <Plus size={16} />
             Nouvelle tâche
-          </button>
+          </ClientBlueButton>
         </div>
       </div>
 
@@ -309,12 +312,9 @@ export default function TasksPage() {
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
               Annuler
             </button>
-            <button
-              onClick={handleCreate}
-              className="px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]"
-            >
+            <ClientBlueButton type="button" onClick={handleCreate} wrapperStyle={{ width: "auto" }} style={{ minHeight: 42, padding: "0 18px", fontSize: 13 }}>
               Créer la tâche
-            </button>
+            </ClientBlueButton>
           </div>
           {formError && <p className="text-red-500 text-xs mt-2 px-1">{formError}</p>}
         </div>

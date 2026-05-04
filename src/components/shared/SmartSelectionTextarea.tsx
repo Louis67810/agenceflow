@@ -8,6 +8,8 @@ import {
   ArrowUpRight,
   Bold,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clipboard,
   Copy,
   Expand,
@@ -42,7 +44,10 @@ interface SmartSelectionTextareaProps {
   showGlobalAction?: boolean;
   autoFit?: boolean;
   showWordCount?: boolean;
+  richFormatting?: boolean;
+  onUseSelection?: (text: string) => void;
   onHistory?: (entry: { label: string; before: string; after: string }) => void;
+  onAiAction?: (entry: { label: string; before: string; after: string; scope: "selection" | "full" | "format" }) => void;
 }
 
 interface SelectionState {
@@ -61,30 +66,40 @@ interface AiCommand {
   script?: (text: string) => string;
 }
 
-const AI_COMMANDS: AiCommand[] = [
+interface AiResult {
+  command: AiCommand;
+  text: string;
+  original: string;
+  applyToFullText: boolean;
+  variations: string[];
+  index: number;
+}
+
+export const SMART_SELECTION_COMMANDS: AiCommand[] = [
+  { id: "variation", label: "Faire une variation", instruction: "Cree une variation du passage avec le meme sens, mais une formulation differente.", category: "Base", icon: Repeat2, color: "#0147ff" },
   { id: "remove-emojis", label: "Retirer les emojis", instruction: "Retire tous les emojis sans changer le sens.", category: "Base", icon: X, color: "#6b7280", script: (text) => text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "").replace(/[ \t]+\n/g, "\n").trim() },
   { id: "fix-spelling", label: "Corriger les fautes d'orthographe", instruction: "Corrige uniquement les fautes d'orthographe, de grammaire et de ponctuation sans changer le style.", category: "Base", icon: Check, color: "#168b64" },
-  { id: "expand", label: "Développer", instruction: "Développe ce passage tout en gardant le ton et l'idée principale.", category: "Base", icon: Expand, color: "#0147ff" },
-  { id: "condense", label: "Condenser", instruction: "Raccourcis ce passage sans perdre l'idée.", category: "Base", icon: Minus, color: "#0147ff" },
-  { id: "hook", label: "Transformer en hook", instruction: "Transforme ce passage en hook LinkedIn très accrocheur.", category: "Attention technique", icon: Zap, color: "#ef4444" },
+  { id: "expand", label: "Developper", instruction: "Developpe ce passage tout en gardant le ton et l'idee principale.", category: "Base", icon: Expand, color: "#0147ff" },
+  { id: "condense", label: "Condenser", instruction: "Raccourcis ce passage sans perdre l'idee.", category: "Base", icon: Minus, color: "#0147ff" },
+  { id: "hook", label: "Transformer en hook", instruction: "Transforme ce passage en hook LinkedIn tres accrocheur.", category: "Attention technique", icon: Zap, color: "#ef4444" },
   { id: "open-loop", label: "Transformer en open loop", instruction: "Transforme ce passage en open loop qui donne envie de lire la suite.", category: "Attention technique", icon: Repeat2, color: "#ef4444" },
   { id: "micro-open-loop", label: "Transformer en micro open loop", instruction: "Transforme ce passage en micro open loop court et subtil.", category: "Attention technique", icon: RotateCcw, color: "#ef4444" },
-  { id: "pattern-interrupt", label: "Transformer en pattern interrupt", instruction: "Transforme ce passage en pattern interrupt surprenant mais crédible.", category: "Attention technique", icon: Target, color: "#ef4444" },
+  { id: "pattern-interrupt", label: "Transformer en pattern interrupt", instruction: "Transforme ce passage en pattern interrupt surprenant mais credible.", category: "Attention technique", icon: Target, color: "#ef4444" },
   { id: "curiosity-gap", label: "Transformer en curiosity gap", instruction: "Transforme ce passage en curiosity gap sans clickbait.", category: "Attention technique", icon: Sparkles, color: "#ef4444" },
-  { id: "contrarian", label: "Transformer en accroche contrarienne", instruction: "Transforme ce passage en accroche contrarienne forte mais défendable.", category: "Attention technique", icon: Zap, color: "#ef4444" },
-  { id: "rhythmic-list", label: "Transformer en liste rythmée", instruction: "Transforme ce passage en liste courte et rythmée.", category: "Rythme et structure", icon: AlignLeft, color: "#6236AA" },
-  { id: "staircase", label: "Transformer en structure escalier", instruction: "Transforme ce passage en structure escalier avec des lignes de longueur variée.", category: "Rythme et structure", icon: ArrowDownLeft, color: "#6236AA" },
+  { id: "contrarian", label: "Transformer en accroche contrarienne", instruction: "Transforme ce passage en accroche contrarienne forte mais defendable.", category: "Attention technique", icon: Zap, color: "#ef4444" },
+  { id: "rhythmic-list", label: "Transformer en liste rythmee", instruction: "Transforme ce passage en liste courte et rythmee.", category: "Rythme et structure", icon: AlignLeft, color: "#6236AA" },
+  { id: "staircase", label: "Transformer en structure escalier", instruction: "Transforme ce passage en structure escalier avec des lignes de longueur variee.", category: "Rythme et structure", icon: ArrowDownLeft, color: "#6236AA" },
   { id: "visual-symbol", label: "Transformer en symbole visuel", instruction: "Ajoute quelques symboles visuels utiles sans surcharger.", category: "Rythme et structure", icon: Sparkles, color: "#6236AA" },
   { id: "short-cadence", label: "Transformer en cadence courte", instruction: "Transforme ce passage avec une cadence courte, nette et percutante.", category: "Rythme et structure", icon: ArrowUpRight, color: "#6236AA" },
-  { id: "open-question", label: "Transformer en question ouverte", instruction: "Transforme ce passage en question ouverte qui invite à répondre.", category: "Engagement", icon: MessageCircle, color: "#0f766e" },
+  { id: "open-question", label: "Transformer en question ouverte", instruction: "Transforme ce passage en question ouverte qui invite a repondre.", category: "Engagement", icon: MessageCircle, color: "#0f766e" },
   { id: "polarization", label: "Transformer en polarisation", instruction: "Transforme ce passage en prise de position polarisante mais professionnelle.", category: "Engagement", icon: Target, color: "#0f766e" },
-  { id: "memorable-quote", label: "Transformer en citation mémorable", instruction: "Transforme ce passage en phrase courte, mémorable et citable.", category: "Engagement", icon: Quote, color: "#0f766e" },
-  { id: "personal-insight", label: "Transformer en insight personnel", instruction: "Transforme ce passage en insight personnel crédible et spécifique.", category: "Engagement", icon: Sparkles, color: "#0f766e" },
-  { id: "lead-magnet", label: "Transformer en lead magnet", instruction: "Transforme ce passage en invitation subtile à demander une ressource.", category: "Engagement", icon: Clipboard, color: "#0f766e" },
-  { id: "voluntary-error", label: "Transformer en erreur volontaire", instruction: "Ajoute une aspérité volontaire qui peut provoquer des réactions, sans nuire à la crédibilité.", category: "Engagement", icon: Zap, color: "#0f766e" },
-  { id: "dynamic-repeat", label: "Transformer en répétition dynamique", instruction: "Ajoute une répétition dynamique pour renforcer le rythme.", category: "Emotion", icon: Repeat2, color: "#f97316" },
-  { id: "vulnerability", label: "Transformer en vulnérabilité", instruction: "Transforme ce passage avec plus de vulnérabilité, sans dramatiser.", category: "Emotion", icon: Heart, color: "#f97316" },
-  { id: "emotional-contrast", label: "Transformer en contraste émotionnel", instruction: "Ajoute un contraste émotionnel clair entre tension et résolution.", category: "Emotion", icon: Heart, color: "#f97316" },
+  { id: "memorable-quote", label: "Transformer en citation memorable", instruction: "Transforme ce passage en phrase courte, memorable et citable.", category: "Engagement", icon: Quote, color: "#0f766e" },
+  { id: "personal-insight", label: "Transformer en insight personnel", instruction: "Transforme ce passage en insight personnel credible et specifique.", category: "Engagement", icon: Sparkles, color: "#0f766e" },
+  { id: "lead-magnet", label: "Transformer en lead magnet", instruction: "Transforme ce passage en invitation subtile a demander une ressource.", category: "Engagement", icon: Clipboard, color: "#0f766e" },
+  { id: "voluntary-error", label: "Transformer en erreur volontaire", instruction: "Ajoute une asperite volontaire qui peut provoquer des reactions, sans nuire a la credibilite.", category: "Engagement", icon: Zap, color: "#0f766e" },
+  { id: "dynamic-repeat", label: "Transformer en repetition dynamique", instruction: "Ajoute une repetition dynamique pour renforcer le rythme.", category: "Emotion", icon: Repeat2, color: "#f97316" },
+  { id: "vulnerability", label: "Transformer en vulnerabilite", instruction: "Transforme ce passage avec plus de vulnerabilite, sans dramatiser.", category: "Emotion", icon: Heart, color: "#f97316" },
+  { id: "emotional-contrast", label: "Transformer en contraste emotionnel", instruction: "Ajoute un contraste emotionnel clair entre tension et resolution.", category: "Emotion", icon: Heart, color: "#f97316" },
 ];
 
 const baseButton: CSSProperties = {
@@ -96,6 +111,38 @@ const baseButton: CSSProperties = {
 
 function countWords(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+function escapeHtml(text: string) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function markdownToHtml(text: string) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const escaped = escapeHtml(line);
+      const formatted = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>");
+      return line.startsWith("> ") ? `<blockquote>${formatted.replace(/^&gt;\s?/, "")}</blockquote>` : formatted;
+    })
+    .join("<br>");
+}
+
+function htmlToMarkdown(html: string) {
+  if (typeof document === "undefined") return html;
+  const container = document.createElement("div");
+  container.innerHTML = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/div><div>/gi, "\n")
+    .replace(/<div>/gi, "")
+    .replace(/<\/div>/gi, "")
+    .replace(/<blockquote[^>]*>/gi, "> ")
+    .replace(/<\/blockquote>/gi, "\n")
+    .replace(/<(strong|b)[^>]*>/gi, "**")
+    .replace(/<\/(strong|b)>/gi, "**")
+    .replace(/<(em|i)[^>]*>/gi, "*")
+    .replace(/<\/(em|i)>/gi, "*");
+  return (container.textContent ?? "").replace(/\n{3,}/g, "\n\n").trimEnd();
 }
 
 export default function SmartSelectionTextarea({
@@ -113,15 +160,22 @@ export default function SmartSelectionTextarea({
   showGlobalAction = true,
   autoFit = false,
   showWordCount = false,
+  richFormatting = false,
+  onUseSelection,
   onHistory,
+  onAiAction,
 }: SmartSelectionTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<SelectionState | null>(null);
+  const [selectionToolbar, setSelectionToolbar] = useState<{ top: number; left: number } | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [loadingCommand, setLoadingCommand] = useState<string | null>(null);
-  const [result, setResult] = useState<{ command: AiCommand; text: string; original: string; applyToFullText: boolean } | null>(null);
+  const [result, setResult] = useState<AiResult | null>(null);
+  const [copiedResult, setCopiedResult] = useState(false);
 
   const hasText = value.trim().length > 0;
   const canTransformSelection = !!selection?.text.trim();
@@ -132,12 +186,29 @@ export default function SmartSelectionTextarea({
     ...style,
   }), [autoFit, style]);
 
+  const floatingLeft = (width: number) => selectionToolbar
+    ? Math.max(8, Math.min(selectionToolbar.left, (wrapperRef.current?.clientWidth ?? width + 16) - width - 8))
+    : undefined;
+  const floatingRight = selectionToolbar ? undefined : 10;
+  const filteredCommands = SMART_SELECTION_COMMANDS.filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
+  const categories = Array.from(new Set(filteredCommands.map((command) => command.category)));
+  const currentResultText = result ? result.variations[result.index] ?? result.text : "";
+  const isOriginalVariation = result?.index === 0;
+
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || !autoFit) return;
     textarea.style.height = "auto";
     textarea.style.height = `${Math.max(42, textarea.scrollHeight)}px`;
   }, [autoFit, value]);
+
+  useEffect(() => {
+    if (!richFormatting) return;
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    const nextHtml = markdownToHtml(value);
+    if (editor.innerHTML !== nextHtml) editor.innerHTML = nextHtml;
+  }, [richFormatting, value]);
 
   function refreshSelection() {
     const textarea = textareaRef.current;
@@ -156,24 +227,94 @@ export default function SmartSelectionTextarea({
       return;
     }
     setSelection({ start, end, text });
+    setSelectionToolbar(null);
+  }
+
+  function syncRichValue(label?: string, beforeValue?: string) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const after = htmlToMarkdown(editor.innerHTML);
+    onChange(after);
+    if (label && beforeValue !== undefined) {
+      onHistory?.({ label, before: beforeValue, after });
+      onAiAction?.({ label, before: beforeValue, after, scope: label === "Mise en forme" ? "format" : "selection" });
+    }
+  }
+
+  function refreshRichSelection() {
+    const editor = editorRef.current;
+    const wrapper = wrapperRef.current;
+    const currentSelection = window.getSelection();
+    if (!editor || !wrapper || !currentSelection || currentSelection.rangeCount === 0 || currentSelection.isCollapsed) {
+      setSelection(null);
+      setSelectionToolbar(null);
+      setAiOpen(false);
+      return;
+    }
+    const range = currentSelection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) {
+      setSelection(null);
+      setSelectionToolbar(null);
+      setAiOpen(false);
+      return;
+    }
+    const text = currentSelection.toString();
+    if (!text.trim()) {
+      setSelection(null);
+      setSelectionToolbar(null);
+      setAiOpen(false);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    setSelection({ start: 0, end: text.length, text });
+    setSelectionToolbar({
+      top: Math.max(8, rect.top - wrapperRect.top - 50),
+      left: Math.max(8, Math.min(rect.left - wrapperRect.left, wrapperRect.width - 420)),
+    });
   }
 
   function applyTextFormat(prefix: string, suffix = prefix) {
     if (!selection) return;
-    const nextText = `${prefix}${selection.text}${suffix}`;
-    replaceSelection(nextText, false, "Mise en forme");
+    if (richFormatting) {
+      const command = prefix === "**" ? "bold" : prefix === "*" ? "italic" : null;
+      editorRef.current?.focus();
+      if (command) document.execCommand(command, false);
+      else document.execCommand("formatBlock", false, "blockquote");
+      syncRichValue();
+      setSelection(null);
+      setSelectionToolbar(null);
+      setAiOpen(false);
+      return;
+    }
+    replaceSelection(`${prefix}${selection.text}${suffix}`, false, "Mise en forme");
   }
 
   function replaceSelection(nextText: string, applyToFullText: boolean, label: string) {
     const textarea = textareaRef.current;
-    if (!textarea) return;
     const before = value;
-    const updatedValue = applyToFullText || !selection
-      ? nextText
-      : `${value.slice(0, selection.start)}${nextText}${value.slice(selection.end)}`;
+    if (richFormatting) {
+      if (applyToFullText) {
+        onChange(nextText);
+        onHistory?.({ label, before, after: nextText });
+        onAiAction?.({ label, before, after: nextText, scope: "full" });
+      } else {
+        editorRef.current?.focus();
+        document.execCommand("insertText", false, nextText);
+        syncRichValue(label, before);
+      }
+      setSelection(null);
+      setSelectionToolbar(null);
+      setAiOpen(false);
+      setResult(null);
+      return;
+    }
+    if (!textarea) return;
+    const updatedValue = applyToFullText || !selection ? nextText : `${value.slice(0, selection.start)}${nextText}${value.slice(selection.end)}`;
     const nextCursor = applyToFullText || !selection ? nextText.length : selection.start + nextText.length;
     onChange(updatedValue);
     onHistory?.({ label, before, after: updatedValue });
+    onAiAction?.({ label, before, after: updatedValue, scope: label === "Mise en forme" ? "format" : applyToFullText ? "full" : "selection" });
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(nextCursor, nextCursor);
@@ -184,12 +325,14 @@ export default function SmartSelectionTextarea({
   }
 
   async function runTransform(command: AiCommand, applyToFullText: boolean) {
-    const targetText = applyToFullText ? value : selection?.text ?? "";
+    const existing = result;
+    const targetText = existing?.original || (applyToFullText ? value : selection?.text ?? "");
     if (!targetText.trim()) return;
 
     if (command.script) {
       const text = command.script(targetText);
-      setResult({ command, text, original: targetText, applyToFullText });
+      setCopiedResult(false);
+      setResult({ command, text, original: targetText, applyToFullText, variations: [targetText, text], index: 1 });
       return;
     }
 
@@ -201,7 +344,7 @@ export default function SmartSelectionTextarea({
         body: JSON.stringify({
           text: targetText,
           fullText: value,
-          instruction: customPrompt.trim() ? `${command.instruction}\n\nPrécision utilisateur : ${customPrompt}` : command.instruction,
+          instruction: customPrompt.trim() ? `${command.instruction}\n\nPrecision utilisateur : ${customPrompt}` : command.instruction,
           contextLabel,
           openrouterApiKey: apiKey,
           model,
@@ -210,7 +353,14 @@ export default function SmartSelectionTextarea({
       });
       const data = await res.json();
       if (!res.ok || !data.text) throw new Error(data.error || "Transformation impossible");
-      setResult({ command, text: data.text, original: targetText, applyToFullText });
+      setCopiedResult(false);
+      setResult((current) => {
+        if (current && current.command.id === command.id && current.original === targetText && current.applyToFullText === applyToFullText) {
+          const variations = [...current.variations, data.text];
+          return { ...current, text: data.text, variations, index: variations.length - 1 };
+        }
+        return { command, text: data.text, original: targetText, applyToFullText, variations: [targetText, data.text], index: 1 };
+      });
     } catch (error) {
       console.error(error);
     } finally {
@@ -218,13 +368,10 @@ export default function SmartSelectionTextarea({
     }
   }
 
-  const filteredCommands = AI_COMMANDS.filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
-  const categories = Array.from(new Set(filteredCommands.map((command) => command.category)));
-
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+    <div ref={wrapperRef} style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8, minHeight: style?.minHeight, flex: style?.flex }}>
       {canTransformSelection && !aiOpen && !result && (
-        <div style={{ position: "absolute", top: 10, right: 10, zIndex: 8, display: "flex", alignItems: "center", gap: 2, padding: 5, borderRadius: 13, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.12)" }}>
+        <div style={{ position: "absolute", top: selectionToolbar?.top ?? 10, left: floatingLeft(420), right: selectionToolbar ? undefined : 10, zIndex: 8, display: "flex", alignItems: "center", gap: 2, padding: 5, borderRadius: 13, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 10px 24px rgba(18,26,46,0.12)" }}>
           {[
             { label: "Gras", icon: <Bold size={14} />, action: () => applyTextFormat("**") },
             { label: "Italique", icon: <Italic size={14} />, action: () => applyTextFormat("*") },
@@ -235,22 +382,27 @@ export default function SmartSelectionTextarea({
             </button>
           ))}
           <span style={{ width: 1, height: 22, background: "rgba(18,26,46,0.09)", margin: "0 4px" }} />
-          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setAiOpen(true)} style={{ ...baseButton, minHeight: 32, padding: "0 11px", background: "#f4f7ff", color: "#0147ff", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
-            <Sparkles size={14} />
-            Éditer avec IA
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setAiOpen(true)} style={{ ...baseButton, minHeight: 32, padding: "0 11px", background: "#fbfbfb", color: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
+            <Sparkles size={14} style={{ color: "rgba(0,0,0,0.8)" }} />
+            Editer avec IA
           </button>
+          {onUseSelection ? (
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { if (!selection) return; onUseSelection(selection.text); setSelection(null); setSelectionToolbar(null); }} style={{ ...baseButton, minHeight: 32, padding: "0 11px", background: "#fbfbfb", color: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
+              Selectionner ce texte
+            </button>
+          ) : null}
         </div>
       )}
 
       {canTransformSelection && aiOpen && !result && (
-        <div style={{ position: "absolute", top: 10, right: 10, zIndex: 9, width: 360, maxHeight: 520, overflow: "hidden", borderRadius: 17, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 22px 46px rgba(18,26,46,0.16)", display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "absolute", top: selectionToolbar?.top ?? 10, left: floatingLeft(360), right: floatingRight, zIndex: 9, width: 360, maxHeight: 520, overflow: "hidden", borderRadius: 17, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 22px 46px rgba(18,26,46,0.16)", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: 10, borderBottom: "1px solid rgba(18,26,46,0.07)", display: "flex", alignItems: "center", gap: 8 }}>
             <Search size={15} style={{ color: "rgba(18,26,46,0.38)" }} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher une commande..." style={{ border: 0, outline: "none", flex: 1, fontSize: 13, fontFamily: '"Plus Jakarta Sans", sans-serif', color: "#121a2e" }} />
             <button type="button" onClick={() => setAiOpen(false)} style={{ ...baseButton, background: "transparent", color: "rgba(18,26,46,0.35)", display: "flex" }}><X size={15} /></button>
           </div>
           <div style={{ padding: 10, borderBottom: "1px solid rgba(18,26,46,0.07)" }}>
-            <input value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} placeholder="Précision optionnelle..." style={{ width: "100%", boxSizing: "border-box", minHeight: 38, borderRadius: 11, border: "1px solid rgba(18,26,46,0.09)", background: "#f7f7f7", padding: "0 11px", outline: "none", fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
+            <input value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} placeholder="Precision optionnelle..." style={{ width: "100%", boxSizing: "border-box", minHeight: 38, borderRadius: 11, border: "1px solid rgba(18,26,46,0.09)", background: "#f7f7f7", padding: "0 11px", outline: "none", fontSize: 12, fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
           </div>
           <div style={{ overflowY: "auto", padding: 8 }}>
             {categories.map((category) => (
@@ -272,7 +424,7 @@ export default function SmartSelectionTextarea({
       )}
 
       {result && (
-        <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10, width: 520, borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 24px 54px rgba(18,26,46,0.18)", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ position: "absolute", top: selectionToolbar?.top ?? 10, left: floatingLeft(520), right: floatingRight, zIndex: 10, width: 520, borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 24px 54px rgba(18,26,46,0.18)", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button type="button" onClick={() => setResult(null)} style={{ ...baseButton, background: "transparent", color: "rgba(18,26,46,0.48)", display: "flex" }}><ArrowDownLeft size={16} /></button>
             {(() => {
@@ -280,33 +432,62 @@ export default function SmartSelectionTextarea({
               return <Icon size={18} style={{ color: result.command.color }} />;
             })()}
             <strong style={{ fontSize: 15, color: "#121a2e" }}>{result.command.label}</strong>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+              <button type="button" onClick={() => setResult((current) => current ? { ...current, index: Math.max(0, current.index - 1) } : current)} disabled={result.index === 0} style={{ ...baseButton, width: 30, height: 30, background: "#F7F7F7", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", opacity: result.index === 0 ? 0.42 : 1 }}><ChevronLeft size={15} /></button>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "rgba(18,26,46,0.48)", minWidth: 44, textAlign: "center" }}>{result.index + 1}/{result.variations.length}</span>
+              <button type="button" onClick={() => setResult((current) => current ? { ...current, index: Math.min(current.variations.length - 1, current.index + 1) } : current)} disabled={result.index >= result.variations.length - 1} style={{ ...baseButton, width: 30, height: 30, background: "#F7F7F7", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", opacity: result.index >= result.variations.length - 1 ? 0.42 : 1 }}><ChevronRight size={15} /></button>
+            </div>
           </div>
-          <div style={{ fontSize: 14, lineHeight: 1.65, color: "#121a2e", whiteSpace: "pre-wrap" }}>{result.text}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ borderRadius: 14, background: "#FBFBFB", padding: 12, minHeight: 120, maxHeight: 220, overflowY: "auto" }}>
+              <span style={{ display: "block", marginBottom: 7, fontSize: 11, fontWeight: 850, color: "rgba(18,26,46,0.42)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Avant</span>
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: "rgba(18,26,46,0.62)", whiteSpace: "pre-wrap" }}>{result.original}</div>
+            </div>
+            <div style={{ borderRadius: 14, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", padding: 12, minHeight: 120, maxHeight: 220, overflowY: "auto" }}>
+              <span style={{ display: "block", marginBottom: 7, fontSize: 11, fontWeight: 850, color: "rgba(18,26,46,0.42)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{isOriginalVariation ? "Version originale" : "Apres"}</span>
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: "#121a2e", whiteSpace: "pre-wrap" }}>{currentResultText}</div>
+            </div>
+          </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.45)" }}>{result.original.length} → {result.text.length}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.45)" }}>{result.original.length} -&gt; {currentResultText.length}</span>
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => replaceSelection(result.text, result.applyToFullText, result.command.label)} style={{ ...baseButton, minHeight: 38, padding: "0 15px", background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", fontSize: 13, fontWeight: 850 }}>Remplacer</button>
-              <button type="button" onClick={() => replaceSelection(`${selection?.text ?? ""}${result.text}`, false, `Insérer - ${result.command.label}`)} style={{ ...baseButton, minHeight: 38, padding: "0 15px", background: "#fff", border: "1px solid rgba(18,26,46,0.12)", color: "#121a2e", fontSize: 13, fontWeight: 800 }}>Insérer</button>
-              <button type="button" onClick={() => runTransform(result.command, result.applyToFullText)} style={{ ...baseButton, width: 38, height: 38, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", color: "#121a2e" }} title="Réessayer"><RotateCcw size={15} /></button>
-              <button type="button" onClick={() => navigator.clipboard.writeText(result.text)} style={{ ...baseButton, width: 38, height: 38, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", color: "#121a2e" }} title="Copier"><Copy size={15} /></button>
+              <button type="button" onClick={() => replaceSelection(currentResultText, result.applyToFullText, result.command.label)} disabled={isOriginalVariation} style={{ ...baseButton, minHeight: 38, padding: "0 15px", border: "1px solid #2f4d9d", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)", fontSize: 13, fontWeight: 850, opacity: isOriginalVariation ? 0.52 : 1 }}>Remplacer</button>
+              <button type="button" onClick={() => replaceSelection(`${selection?.text ?? ""}${currentResultText}`, false, `Inserer - ${result.command.label}`)} disabled={isOriginalVariation} style={{ ...baseButton, minHeight: 38, padding: "0 15px", background: "#fff", border: "1px solid rgba(18,26,46,0.12)", color: "#121a2e", fontSize: 13, fontWeight: 800, opacity: isOriginalVariation ? 0.52 : 1 }}>Inserer</button>
+              <button type="button" onClick={() => runTransform(result.command, result.applyToFullText)} style={{ ...baseButton, minHeight: 38, padding: "0 12px", background: "#fff", border: "1px solid rgba(18,26,46,0.12)", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 12, fontWeight: 800 }} title="Faire une nouvelle version"><RotateCcw size={15} /> Nouvelle version</button>
+              <button type="button" onClick={() => { void navigator.clipboard.writeText(currentResultText); setCopiedResult(true); window.setTimeout(() => setCopiedResult(false), 1200); }} style={{ ...baseButton, width: 38, height: 38, background: copiedResult ? "rgba(22,139,100,0.1)" : "#fff", border: "1px solid rgba(18,26,46,0.12)", color: copiedResult ? "#168b64" : "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.18s ease, color 0.18s ease" }} title="Copier">{copiedResult ? <Check size={15} /> : <Copy size={15} />}</button>
             </div>
           </div>
         </div>
       )}
 
-      <textarea
-        ref={textareaRef}
-        className="smart-selection-textarea"
-        rows={rows}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={onKeyDown}
-        onMouseUp={refreshSelection}
-        onKeyUp={refreshSelection}
-        onSelect={refreshSelection}
-        placeholder={placeholder}
-        style={textareaStyle}
-      />
+      {richFormatting ? (
+        <div
+          ref={editorRef}
+          className="smart-selection-textarea smart-selection-rich"
+          contentEditable
+          suppressContentEditableWarning
+          onInput={() => syncRichValue()}
+          onMouseUp={refreshRichSelection}
+          onKeyUp={refreshRichSelection}
+          onBlur={() => setSelectionToolbar(null)}
+          data-placeholder={placeholder}
+          style={textareaStyle}
+        />
+      ) : (
+        <textarea
+          ref={textareaRef}
+          className="smart-selection-textarea"
+          rows={rows}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={onKeyDown}
+          onMouseUp={refreshSelection}
+          onKeyUp={refreshSelection}
+          onSelect={refreshSelection}
+          placeholder={placeholder}
+          style={textareaStyle}
+        />
+      )}
 
       {showWordCount && (
         <div style={{ display: "flex", justifyContent: "flex-end", fontSize: 12, fontWeight: 650, color: "rgba(18,26,46,0.42)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
@@ -316,7 +497,7 @@ export default function SmartSelectionTextarea({
 
       {showGlobalAction && hasText && (
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button type="button" onClick={() => runTransform(AI_COMMANDS.find((command) => command.id === "fix-spelling") ?? AI_COMMANDS[1], true)} disabled={loadingCommand !== null} style={{ ...baseButton, minHeight: 38, padding: "0 13px", background: "#f0f4ff", border: "1px solid #c7d3ff", color: "#0147ff", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
+          <button type="button" onClick={() => runTransform(SMART_SELECTION_COMMANDS.find((command) => command.id === "fix-spelling") ?? SMART_SELECTION_COMMANDS[1], true)} disabled={loadingCommand !== null} style={{ ...baseButton, minHeight: 38, padding: "0 13px", background: "#f0f4ff", border: "1px solid #c7d3ff", color: "#0147ff", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
             {loadingCommand ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
             {globalLabel}
           </button>
@@ -325,10 +506,9 @@ export default function SmartSelectionTextarea({
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .smart-selection-textarea::selection {
-          background: rgba(1, 71, 255, 0.28);
-          color: #0b1736;
-        }
+        .smart-selection-textarea::selection { background: rgba(1, 71, 255, 0.28); color: #0b1736; }
+        .smart-selection-rich:empty::before { content: attr(data-placeholder); color: rgba(18, 26, 46, 0.32); }
+        .smart-selection-rich blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid rgba(18, 26, 46, 0.16); color: rgba(18, 26, 46, 0.72); }
       `}</style>
     </div>
   );

@@ -142,6 +142,7 @@ export function ensureAutoRecyclePosts(
   options: {
     enabled: boolean;
     delayDays: number;
+    minLikes?: number;
     spacingDays?: number;
     now?: Date;
   }
@@ -150,6 +151,7 @@ export function ensureAutoRecyclePosts(
   if (!options.enabled) return normalizedPosts;
 
   const delayDays = Number.isFinite(options.delayDays) && options.delayDays > 0 ? options.delayDays : 120;
+  const minLikes = Number.isFinite(options.minLikes) && (options.minLikes ?? 0) > 0 ? options.minLikes! : 0;
   const spacingDays = Number.isFinite(options.spacingDays) && (options.spacingDays ?? 0) > 0 ? options.spacingDays! : 7;
   const now = options.now ?? new Date();
   const getPublishedBaseDate = (post: LinkedInPost): Date | null => {
@@ -182,7 +184,8 @@ export function ensureAutoRecyclePosts(
     if (post.scheduledAt === nextScheduledAt) return post;
     return normalizePost({ ...post, scheduledAt: nextScheduledAt });
   });
-  const topPosts = getTopQuartilePublishedPosts(recalibratedPosts);
+  const topPosts = getTopQuartilePublishedPosts(recalibratedPosts)
+    .filter((post) => Math.max(post.likes, normalizeAnalytics(post.analytics).reactions) >= minLikes);
   const existingSourceIds = new Set(
     recalibratedPosts
       .map((post) => post.analytics?.autoRecycleSourcePostId)

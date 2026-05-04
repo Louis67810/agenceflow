@@ -1,24 +1,26 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import { flushSync } from "react-dom";
 import type { CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Wand2, Loader2, X, Check, Trash2, Link2, Plus, Download,
   Youtube, Lightbulb, AlignLeft, LayoutTemplate, Edit3,
   ThumbsUp, MessageCircle, Eye, Calendar,
-  FileText, Image as ImageIcon,
+  FileText, Image as ImageIcon, Copy,
   Search, Send, History, ChevronDown, ArrowLeft, ArrowRight, MoveRight,
-  Upload,
+  Upload, Calendar as CalendarIcon, Info, Settings, Repeat2,
 } from "lucide-react";
 import type { LinkedInCarouselPageTemplate, LinkedInCarouselTemplate, LinkedInPost, LinkedInPostAnalytics, LinkedInStyle, LinkedInIdea } from "@/types/linkedin";
 import { DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings, type LinkedInSettings } from "@/lib/linkedin/settings";
-import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
+import SmartSelectionTextarea, { SMART_SELECTION_COMMANDS } from "@/components/shared/SmartSelectionTextarea";
 import {
   computeLinkedInPostScore,
+  ensureAutoRecyclePosts,
   loadLinkedInPosts,
   mergePostAnalytics,
   normalizeAnalytics,
@@ -36,53 +38,44 @@ import {
 } from "@/lib/linkedin/settings";
 import {
   fetchRemoteLinkedInWorkspace,
+  DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES,
   hasMeaningfulLinkedInWorkspaceData,
   loadLinkedInWorkspaceCache,
   patchRemoteLinkedInWorkspace,
   persistLinkedInWorkspacePatch,
 } from "@/lib/linkedin/workspace";
 import ClientBlueButton from "@/components/shared/ClientBlueButton";
+import {
+  CarouselSlideCanvas,
+  decodeCarouselSlide,
+  type CarouselSlideKind,
+  type CarouselSlidePayload,
+} from "@/components/linkedin/CarouselSlideRender";
 
 type SourceTab = "idea" | "url" | "youtube" | "manual";
-type PostsView = "draft" | "scheduled";
+type PostsView = "draft" | "scheduled" | "auto";
 type PostsMode = "post" | "carousel";
 type CarouselStudioTab = "templates" | "editor";
 type CarouselStudioMode = "builder" | "generate";
 type ManualPostFormat = NonNullable<LinkedInPostAnalytics["format"]>;
-type CarouselSlideKind = "context" | "step" | "argument-blue" | "argument-red" | "cta" | "before-after" | "why-design" | "avis" | "image" | "free";
-type CarouselSlidePayload = {
-  kind: CarouselSlideKind;
-  label: string;
-  stepNumber?: number;
-  pointNumber?: number;
-  title?: string;
-  subtitle?: string;
-  body?: string;
-  result?: string;
-  showResult?: boolean;
-  showCheck?: boolean;
-  showStepCta?: boolean;
-  stepCtaText?: string;
-  imageMode?: "frame" | "full";
-  imageSource?: "manual" | "ai";
-  imageUrl?: string;
-  beforeImage?: string;
-  afterImage?: string;
-  backgroundImage1?: string;
-  backgroundImage2?: string;
-};
-
 type CarouselTemplateItemMeta = {
   label?: string;
   fields?: Record<string, string>;
   pagePrompt?: string;
   imagePrompt?: string;
 };
+type CarouselHistoryEntry = {
+  id: string;
+  label: string;
+  slides: string[];
+  createdAt: string;
+  details?: string[];
+};
 
 const MANUAL_POST_FORMATS: Array<{ value: ManualPostFormat; label: string }> = [
   { value: "text", label: "Texte" },
   { value: "image", label: "Image" },
-  { value: "video", label: "Vidéo" },
+  { value: "video", label: "Video" },
   { value: "document", label: "Document" },
 ];
 
@@ -109,7 +102,7 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Etape",
     description: "Slide etape avec numerotation automatique.",
     figmaNodeId: "slide:step",
-    pagePrompt: "Genere une slide etape courte et actionnable. Respecte la numerotation automatique de l'etape et genere un titre d'etape tres court, net et orienté action.",
+    pagePrompt: "Genere une slide etape courte et actionnable. Respecte la numerotation automatique de l'etape et genere un titre d'etape tres court, net et oriente action.",
     imagePrompt: "",
     fields: [
       { id: "step-title", label: "Texte de l'etape", kind: "text", required: true, aiPrompt: "Titre d'etape.", defaultValue: "Creer ton avatar client" },
@@ -121,11 +114,11 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Point bleu",
     description: "Argument positif dynamique avec image et resultat optionnel.",
     figmaNodeId: "slide:argument-blue",
-    pagePrompt: "Genere une slide argument positive. Renseigne un titre court, un sous-texte clair, le bloc resultat si active, et respecte les options d'image, de mode d'image et d'affichage du resultat.",
+    pagePrompt: "Genere une slide argument positive. Renseigne un titre court, un sous-texte clair, le bloc resultat si active, et respecte les options d'image, de mode d'image et d'affichage du resultat. Contraintes strictes: titre maximum 19 caracteres, sous-titre maximum 105 caracteres sur 3 lignes maximum. Ne mets jamais de points de suspension pour raccourcir.",
     imagePrompt: "Decris une image qui illustre precisement ce point positif. L'image doit etre exploitable par un modele image et fonctionner en mode avec cadre ou plein format.",
     fields: [
-      { id: "arg-title", label: "Titre max 22 caracteres", kind: "text", required: true, aiPrompt: "Titre court.", defaultValue: "Definis son profil" },
-      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
+      { id: "arg-title", label: "Titre (19 caracteres recommandes)", kind: "text", required: true, aiPrompt: "Titre court. Maximum strict: 19 caracteres. Ne mets jamais de points de suspension.", defaultValue: "Definis son profil" },
+      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte. Maximum strict: 105 caracteres, 3 lignes maximum.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
       { id: "arg-image", label: "Image", kind: "image", required: false, aiPrompt: "Image manuelle ou generee." },
       { id: "arg-image-source", label: "Image IA active", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "non" },
       { id: "arg-image-mode", label: "Mode image", kind: "text", required: false, aiPrompt: "frame/full", defaultValue: "frame" },
@@ -139,11 +132,11 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Point rouge",
     description: "Argument negatif, meme structure que le point bleu.",
     figmaNodeId: "slide:argument-red",
-    pagePrompt: "Genere une slide argument negative. Renseigne un titre court, un sous-texte clair, le bloc resultat si active, et respecte les options d'image, de mode d'image et d'affichage du resultat.",
+    pagePrompt: "Genere une slide argument negative. Renseigne un titre court, un sous-texte clair, le bloc resultat si active, et respecte les options d'image, de mode d'image et d'affichage du resultat. Contraintes strictes: titre maximum 19 caracteres, sous-titre maximum 105 caracteres sur 3 lignes maximum. Ne mets jamais de points de suspension pour raccourcir.",
     imagePrompt: "Decris une image qui illustre precisement cette erreur ou faiblesse. L'image doit etre exploitable par un modele image et fonctionner en mode avec cadre ou plein format.",
     fields: [
-      { id: "arg-title", label: "Titre max 22 caracteres", kind: "text", required: true, aiPrompt: "Titre court.", defaultValue: "Aucune preuve sociale" },
-      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
+      { id: "arg-title", label: "Titre (19 caracteres recommandes)", kind: "text", required: true, aiPrompt: "Titre court. Maximum strict: 19 caracteres. Ne mets jamais de points de suspension.", defaultValue: "Aucune preuve sociale" },
+      { id: "arg-subtitle", label: "Sous-titre", kind: "text", required: true, aiPrompt: "Explication courte. Maximum strict: 105 caracteres, 3 lignes maximum.", defaultValue: "Pas environ 30 ans. Exactement qui il est : age, metier, ville, niveau de vie, situation familiale." },
       { id: "arg-image", label: "Image", kind: "image", required: false, aiPrompt: "Image manuelle ou generee." },
       { id: "arg-image-source", label: "Image IA active", kind: "text", required: false, aiPrompt: "oui/non", defaultValue: "non" },
       { id: "arg-image-mode", label: "Mode image", kind: "text", required: false, aiPrompt: "frame/full", defaultValue: "frame" },
@@ -209,11 +202,9 @@ const CAROUSEL_SLIDE_LIBRARY: LinkedInCarouselPageTemplate[] = [
     name: "Image",
     description: "Slide image plein format.",
     figmaNodeId: "slide:image",
-    pagePrompt: "Slide image seule. Toute la slide doit etre portee par un unique visuel plein format sans autre element de contenu.",
-    imagePrompt: "Decris une image hero plein format qui remplit toute la slide en 575x690 avec un cadrage fort et lisible.",
-    fields: [
-      { id: "image-src", label: "Image", kind: "image", required: true, aiPrompt: "Image principale de la slide." },
-    ],
+    pagePrompt: "",
+    imagePrompt: "",
+    fields: [],
     createdAt: "builtin",
   },
 ];
@@ -230,14 +221,9 @@ function getTemplateField(page: LinkedInCarouselPageTemplate | null, fieldId: st
   return page?.fields.find((field) => field.id === fieldId)?.defaultValue ?? fallback;
 }
 
-function limitSlideTitle(value: string, max = 22) {
-  const clean = value.trim();
-  return clean.length <= max ? clean : `${clean.slice(0, max - 1).trim()}...`;
-}
-
 function splitInstructionPoints(prompt: string) {
   const lines = prompt
-    .split(/\n|;|•|-/)
+    .split(/\n|;|-/)
     .map((line) => line.replace(/^\d+[\).\s-]*/, "").trim())
     .filter(Boolean);
   if (lines.length > 1) return lines;
@@ -249,13 +235,41 @@ function encodeCarouselSlide(payload: CarouselSlidePayload) {
   return `__AF_CAROUSEL_SLIDE__${JSON.stringify(payload)}`;
 }
 
-function decodeCarouselSlide(value: string): CarouselSlidePayload | null {
-  if (!value.startsWith("__AF_CAROUSEL_SLIDE__")) return null;
-  try {
-    return JSON.parse(value.replace("__AF_CAROUSEL_SLIDE__", "")) as CarouselSlidePayload;
-  } catch {
-    return null;
-  }
+function normalizeCarouselSlideCounters(slides: string[]) {
+  let stepIndex = 0;
+  let bluePointIndex = 0;
+  let redPointIndex = 0;
+
+  return slides.map((slide) => {
+    const payload = decodeCarouselSlide(slide);
+    if (!payload) return slide;
+
+    if (payload.kind === "step") {
+      stepIndex += 1;
+      bluePointIndex = 0;
+      redPointIndex = 0;
+      return encodeCarouselSlide({ ...payload, stepNumber: stepIndex, pointNumber: undefined });
+    }
+
+    if (payload.kind === "why-design") {
+      stepIndex = 0;
+      bluePointIndex = 0;
+      redPointIndex = 0;
+      return encodeCarouselSlide({ ...payload, stepNumber: undefined, pointNumber: undefined });
+    }
+
+    if (payload.kind === "argument-blue") {
+      bluePointIndex += 1;
+      return encodeCarouselSlide({ ...payload, pointNumber: bluePointIndex, stepNumber: undefined });
+    }
+
+    if (payload.kind === "argument-red") {
+      redPointIndex += 1;
+      return encodeCarouselSlide({ ...payload, pointNumber: redPointIndex, stepNumber: undefined });
+    }
+
+    return encodeCarouselSlide({ ...payload, stepNumber: undefined, pointNumber: undefined });
+  });
 }
 
 function encodeCarouselTemplateItemMeta(meta: CarouselTemplateItemMeta) {
@@ -290,7 +304,7 @@ function getCarouselTemplateItemPrompt(item: LinkedInCarouselTemplate["items"][n
 
 async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes: number; kind: "image" | "pdf" }> {
   if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" rx="20" fill="#f1f5f9"/><rect x="52" y="36" width="216" height="168" rx="16" fill="#fff" stroke="#d8dee8" stroke-width="5"/><rect x="78" y="66" width="74" height="90" rx="11" fill="#ef4444"/><text x="115" y="119" text-anchor="middle" font-size="24" font-family="Arial" font-weight="700" fill="#fff">PDF</text><text x="78" y="180" font-size="14" font-family="Arial" font-weight="700" fill="#121a2e">Aperçu PDF</text></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" rx="20" fill="#f1f5f9"/><rect x="52" y="36" width="216" height="168" rx="16" fill="#fff" stroke="#d8dee8" stroke-width="5"/><rect x="78" y="66" width="74" height="90" rx="11" fill="#ef4444"/><text x="115" y="119" text-anchor="middle" font-size="24" font-family="Arial" font-weight="700" fill="#fff">PDF</text><text x="78" y="180" font-size="14" font-family="Arial" font-weight="700" fill="#121a2e">Apercu PDF</text></svg>`;
     return { url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, bytes: file.size, kind: "pdf" };
   }
 
@@ -303,7 +317,7 @@ async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Impossible de télécharger l'image."));
+    img.onerror = () => reject(new Error("Impossible de telecharger l'image."));
     img.src = rawDataUrl;
   });
   const ratio = Math.min(420 / image.width, 420 / image.height, 1);
@@ -321,6 +335,10 @@ async function fileToCompressedPreview(file: File): Promise<{ url: string; bytes
   return { url, bytes: Math.round((url.length * 3) / 4), kind: "image" };
 }
 
+function countWords(text: string) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
 // Style tokens
 
 const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
@@ -332,7 +350,7 @@ const STATUS_STYLES: Record<"draft" | "scheduled" | "published", { bg: string; c
   scheduled: { bg: "#d5eeff", color: "#073e63" },
   published: { bg: "#d1fae5", color: "#168b64" },
 };
-const STATUS_LABELS = { draft: "Brouillon", scheduled: "Planifié", published: "Publié" };
+const STATUS_LABELS = { draft: "Brouillon", scheduled: "Planifie", published: "Publie" };
 const STYLE_TAGS: Record<LinkedInStyle["category"] | "custom", { bg: string; color: string; border: string }> = {
   storytelling: { bg: "#E1D1FA", color: "#6236AA", border: "rgba(98,54,170,0.18)" },
   valeur: { bg: "#d5eeff", color: "#073e63", border: "rgba(7,62,99,0.14)" },
@@ -384,9 +402,22 @@ export default function PostsPage() {
   const [carouselGenerationPrompt, setCarouselGenerationPrompt] = useState("");
   const [carouselDraftName, setCarouselDraftName] = useState("");
   const [carouselDraftCategory, setCarouselDraftCategory] = useState("");
+  const [carouselCreateStep, setCarouselCreateStep] = useState<"setup" | "ai-options">("setup");
+  const [carouselGenerateImagesWithAI, setCarouselGenerateImagesWithAI] = useState(false);
   const [carouselGenerationChat, setCarouselGenerationChat] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([]);
-  const [carouselGenerationHistory, setCarouselGenerationHistory] = useState<Array<{ id: string; label: string; slides: string[]; createdAt: string }>>([]);
+  const [carouselGenerationHistory, setCarouselGenerationHistory] = useState<CarouselHistoryEntry[]>([]);
+  const [carouselHistoryDetails, setCarouselHistoryDetails] = useState<CarouselHistoryEntry | null>(null);
   const [showCarouselHistory, setShowCarouselHistory] = useState(false);
+  const [carouselTemplateMenu, setCarouselTemplateMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [renamingCarouselTemplateId, setRenamingCarouselTemplateId] = useState("");
+  const [renamingCarouselTemplateName, setRenamingCarouselTemplateName] = useState("");
+  const [carouselChatLoading, setCarouselChatLoading] = useState(false);
+  const [carouselApplyingEdit, setCarouselApplyingEdit] = useState(false);
+  const [carouselTargetPickerOpen, setCarouselTargetPickerOpen] = useState(false);
+  const [carouselFieldPickerOpen, setCarouselFieldPickerOpen] = useState(false);
+  const [carouselCommandPickerOpen, setCarouselCommandPickerOpen] = useState(false);
+  const [carouselChatTargetSlides, setCarouselChatTargetSlides] = useState<number[]>([]);
+  const [carouselChatTargetField, setCarouselChatTargetField] = useState<keyof CarouselSlidePayload | "">("");
   const [newCarouselPageName, setNewCarouselPageName] = useState("");
   const [newCarouselTemplateName, setNewCarouselTemplateName] = useState("");
   const [sourceInput, setSourceInput] = useState("");
@@ -399,6 +430,7 @@ export default function PostsPage() {
   const [generatedSlides, setGeneratedSlides] = useState<string[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
   const [generating, setGenerating] = useState(false);
+  const [carouselDownloading, setCarouselDownloading] = useState(false);
   const [generationError, setGenerationError] = useState("");
   const [tags, setTags] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
@@ -408,15 +440,38 @@ export default function PostsPage() {
   const [draftMedia, setDraftMedia] = useState<{ url: string; kind: "image" | "pdf"; fileName: string; bytes: number } | null>(null);
   const [manualEditorStarted, setManualEditorStarted] = useState(false);
   const [editorHistory, setEditorHistory] = useState<Array<{ id: string; label: string; before: string; after: string; createdAt: string }>>([]);
+  const [editorChat, setEditorChat] = useState<Array<{ id: string; role: "user" | "assistant" | "system"; content: string; createdAt: string }>>([]);
+  const [editorPanelMode, setEditorPanelMode] = useState<"conversation" | "history">("conversation");
   const [chatInput, setChatInput] = useState("");
+  const [editorChatLoading, setEditorChatLoading] = useState(false);
+  const [editorApplyingEdit, setEditorApplyingEdit] = useState(false);
+  const [selectedChatText, setSelectedChatText] = useState("");
+  const [postCopied, setPostCopied] = useState(false);
   const [hoveredDraftImage, setHoveredDraftImage] = useState(false);
   const [scheduleOverlayPostId, setScheduleOverlayPostId] = useState<string | null>(null);
   const [scheduleOverlayDate, setScheduleOverlayDate] = useState("");
+  const [scheduleCalendarMonth, setScheduleCalendarMonth] = useState("");
+  const [autoRecycleSettingsOpen, setAutoRecycleSettingsOpen] = useState(false);
+  const [autoRecycleEnabled, setAutoRecycleEnabled] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled);
+  const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
+  const [autoRecycleMinLikes, setAutoRecycleMinLikes] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes);
+  const [autoRecyclePrompt, setAutoRecyclePrompt] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt);
+  const [autoRecycleVariantLoadingId, setAutoRecycleVariantLoadingId] = useState<string | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  const [chatActionsOpen, setChatActionsOpen] = useState(false);
+  const [selectedChatCommandId, setSelectedChatCommandId] = useState("");
+  const [createPostOverlayOpen, setCreatePostOverlayOpen] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [newPostTitle, setNewPostTitle] = useState("");
+  const [newPostSourceTab, setNewPostSourceTab] = useState<SourceTab>("manual");
+  const [newPostSourceValue, setNewPostSourceValue] = useState("");
+  const [newPostStyleId, setNewPostStyleId] = useState("");
+  const [newPostFormat, setNewPostFormat] = useState<ManualPostFormat>("text");
   const [draggedCarouselItemId, setDraggedCarouselItemId] = useState("");
   const editorCarouselRef = useRef<HTMLDivElement | null>(null);
   const editorDragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 });
+  const chatComposerRef = useRef<HTMLDivElement | null>(null);
 
   const [statsPost, setStatsPost] = useState<LinkedInPost | null>(null);
   const [statsInput, setStatsInput] = useState({
@@ -451,6 +506,10 @@ export default function PostsPage() {
     setIdeas(cachedWorkspace.ideas);
     setCarouselPageTemplates(cachedWorkspace.carouselPageTemplates);
     setCarouselTemplates(cachedWorkspace.carouselTemplates);
+    setAutoRecycleEnabled(cachedWorkspace.preferences.autoRecycleEnabled);
+    setAutoRecycleDelayDays(cachedWorkspace.preferences.autoRecycleDelayDays);
+    setAutoRecycleMinLikes(cachedWorkspace.preferences.autoRecycleMinLikes);
+    setAutoRecyclePrompt(cachedWorkspace.preferences.autoRecyclePrompt);
     setSettings(loadLinkedInSettings());
 
     void (async () => {
@@ -474,6 +533,10 @@ export default function PostsPage() {
           setIdeas(remoteWorkspace.workspace.ideas);
           setCarouselPageTemplates(remoteWorkspace.workspace.carouselPageTemplates);
           setCarouselTemplates(remoteWorkspace.workspace.carouselTemplates);
+          setAutoRecycleEnabled(remoteWorkspace.workspace.preferences.autoRecycleEnabled);
+          setAutoRecycleDelayDays(remoteWorkspace.workspace.preferences.autoRecycleDelayDays);
+          setAutoRecycleMinLikes(remoteWorkspace.workspace.preferences.autoRecycleMinLikes);
+          setAutoRecyclePrompt(remoteWorkspace.workspace.preferences.autoRecyclePrompt);
         } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
           await patchRemoteLinkedInWorkspace(cachedWorkspace);
         }
@@ -520,6 +583,18 @@ export default function PostsPage() {
   useEffect(() => {
     if (!selectedStyleId && styles.length > 0) setSelectedStyleId(styles[0].id);
   }, [selectedStyleId, styles]);
+
+  useEffect(() => {
+    const updated = ensureAutoRecyclePosts(posts, {
+      enabled: autoRecycleEnabled,
+      delayDays: autoRecycleDelayDays,
+      minLikes: autoRecycleMinLikes,
+    });
+    if (JSON.stringify(updated) === JSON.stringify(posts)) return;
+    setPosts(updated);
+    saveLinkedInPosts(updated);
+    void persistRemoteLinkedInPosts(updated, true);
+  }, [autoRecycleDelayDays, autoRecycleEnabled, autoRecycleMinLikes, posts]);
 
   useEffect(() => {
     if (!selectedCarouselPageId && carouselPageTemplates.length > 0) {
@@ -584,8 +659,9 @@ export default function PostsPage() {
     return () => window.clearTimeout(timeout);
   }, [postsMode, manualEditorStarted, generatedSlides, editingPostId]);
 
+  const autoRecyclePosts = posts.filter((post) => Boolean(post.analytics?.autoRecycleSourcePostId));
   const filteredPosts = posts
-    .filter((post) => post.status === postsView)
+    .filter((post) => postsView === "auto" ? Boolean(post.analytics?.autoRecycleSourcePostId) : post.status === postsView && !post.analytics?.autoRecycleSourcePostId)
     .sort((a, b) => {
       const dateA = a.scheduledAt ?? a.publishedAt ?? a.createdAt;
       const dateB = b.scheduledAt ?? b.publishedAt ?? b.createdAt;
@@ -639,7 +715,7 @@ export default function PostsPage() {
     const selectedIdea = ideas.find(i => i.id === selectedIdeaId);
     let sourceContent = "", sourceTitle = "";
     switch (sourceTab) {
-      case "idea": sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}${manualIdea.trim() ? `\n\nPrécisions:\n${manualIdea}` : ""}` : manualIdea; sourceTitle = selectedIdea?.title ?? ""; break;
+      case "idea": sourceContent = selectedIdea ? `${selectedIdea.title}\n\n${selectedIdea.description}${manualIdea.trim() ? `\n\nPrecisions:\n${manualIdea}` : ""}` : manualIdea; sourceTitle = selectedIdea?.title ?? ""; break;
       case "url": case "youtube": sourceContent = scrapedContent || sourceInput; sourceTitle = scrapedTitle; break;
       case "manual": sourceContent = manualIdea; break;
     }
@@ -671,7 +747,7 @@ export default function PostsPage() {
       const data = await res.json();
       if (res.ok) {
         if (data.type === "carousel" && data.slides) {
-          setGeneratedSlides(data.slides);
+          setGeneratedSlides(normalizeCarouselSlideCounters(data.slides));
           setGeneratedContent("");
           setPostType("carousel");
           setActiveSlide(0);
@@ -693,7 +769,11 @@ export default function PostsPage() {
   }
 
   function resetEditor() {
+    if (rightEditorVisible && editingPostId) {
+      persistPostDraft();
+    }
     setEditingPostId(null);
+    setDraftTitle("");
     setGeneratedContent("");
     setGeneratedSlides([]);
     setManualIdea("");
@@ -706,7 +786,13 @@ export default function PostsPage() {
     setDraftMedia(null);
     setManualEditorStarted(false);
     setEditorHistory([]);
+    setEditorChat([]);
+    setEditorPanelMode("conversation");
     setChatInput("");
+    setSelectedChatText("");
+    setChatActionsOpen(false);
+    setSelectedChatCommandId("");
+    setPostCopied(false);
     setHoveredDraftImage(false);
     setScheduleOverlayPostId(null);
     setScheduleOverlayDate("");
@@ -722,11 +808,12 @@ export default function PostsPage() {
 
   function openPostForEdit(post: LinkedInPost) {
     setEditingPostId(post.id);
+    setDraftTitle(post.title ?? "");
     setPostType(post.type);
     setSourceTab(post.sourceType === "idea" || post.sourceType === "manual" || post.sourceType === "url" || post.sourceType === "youtube" ? post.sourceType : "manual");
     setSelectedStyleId(post.styleId ?? "");
     setGeneratedContent(post.type === "carousel" ? "" : post.content);
-    setGeneratedSlides(post.type === "carousel" ? post.slides ?? post.content.split("\n\n---\n\n") : []);
+    setGeneratedSlides(post.type === "carousel" ? normalizeCarouselSlideCounters(post.slides ?? post.content.split("\n\n---\n\n")) : []);
     setActiveSlide(0);
     setManualIdea(post.sourceType === "manual" ? post.content : "");
     setSourceInput(post.sourceUrl ?? "");
@@ -743,22 +830,24 @@ export default function PostsPage() {
       bytes: analytics.mediaStorageBytes ?? 0,
     } : null);
     setManualEditorStarted(true);
-    setEditorHistory([]);
+    setEditorHistory(post.editorHistory ?? []);
+    setEditorChat(post.editorChat ?? []);
+    setEditorPanelMode("conversation");
     setChatInput("");
+    setSelectedChatText("");
+    setChatActionsOpen(false);
+    setSelectedChatCommandId("");
+    setPostCopied(false);
     setHoveredDraftImage(false);
   }
 
   function startManualPost() {
-    setSourceTab("manual");
-    setEditingPostId(null);
-    setGeneratedContent("");
-    setGeneratedSlides([]);
-    setPostType("post");
-    setSelectedPostFormat("");
-    setGenerationError("");
-    setDraftMedia(null);
-    setEditorHistory([]);
-    setManualEditorStarted(true);
+    setNewPostTitle("");
+    setNewPostSourceTab("manual");
+    setNewPostSourceValue("");
+    setNewPostStyleId(selectedStyleId || styles[0]?.id || "");
+    setNewPostFormat("text");
+    setCreatePostOverlayOpen(true);
   }
 
   function pushEditorHistory(entry: { label: string; before: string; after: string }) {
@@ -766,6 +855,98 @@ export default function PostsPage() {
       { id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...entry },
       ...current,
     ].slice(0, 30));
+  }
+
+  function pushEditorChat(role: "user" | "assistant" | "system", content: string) {
+    setEditorChat((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString() },
+    ].slice(-80));
+  }
+
+  function persistPostDraft(nextPatch?: Partial<LinkedInPost>) {
+    const content = postType === "carousel" ? generatedSlides.join("\n\n---\n\n") : generatedContent;
+    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+    const existingPost = editingPostId ? posts.find((post) => post.id === editingPostId) : null;
+    if (!existingPost && !content.trim() && !draftTitle.trim()) return;
+    const postId = existingPost?.id ?? editingPostId;
+    if (!postId) return;
+    const nextPost: LinkedInPost = {
+      ...(existingPost ?? {
+        id: postId,
+        createdAt: new Date().toISOString(),
+        likes: 0,
+        comments: 0,
+        impressions: 0,
+        status: "draft",
+        tags: [],
+        sourceType: sourceTab,
+        type: postType,
+        content: "",
+      }),
+      title: draftTitle.trim() || existingPost?.title,
+      content,
+      type: postType,
+      slides: postType === "carousel" ? generatedSlides : undefined,
+      sourceType: sourceTab,
+      sourceUrl: ["url", "youtube"].includes(sourceTab) ? sourceInput : undefined,
+      sourceTitle: scrapedTitle || existingPost?.sourceTitle,
+      styleId: selectedStyleId || undefined,
+      styleName: selectedStyle?.name,
+      analytics: normalizeAnalytics({
+        ...existingPost?.analytics,
+        format: postType === "carousel" ? "carousel" : selectedPostFormat || existingPost?.analytics?.format || "text",
+        mediaPreviewUrl: draftMedia?.url ?? existingPost?.analytics?.mediaPreviewUrl,
+        mediaPreviewKind: draftMedia?.kind ?? existingPost?.analytics?.mediaPreviewKind,
+        mediaFileName: draftMedia?.fileName ?? existingPost?.analytics?.mediaFileName,
+        mediaStorageBytes: draftMedia?.bytes ?? existingPost?.analytics?.mediaStorageBytes,
+      }),
+      editorHistory,
+      editorChat: postType === "carousel"
+        ? carouselGenerationChat.map((entry) => ({ ...entry, createdAt: new Date().toISOString() }))
+        : editorChat,
+      ...nextPatch,
+    };
+    const updated = normalizePosts(existingPost ? posts.map((post) => post.id === postId ? nextPost : post) : [nextPost, ...posts]);
+    setPosts(updated);
+    saveLinkedInPosts(updated);
+    void persistRemoteLinkedInPosts(updated, true);
+  }
+
+  function createManualDraft() {
+    const title = newPostTitle.trim() || "Nouveau brouillon";
+    const id = crypto.randomUUID();
+    const selectedStyle = styles.find((style) => style.id === newPostStyleId);
+    const nextPost: LinkedInPost = normalizePosts([{
+      id,
+      title,
+      content: "",
+      type: "post",
+      sourceType: newPostSourceTab,
+      sourceUrl: ["url", "youtube"].includes(newPostSourceTab) ? newPostSourceValue.trim() || undefined : undefined,
+      sourceTitle: title,
+      styleId: newPostStyleId || undefined,
+      styleName: selectedStyle?.name,
+      scheduledAt: undefined,
+      publishedAt: undefined,
+      likes: 0,
+      comments: 0,
+      impressions: 0,
+      analytics: normalizeAnalytics({
+        format: newPostFormat,
+      }),
+      status: "draft",
+      tags: selectedStyle ? [selectedStyle.name, selectedStyle.category] : [],
+      createdAt: new Date().toISOString(),
+      editorHistory: [],
+      editorChat: [{ id: crypto.randomUUID(), role: "system", content: `Brouillon cree depuis ${newPostSourceTab === "manual" ? "Libre" : newPostSourceTab.toUpperCase()}.`, createdAt: new Date().toISOString() }],
+    }])[0];
+    const updated = normalizePosts([nextPost, ...posts]);
+    setPosts(updated);
+    saveLinkedInPosts(updated);
+    void persistRemoteLinkedInPosts(updated, true);
+    setCreatePostOverlayOpen(false);
+    openPostForEdit(nextPost);
   }
 
   function persistCarouselWorkspace(nextPages = carouselPageTemplates, nextTemplates = carouselTemplates) {
@@ -782,7 +963,7 @@ export default function PostsPage() {
     const page: LinkedInCarouselPageTemplate = {
       id: crypto.randomUUID(),
       name,
-      description: "Template de slide à connecter ensuite à une frame Figma.",
+      description: "Template de slide a connecter ensuite a une frame Figma.",
       pagePrompt: `Genere une slide "${name}" claire, visuelle et concise. Decris precisement le role de chaque champ, les textes attendus, les options activables ou desactivables, et la logique de mise en page pour que la slide soit directement exploitable.`,
       imagePrompt: `Decris l'image attendue pour "${name}" de maniere tres precise afin qu'un modele image puisse la generer proprement.`,
       fields: [
@@ -791,14 +972,14 @@ export default function PostsPage() {
           label: "Titre principal",
           kind: "text",
           required: true,
-          aiPrompt: "Génère un titre court, clair et très impactant.",
+          aiPrompt: "Genere un titre court, clair et tres impactant.",
         },
         {
           id: crypto.randomUUID(),
           label: "Texte court",
           kind: "text",
           required: true,
-          aiPrompt: "Génère un texte de slide en 1 à 2 phrases.",
+          aiPrompt: "Genere un texte de slide en 1 a 2 phrases.",
         },
       ],
       createdAt: new Date().toISOString(),
@@ -834,7 +1015,7 @@ export default function PostsPage() {
           label: kind === "image" ? "Image modifiable" : "Texte modifiable",
           kind,
           required: kind === "text",
-          aiPrompt: kind === "image" ? "Décris l'image attendue pour cette zone." : "Explique comment remplir ce texte.",
+          aiPrompt: kind === "image" ? "Decris l'image attendue pour cette zone." : "Explique comment remplir ce texte.",
         },
       ],
     } : page);
@@ -862,7 +1043,7 @@ export default function PostsPage() {
     const template: LinkedInCarouselTemplate = {
       id: crypto.randomUUID(),
       name,
-      description: "Regroupement de pages utilisé par l'IA pour composer un carrousel.",
+      description: "Regroupement de pages utilise par l'IA pour composer un carrousel.",
       items: [],
       createdAt: new Date().toISOString(),
     };
@@ -881,6 +1062,25 @@ export default function PostsPage() {
     const nextTemplates = carouselTemplates.filter((template) => template.id !== templateId);
     persistCarouselWorkspace(carouselPageTemplates, nextTemplates);
     if (selectedCarouselTemplateId === templateId) setSelectedCarouselTemplateId(nextTemplates[0]?.id ?? "");
+    if (carouselGenerationTemplateId === templateId) setCarouselGenerationTemplateId(nextTemplates[0]?.id ?? "");
+    setCarouselTemplateMenu(null);
+  }
+
+  function startRenameCarouselTemplate(templateId: string) {
+    const template = carouselTemplates.find((entry) => entry.id === templateId);
+    if (!template) return;
+    setRenamingCarouselTemplateId(templateId);
+    setRenamingCarouselTemplateName(template.name);
+    setCarouselTemplateMenu(null);
+  }
+
+  function commitRenameCarouselTemplate() {
+    const name = renamingCarouselTemplateName.trim();
+    if (renamingCarouselTemplateId && name) {
+      updateCarouselTemplate(renamingCarouselTemplateId, { name });
+    }
+    setRenamingCarouselTemplateId("");
+    setRenamingCarouselTemplateName("");
   }
 
   function addPageToCarouselTemplate(templateId: string, pageTemplateId: string) {
@@ -939,7 +1139,7 @@ export default function PostsPage() {
     updateCarouselTemplateItemMeta(templateId, itemId, {
       fields: {
         ...(current.fields ?? {}),
-        [fieldId]: fieldId === "arg-title" ? limitSlideTitle(value) : value,
+        [fieldId]: value,
       },
     });
   }
@@ -997,7 +1197,7 @@ export default function PostsPage() {
       return {
         id: FREE_CAROUSEL_PAGE_ID,
         name: "Libre",
-        description: "Page libre ajoutée manuellement, ignorée par l'IA.",
+        description: "Page libre ajoutee manuellement, ignoree par l'IA.",
         fields: [],
         pagePrompt: "",
         imagePrompt: "",
@@ -1007,7 +1207,7 @@ export default function PostsPage() {
     return carouselPageTemplates.find((entry) => entry.id === pageTemplateId) ?? null;
   }
 
-  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string, aiPoints?: Record<string, string[]>) {
+  function buildCarouselSlidesFromTemplate(template: LinkedInCarouselTemplate, prompt: string, aiPoints?: Record<string, string[]>, generateImagesWithAI = false) {
     let stepIndex = 0;
     let bluePointIndex = 0;
     let redPointIndex = 0;
@@ -1038,7 +1238,7 @@ export default function PostsPage() {
           label: page.name,
           stepNumber: kind === "step" ? stepIndex : undefined,
           pointNumber: kind === "argument-blue" ? bluePointIndex : kind === "argument-red" ? redPointIndex : undefined,
-          title: kind === "avis" ? getField("avis-title") : limitSlideTitle(isArgument ? (pointText || getField("arg-title")) : getField("step-title")),
+          title: kind === "avis" ? getField("avis-title") : isArgument ? (pointText || getField("arg-title")) : getField("step-title"),
           subtitle: isArgument ? getField("arg-subtitle", pointText) : getField("context-subtitle"),
           body: kind === "why-design" ? getField("why-text") : pointText,
           result: getField("arg-result"),
@@ -1046,7 +1246,7 @@ export default function PostsPage() {
           showStepCta: isEnabled(getField("context-step-enabled", "oui")),
           stepCtaText: getField("context-step-text", "Voici les 3 etapes pour y remedier"),
           imageMode: getField("arg-image-mode", "frame") === "full" ? "full" : "frame",
-          imageSource: isEnabled(getField("arg-image-source", "non")) ? "ai" : "manual",
+          imageSource: generateImagesWithAI || isEnabled(getField("arg-image-source", "non")) ? "ai" : "manual",
           imageUrl: kind === "image" ? getField("image-src") : getField("arg-image"),
           beforeImage: kind === "avis" ? getField("avis-image-1") : getField("before-image"),
           afterImage: kind === "avis" ? getField("avis-image-2") : getField("after-image"),
@@ -1056,7 +1256,7 @@ export default function PostsPage() {
         return encodeCarouselSlide(payload);
       });
     });
-    return slides;
+    return normalizeCarouselSlideCounters(slides);
   }
 
   async function startCarouselGeneration(template?: LinkedInCarouselTemplate) {
@@ -1086,10 +1286,15 @@ export default function PostsPage() {
         setGenerating(false);
       }
 
-      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt, aiPoints);
+      const slides = buildCarouselSlidesFromTemplate(selected, carouselGenerationPrompt, aiPoints, carouselGenerateImagesWithAI);
       setGeneratedSlides(slides);
       setActiveSlide(0);
       setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
+      setCarouselGenerationChat([]);
+      setCarouselChatTargetSlides([]);
+      setCarouselChatTargetField("");
+      setCarouselGenerateImagesWithAI(false);
+      setCarouselCreateStep("setup");
     }
   }
 
@@ -1098,12 +1303,213 @@ export default function PostsPage() {
     updater: (payload: CarouselSlidePayload) => CarouselSlidePayload
   ) {
     setGeneratedSlides((current) =>
-      current.map((slide, slideIndex) => {
+      normalizeCarouselSlideCounters(current.map((slide, slideIndex) => {
         if (slideIndex !== index) return slide;
         const payload = decodeCarouselSlide(slide) ?? { kind: "free" as CarouselSlideKind, label: "Libre", body: "" };
         return encodeCarouselSlide(updater(payload));
-      })
+      }))
     );
+  }
+
+  function resetCarouselCreateState() {
+    setCarouselDraftName("");
+    setCarouselDraftCategory("");
+    setCarouselGenerationPrompt("");
+    setSelectedCarouselTemplateItemId("");
+    setCarouselChatTargetSlides([]);
+    setCarouselChatTargetField("");
+    setCarouselTargetPickerOpen(false);
+    setCarouselFieldPickerOpen(false);
+    setCarouselCommandPickerOpen(false);
+    setShowCarouselHistory(false);
+    setCarouselCreateStep("setup");
+    setCarouselGenerateImagesWithAI(false);
+  }
+
+  function getCarouselEditableFields(payload: CarouselSlidePayload | null): Array<{ key: keyof CarouselSlidePayload; label: string; value: string }> {
+    if (!payload) return [];
+    const fieldsByKind: Partial<Record<CarouselSlideKind, Array<{ key: keyof CarouselSlidePayload; label: string }>>> = {
+      context: [
+        { key: "subtitle", label: "Texte" },
+        { key: "stepCtaText", label: "Texte du bouton noir" },
+      ],
+      step: [{ key: "title", label: "Texte de l'etape" }],
+      "argument-blue": [
+        { key: "title", label: "Titre" },
+        { key: "subtitle", label: "Texte" },
+        { key: "result", label: "Resultat" },
+      ],
+      "argument-red": [
+        { key: "title", label: "Titre" },
+        { key: "subtitle", label: "Texte" },
+        { key: "result", label: "Resultat" },
+      ],
+      "why-design": [{ key: "body", label: "Texte" }],
+      free: [{ key: "body", label: "Texte libre" }],
+    };
+    return (fieldsByKind[payload.kind] ?? [])
+      .map((field) => ({ ...field, value: String(payload[field.key] ?? "") }))
+      .filter((field) => field.value.trim().length > 0 || ["title", "subtitle", "body"].includes(field.key));
+  }
+
+  function getCarouselSlideText(payload: CarouselSlidePayload | null) {
+    if (!payload) return "";
+    return getCarouselEditableFields(payload)
+      .map((field) => `${field.label}: ${field.value}`)
+      .join("\n");
+  }
+
+  function updateCarouselPayloadField(payload: CarouselSlidePayload, field: keyof CarouselSlidePayload, value: string): CarouselSlidePayload {
+    return { ...payload, [field]: value };
+  }
+
+  function cleanCarouselAiText(value: string) {
+    return value
+      .split("\n")
+      .map((line) => line.replace(/^\s*(slide\s*\d+\s*[-:]\s*)?(titre|texte|corps|resultat|cta|sous-titre|sous titre)\s*:\s*/i, "").trimEnd())
+      .join("\n")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .trim();
+  }
+
+  function toggleCarouselTargetSlide(index: number) {
+    setCarouselChatTargetSlides((current) => {
+      const next = current.includes(index) ? current.filter((item) => item !== index) : [...current, index].sort((a, b) => a - b);
+      if (next.length !== 1) setCarouselChatTargetField("");
+      return next;
+    });
+  }
+
+  function buildCarouselGlobalPrompt(template: LinkedInCarouselTemplate) {
+    return template.items.map((item, index) => {
+      const page = resolveCarouselPage(item.pageTemplateId);
+      if (!page) return "";
+      const meta = decodeCarouselTemplateItemMeta(item.label);
+      const pagePrompt = (meta.pagePrompt || page.pagePrompt || "").trim();
+      const imagePrompt = (meta.imagePrompt || page.imagePrompt || "").trim();
+      const fieldLines = page.fields
+        .filter((field) => field.kind === "text")
+        .map((field) => {
+          const value = getCarouselTemplateItemField(item, page, field.id, field.defaultValue || "");
+          return value ? `- ${field.label}: ${value}` : "";
+        })
+        .filter(Boolean);
+      const sections = [
+        `Page ${index + 1} - ${page.name}`,
+        pagePrompt ? `Prompt page: ${pagePrompt}` : "",
+        imagePrompt ? `Prompt image: ${imagePrompt}` : "",
+        fieldLines.length ? `Champs:\n${fieldLines.join("\n")}` : "",
+      ].filter(Boolean);
+      return sections.length > 1 ? sections.join("\n") : "";
+    }).filter(Boolean).join("\n\n---\n\n");
+  }
+
+  function getCarouselFieldConstraint(payload: CarouselSlidePayload | null, field: keyof CarouselSlidePayload) {
+    if (!payload) return "";
+    if ((payload.kind === "argument-blue" || payload.kind === "argument-red") && field === "title") {
+      return "Maximum strict: 19 caracteres. Ne jamais ajouter de points de suspension.";
+    }
+    if ((payload.kind === "argument-blue" || payload.kind === "argument-red") && field === "subtitle") {
+      return "Maximum strict: 105 caracteres, 3 lignes maximum.";
+    }
+    if (payload.kind === "context" && field === "stepCtaText") {
+      return "Bouton noir: texte court, fit-content, maximum visuel 437px.";
+    }
+    return "";
+  }
+
+  function getCarouselChatFields(payload: CarouselSlidePayload | null) {
+    if (!payload) return [];
+    const fieldDefs: Array<{ field: keyof CarouselSlidePayload; label: string; value: unknown }> = [
+      { field: "title", label: "Titre", value: payload.title },
+      { field: "subtitle", label: "Texte / sous-titre", value: payload.subtitle },
+      { field: "body", label: "Texte principal", value: payload.body },
+      { field: "result", label: "Texte resultat", value: payload.result },
+      { field: "showResult", label: "Afficher le resultat", value: payload.showResult },
+      { field: "showCheck", label: "Afficher le check / croix", value: payload.showCheck },
+      { field: "showStepCta", label: "Afficher le bouton noir", value: payload.showStepCta },
+      { field: "stepCtaText", label: "Texte du bouton noir", value: payload.stepCtaText },
+      { field: "imageMode", label: "Mode image", value: payload.imageMode },
+      { field: "imageSource", label: "Source image", value: payload.imageSource },
+      { field: "imageUrl", label: "Image / description image", value: payload.imageUrl },
+      { field: "beforeImage", label: "Image avant / image 1", value: payload.beforeImage },
+      { field: "afterImage", label: "Image apres / image 2", value: payload.afterImage },
+    ];
+    return fieldDefs
+      .filter((entry) => entry.value !== undefined && entry.value !== "")
+      .map((entry) => ({ ...entry, constraint: getCarouselFieldConstraint(payload, entry.field) }));
+  }
+
+  function buildCarouselChatContext(slides = generatedSlides) {
+    return JSON.stringify(slides.map((slide, index) => {
+      const payload = decodeCarouselSlide(slide);
+      return {
+        slideIndex: index,
+        slideNumber: index + 1,
+        kind: payload?.kind,
+        label: payload?.label,
+        fields: getCarouselChatFields(payload).map((entry) => ({
+          field: entry.field,
+          label: entry.label,
+          value: entry.value,
+          constraint: entry.constraint,
+        })),
+      };
+    }), null, 2);
+  }
+
+  function applyCarouselAiEdits(edits: Array<{ slideIndex?: number; field?: string; value?: unknown }>) {
+    const validFields = new Set<keyof CarouselSlidePayload>(["title", "subtitle", "body", "result", "showResult", "showCheck", "showStepCta", "stepCtaText", "imageMode", "imageSource", "imageUrl", "beforeImage", "afterImage"]);
+    let changed = false;
+    const details: string[] = [];
+    const nextSlides = generatedSlides.map((slide, index) => {
+      const payload = decodeCarouselSlide(slide);
+      if (!payload) return slide;
+      let nextPayload = payload;
+      edits.filter((edit) => edit.slideIndex === index && validFields.has(edit.field as keyof CarouselSlidePayload)).forEach((edit) => {
+        const field = edit.field as keyof CarouselSlidePayload;
+        const value = edit.value;
+        if (typeof value === "undefined") return;
+        const beforeValue = nextPayload[field];
+        if (field === "showResult" || field === "showCheck" || field === "showStepCta") {
+          const nextValue = Boolean(value);
+          if (beforeValue !== nextValue) {
+            changed = true;
+            details.push(`Slide ${index + 1} - ${String(field)}: ${String(beforeValue ?? "")} -> ${String(nextValue)}`);
+            nextPayload = { ...nextPayload, [field]: nextValue };
+          }
+          return;
+        }
+        if (field === "imageMode") {
+          const nextValue = value === "full" ? "full" : "frame";
+          if (beforeValue !== nextValue) {
+            changed = true;
+            details.push(`Slide ${index + 1} - imageMode: ${String(beforeValue ?? "")} -> ${nextValue}`);
+            nextPayload = { ...nextPayload, imageMode: nextValue };
+          }
+          return;
+        }
+        if (field === "imageSource") {
+          const nextValue = value === "ai" ? "ai" : "manual";
+          if (beforeValue !== nextValue) {
+            changed = true;
+            details.push(`Slide ${index + 1} - imageSource: ${String(beforeValue ?? "")} -> ${nextValue}`);
+            nextPayload = { ...nextPayload, imageSource: nextValue };
+          }
+          return;
+        }
+        const nextValue = cleanCarouselAiText(String(value));
+        if (String(beforeValue ?? "") !== nextValue) {
+          changed = true;
+          const beforePreview = String(beforeValue ?? "").replace(/\s+/g, " ").slice(0, 80);
+          const afterPreview = nextValue.replace(/\s+/g, " ").slice(0, 80);
+          details.push(`Slide ${index + 1} - ${String(field)}: "${beforePreview}" -> "${afterPreview}"`);
+          nextPayload = updateCarouselPayloadField(nextPayload, field, nextValue);
+        }
+      });
+      return nextPayload === payload ? slide : encodeCarouselSlide(nextPayload);
+    });
+    return changed ? { slides: normalizeCarouselSlideCounters(nextSlides), details } : null;
   }
 
   async function importGeneratedCarouselSlideImage(index: number, file?: File | null) {
@@ -1128,9 +1534,13 @@ export default function PostsPage() {
     setEditingPostId(null);
     setCarouselGenerationTemplateId(selected.id);
     setSelectedCarouselTemplateId(selected.id);
-    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, "", {}));
+    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, "", {}, false));
     setActiveSlide(0);
     setShowCarouselTemplatePicker(false);
+    setCarouselGenerationChat([]);
+    setCarouselGenerationHistory([]);
+    setCarouselChatTargetSlides([]);
+    setCarouselChatTargetField("");
   }
 
   async function generateArgumentPointsWithAI(template: LinkedInCarouselTemplate, userPrompt: string): Promise<Record<string, string[]>> {
@@ -1150,10 +1560,10 @@ export default function PostsPage() {
       const kind = getSlideKind(page?.id ?? "");
       const meta = decodeCarouselTemplateItemMeta(item.label);
       const pagePrompt = meta.pagePrompt || page?.pagePrompt || "";
-      return `SECTION_${idx + 1} (${kind === "argument-blue" ? "Point positif" : "Point négatif"}): ${pagePrompt}`;
+      return `SECTION_${idx + 1} (${kind === "argument-blue" ? "Point positif" : "Point negatif"}): ${pagePrompt}`;
     }).join("\n");
 
-    const systemPrompt = `Tu es un expert en creation de carrousels LinkedIn. Pour chaque section demandee, genere une liste de points concis et percutants (1 phrase par point). Le nombre de points doit etre adapte au sujet — entre 3 et 8 points par section. Reponds UNIQUEMENT au format JSON suivant, sans autre texte :\n{\n  "SECTION_1": ["point 1", "point 2", ...],\n  "SECTION_2": ["point 1", "point 2", ...]\n}`;
+    const systemPrompt = `Tu es un expert en creation de carrousels LinkedIn. Pour chaque section demandee, genere une liste de points concis et percutants (1 phrase par point). Le nombre de points doit etre adapte au sujet, entre 3 et 8 points par section. Reponds UNIQUEMENT au format JSON suivant, sans autre texte :\n{\n  "SECTION_1": ["point 1", "point 2", ...],\n  "SECTION_2": ["point 1", "point 2", ...]\n}`;
 
     const userPromptText = `Sujet : ${userPrompt}\n\nGenere les points pour ces sections :\n${pointsRequest}`;
 
@@ -1212,14 +1622,103 @@ export default function PostsPage() {
     setCarouselGenerationChat((current) => [
       ...current,
       { id: crypto.randomUUID(), role: "user", content: prompt },
-      { id: crypto.randomUUID(), role: "assistant", content: `J'ai préparé ${nextSlides.length} slides avec le template "${template.name}".` },
+      { id: crypto.randomUUID(), role: "assistant", content: `J'ai prepare "${template.name}".` },
     ]);
     setCarouselGenerationHistory((current) => [
       { id: crypto.randomUUID(), label: prompt.slice(0, 60) || "Modification", slides: nextSlides, createdAt: new Date().toISOString() },
-      { id: crypto.randomUUID(), label: "Version précédente", slides: before, createdAt: new Date().toISOString() },
+      { id: crypto.randomUUID(), label: "Version precedente", slides: before, createdAt: new Date().toISOString() },
       ...current,
     ].slice(0, 20));
     setCarouselGenerationPrompt("");
+  }
+
+  async function runCarouselEditorChat() {
+    const instruction = carouselGenerationPrompt.trim();
+    if (!instruction || generatedSlides.length === 0 || carouselChatLoading) return;
+    const before = generatedSlides;
+    const selectedIndexes = carouselChatTargetSlides.length > 0 ? carouselChatTargetSlides : [activeSlide];
+    const selectedCommand = selectedChatCommandId
+      ? SMART_SELECTION_COMMANDS.find((command) => command.id === selectedChatCommandId)
+      : null;
+    const targetLabel = selectedIndexes.length === 1
+      ? `slide ${selectedIndexes[0] + 1}${carouselChatTargetField ? ` - ${String(carouselChatTargetField)}` : ""}`
+      : `${selectedIndexes.length} slides`;
+    setCarouselGenerationPrompt("");
+    setChatActionsOpen(false);
+    setCarouselTargetPickerOpen(false);
+    setCarouselFieldPickerOpen(false);
+    setSelectedChatCommandId("");
+    setCarouselChatLoading(true);
+    setCarouselGenerationChat((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content: `${selectedCommand ? `${selectedCommand.label} - ` : ""}${instruction}` },
+    ]);
+
+    try {
+      const selectedContext = selectedIndexes.map((index) => {
+        const payload = decodeCarouselSlide(generatedSlides[index]);
+        return { slideIndex: index, slideNumber: index + 1, kind: payload?.kind, label: payload?.label, selectedField: selectedIndexes.length === 1 ? carouselChatTargetField || null : null };
+      });
+      const selectedStyle = styles.find((style) => style.id === carouselDraftCategory || style.id === selectedStyleId);
+      const res = await fetch("/api/linkedin/transform-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: buildCarouselChatContext(),
+          fullText: [
+            `Slides actuelles avec champs modifiables:\n${buildCarouselChatContext()}`,
+            `Selection utilisateur:\n${JSON.stringify(selectedContext, null, 2)}`,
+            selectedStyle ? `Style selectionne: ${selectedStyle.name}\n${selectedStyle.prompt || ""}` : "",
+          ].filter(Boolean).join("\n\n"),
+          chatContext: carouselGenerationChat.slice(-10).map((entry) => `${entry.role}: ${entry.content}`).join("\n"),
+          responseMode: "carouselChat",
+          prompt: settings?.carouselSkillPrompt,
+          instruction: [
+            selectedCommand ? `Commande selectionnee: ${selectedCommand.label}\n${selectedCommand.instruction}` : "",
+            `Demande utilisateur: ${instruction}`,
+            "Si la demande ne demande pas explicitement une modification, reponds seulement avec edits: [].",
+            "Si une modification est demandee, retourne uniquement les champs a changer dans edits. Utilise slideIndex zero-based et les fields exacts fournis.",
+            "Respecte les contraintes indiquees dans chaque field. Pour les slides argument-blue et argument-red: title <= 19 caracteres, subtitle <= 105 caracteres / 3 lignes maximum. Ne mets jamais de points de suspension pour contourner la limite.",
+            "Le message de chat doit expliquer ce que tu as fait point par point; ne recopie pas les textes finaux des champs dans le message.",
+          ].filter(Boolean).join("\n\n"),
+          contextLabel: "carrousel LinkedIn",
+          openrouterApiKey: settings?.openrouterApiKey || undefined,
+          model: settings?.carouselContentModel || settings?.model,
+        }),
+      });
+      const rawResponse = await res.text();
+      let data: { message?: string; edits?: Array<{ slideIndex?: number; field?: string; value?: unknown }>; error?: string } = {};
+      try {
+        data = rawResponse ? JSON.parse(rawResponse) : {};
+      } catch {
+        throw new Error(res.ok ? "Reponse API invalide." : rawResponse.slice(0, 180) || "Erreur serveur.");
+      }
+      if (!res.ok) throw new Error(data.error || "Transformation impossible");
+      const edits = Array.isArray(data.edits) ? data.edits : [];
+      const applied = edits.length ? applyCarouselAiEdits(edits) : null;
+      if (applied) {
+        setCarouselApplyingEdit(true);
+        setGeneratedSlides(applied.slides);
+        setCarouselGenerationHistory((current) => [
+          { id: crypto.randomUUID(), label: instruction.slice(0, 60) || "Modification IA", slides: applied.slides, createdAt: new Date().toISOString(), details: applied.details },
+          { id: crypto.randomUUID(), label: "Version precedente", slides: before, createdAt: new Date().toISOString() },
+          ...current,
+        ].slice(0, 20));
+        window.setTimeout(() => setCarouselApplyingEdit(false), 900);
+      }
+      setCarouselGenerationChat((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: "assistant", content: data.message?.trim() || (applied ? `C'est bon, j'ai modifie ${targetLabel}.` : "C'est note.") },
+      ]);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Modification impossible.");
+      setCarouselGenerationChat((current) => [
+        ...current,
+        { id: crypto.randomUUID(), role: "assistant", content: error instanceof Error ? error.message : "Modification impossible." },
+      ]);
+    } finally {
+      setCarouselChatLoading(false);
+    }
   }
 
   async function generatePostFromCurrentCarousel(openPlanner = false) {
@@ -1286,85 +1785,54 @@ export default function PostsPage() {
   async function downloadCurrentCarousel() {
     if (generatedSlides.length === 0) return;
 
-    setGenerating(true);
+    setCarouselDownloading(true);
     setGenerationError("");
 
-    const offscreen = document.createElement("div");
-    offscreen.style.cssText = "position:fixed;top:0;left:0;width:575px;height:690px;opacity:0.001;pointer-events:none;z-index:-1;overflow:hidden;";
-    document.body.appendChild(offscreen);
-
     try {
-      await document.fonts.ready;
+      const exportSlides = normalizeCarouselSlideCounters(generatedSlides);
+      const res = await fetch("/api/linkedin/carousel-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slides: exportSlides }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Export impossible.");
 
-      const preloadImages = [
-        "/linkedin/logo-ruff-agency.png",
-        "/linkedin/profile.jpg",
-        "/linkedin/swipe-cta.png",
-        "/linkedin/check.png",
-        "/linkedin/croix.png",
-        "/linkedin/bars-left.svg",
-        "/linkedin/bars-right.svg",
-      ];
-      await Promise.all(
-        preloadImages.map((src) => new Promise<void>((resolve) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
+      const images = Array.isArray(data?.images) ? data.images as string[] : [];
+      if (images.length === 0) throw new Error("Aucune image exportee.");
+
+      if (images.length === 1) {
+        const img = new Image();
+        img.src = `data:image/png;base64,${images[0]}`;
+        await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve();
-          img.onerror = () => resolve();
-          img.src = src;
-        }))
-      );
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [575, 690] });
-      const ReactDOM = await import("react-dom/client");
-
-      for (let i = 0; i < generatedSlides.length; i++) {
-        const wrapper = document.createElement("div");
-        wrapper.style.cssText = "width:575px;height:690px;position:relative;overflow:hidden;";
-        offscreen.appendChild(wrapper);
-
-        const payload = decodeCarouselSlide(generatedSlides[i]);
-        const root = ReactDOM.default.createRoot(wrapper);
-        root.render(<CarouselSlideCanvas payload={payload} raw={generatedSlides[i]} scale={1} />);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        const imgs = wrapper.querySelectorAll("img");
-        await Promise.all(
-          Array.from(imgs).map((img) => new Promise<void>((resolve) => {
-            if (img.complete && img.naturalWidth > 0) { resolve(); return; }
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-          }))
-        );
-
-        const canvas = await html2canvas(wrapper, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#F6F6F6",
-          logging: false,
-          width: 575,
-          height: 690,
+          img.onerror = () => reject(new Error("Image export invalide."));
         });
-
-        const imgData = canvas.toDataURL("image/png", 1.0);
-
-        if (i > 0) pdf.addPage([575, 690], "portrait");
-        pdf.addImage(imgData, "PNG", 0, 0, 575, 690);
-
-        root.unmount();
-        wrapper.remove();
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponible.");
+        ctx.fillStyle = "#F6F6F6";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/jpeg", 0.96);
+        link.download = "carousel-linkedin.jpg";
+        link.click();
+      } else {
+        const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [575, 690] });
+        images.forEach((base64, index) => {
+          if (index > 0) pdf.addPage([575, 690], "portrait");
+          pdf.addImage(`data:image/png;base64,${base64}`, "PNG", 0, 0, 575, 690);
+        });
+        pdf.save("carousel-linkedin.pdf");
       }
-
-      pdf.save("carousel-linkedin.pdf");
     } catch (error) {
       console.error("Erreur export carousel:", error);
-      setGenerationError("Erreur lors de l'export du PDF.");
+      setGenerationError(error instanceof Error ? error.message : "Erreur lors de l'export du PDF.");
     } finally {
-      offscreen.remove();
-      setGenerating(false);
+      setCarouselDownloading(false);
     }
   }
 
@@ -1374,36 +1842,107 @@ export default function PostsPage() {
       setDraftMedia({ url: preview.url, kind: preview.kind, fileName: file.name, bytes: preview.bytes });
       setGenerationError("");
     } catch (error) {
-      setGenerationError(error instanceof Error ? error.message : "Image impossible à télécharger.");
+      setGenerationError(error instanceof Error ? error.message : "Image impossible a telecharger.");
     }
+  }
+
+  async function copyGeneratedPost() {
+    const content = generatedContent.trim();
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setPostCopied(true);
+      window.setTimeout(() => setPostCopied(false), 1400);
+      setGenerationError("");
+    } catch {
+      setGenerationError("Impossible de copier le post.");
+    }
+  }
+
+  function restoreEditorHistory(entry: { label: string; before: string; after: string; createdAt: string }) {
+    setGeneratedContent(entry.before);
+  }
+
+  function getEditorChatConfirmation(commandLabel?: string, hasSelection = false) {
+    if (commandLabel) {
+      return `C'est bon, j'ai applique "${commandLabel}" ${hasSelection ? "sur le passage selectionne" : "sur le post"}.`;
+    }
+    return hasSelection
+      ? "C'est bon, j'ai modifie le passage selectionne."
+      : "C'est bon, j'ai modifie le post.";
   }
 
   async function runEditorChat() {
     const instruction = chatInput.trim();
-    if (!instruction || !generatedContent.trim()) return;
+    if (!instruction || !generatedContent.trim() || editorChatLoading) return;
     const before = generatedContent;
+    const selectedText = selectedChatText.trim();
+    const targetText = selectedText || generatedContent;
     setChatInput("");
+    setChatActionsOpen(false);
+    const selectedCommand = selectedChatCommandId
+      ? SMART_SELECTION_COMMANDS.find((command) => command.id === selectedChatCommandId)
+      : null;
+    pushEditorChat("user", `${selectedText ? "Passage selectionne - " : ""}${selectedCommand ? `${selectedCommand.label} - ` : ""}${instruction}`);
+    const slashCommand = selectedCommand || (instruction.startsWith("/")
+      ? SMART_SELECTION_COMMANDS.find((command) =>
+          command.label.toLowerCase().includes(instruction.slice(1).trim().toLowerCase()) ||
+          command.id.toLowerCase().includes(instruction.slice(1).trim().toLowerCase())
+        )
+      : null);
+    setSelectedChatCommandId("");
+    setSelectedChatText("");
+    setEditorChatLoading(true);
     try {
       const res = await fetch("/api/linkedin/transform-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: generatedContent,
+          text: targetText,
           fullText: generatedContent,
-          instruction: instruction.startsWith("/")
-            ? `Applique cette commande au post LinkedIn complet : ${instruction}`
-            : `Modifie le post LinkedIn complet selon cette demande : ${instruction}`,
+          chatContext: editorChat.slice(-8).map((entry) => `${entry.role}: ${entry.content}`).join("\n"),
+          responseMode: "chatWithOptionalTextEdit",
+          instruction: slashCommand
+            ? `${slashCommand.instruction}\n\n${selectedText ? "Applique cette commande uniquement au passage selectionne, sans modifier le reste du post." : "Applique cette commande au post LinkedIn complet."}`
+            : instruction.startsWith("/")
+            ? `${selectedText ? "Applique cette commande uniquement au passage selectionne" : "Applique cette commande au post LinkedIn complet"} : ${instruction}`
+            : `${selectedText ? "Modifie uniquement le passage selectionne selon cette demande" : "Modifie le post LinkedIn complet selon cette demande"} : ${instruction}`,
           contextLabel: "post LinkedIn",
           openrouterApiKey: settings?.openrouterApiKey || undefined,
           model: settings?.model,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.text) throw new Error(data.error || "Transformation impossible");
-      setGeneratedContent(data.text);
-      pushEditorHistory({ label: instruction, before, after: data.text });
+      const rawResponse = await res.text();
+      let data: { text?: string; message?: string; error?: string } = {};
+      try {
+        data = rawResponse ? JSON.parse(rawResponse) : {};
+      } catch {
+        throw new Error(res.ok ? "Reponse API invalide." : rawResponse.slice(0, 180) || "Erreur serveur.");
+      }
+      if (!res.ok) throw new Error(data.error || "Transformation impossible");
+      const nextContent = data.text
+        ? selectedText && generatedContent.includes(targetText)
+          ? generatedContent.replace(targetText, data.text)
+          : data.text
+        : null;
+      if (nextContent) {
+        setEditorApplyingEdit(true);
+        setGeneratedContent(nextContent);
+        pushEditorHistory({ label: selectedCommand ? selectedCommand.label : instruction, before, after: nextContent });
+        window.setTimeout(() => setEditorApplyingEdit(false), 900);
+      }
+      const aiMessage = data.message?.trim();
+      const assistantMessage = aiMessage && (!data.text || aiMessage !== data.text.trim()) && aiMessage.length <= 240
+        ? aiMessage
+        : nextContent
+        ? getEditorChatConfirmation(selectedCommand?.label, Boolean(selectedText))
+        : "C'est note.";
+      pushEditorChat("assistant", assistantMessage);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "Modification impossible.");
+      pushEditorChat("system", error instanceof Error ? error.message : "Modification impossible.");
+    } finally {
+      setEditorChatLoading(false);
     }
   }
 
@@ -1427,13 +1966,28 @@ export default function PostsPage() {
   }
 
   function openScheduleOverlay(post?: LinkedInPost) {
+    const nextDate = post?.scheduledAt ? isoToLocalInput(post.scheduledAt) : scheduleDate || getDefaultScheduleInput();
     setScheduleOverlayPostId(post?.id ?? null);
-    setScheduleOverlayDate(post?.scheduledAt ? isoToLocalInput(post.scheduledAt) : scheduleDate || getDefaultScheduleInput());
+    setScheduleOverlayDate(nextDate);
+    setScheduleCalendarMonth(nextDate.slice(0, 7));
   }
 
   function closeScheduleOverlay() {
     setScheduleOverlayPostId(null);
     setScheduleOverlayDate("");
+    setScheduleCalendarMonth("");
+  }
+
+  function moveScheduleCalendarMonth(direction: -1 | 1) {
+    const base = scheduleCalendarMonth ? new Date(`${scheduleCalendarMonth}-01T00:00`) : new Date();
+    base.setMonth(base.getMonth() + direction);
+    setScheduleCalendarMonth(`${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  function selectScheduleCalendarDay(day: number) {
+    const month = scheduleCalendarMonth || new Date().toISOString().slice(0, 7);
+    const currentTime = scheduleOverlayDate.includes("T") ? scheduleOverlayDate.slice(11, 16) : "09:00";
+    setScheduleOverlayDate(`${month}-${String(day).padStart(2, "0")}T${currentTime}`);
   }
 
   function handleSave(status: "draft" | "scheduled" | "published", scheduledOverride?: string) {
@@ -1455,6 +2009,7 @@ export default function PostsPage() {
         comments: 0,
         impressions: 0,
       }),
+      title: draftTitle.trim() || existingPost?.title,
       content, type: postType,
       slides: postType === "carousel" ? generatedSlides : undefined,
       sourceType: sourceTab === "idea" ? "idea" : sourceTab === "manual" ? "manual" : sourceTab,
@@ -1465,6 +2020,8 @@ export default function PostsPage() {
       publishedAt: status === "published" ? new Date().toISOString() : undefined,
       status,
       tags: selectedStyle ? [selectedStyle.name, selectedStyle.category] : [],
+      editorHistory,
+      editorChat,
       analytics: normalizeAnalytics({
         ...existingPost?.analytics,
         format: postType === "carousel" ? "carousel" : selectedPostFormat || existingPost?.analytics?.format || "text",
@@ -1500,6 +2057,68 @@ export default function PostsPage() {
     setPostsView("scheduled");
   }
 
+  function updateAutoRecyclePreferences(patch: {
+    enabled?: boolean;
+    delayDays?: number;
+    minLikes?: number;
+    prompt?: string;
+  }) {
+    const nextEnabled = patch.enabled ?? autoRecycleEnabled;
+    const nextDelayDays = patch.delayDays ?? autoRecycleDelayDays;
+    const nextMinLikes = patch.minLikes ?? autoRecycleMinLikes;
+    const nextPrompt = patch.prompt ?? autoRecyclePrompt;
+    setAutoRecycleEnabled(nextEnabled);
+    setAutoRecycleDelayDays(nextDelayDays);
+    setAutoRecycleMinLikes(nextMinLikes);
+    setAutoRecyclePrompt(nextPrompt);
+    persistLinkedInWorkspacePatch({
+      preferences: {
+        autoRecycleEnabled: nextEnabled,
+        autoRecycleDelayDays: nextDelayDays,
+        autoRecycleMinLikes: nextMinLikes,
+        autoRecyclePrompt: nextPrompt,
+      },
+    });
+  }
+
+  async function generateAutoRecycleVariant(post: LinkedInPost) {
+    if (!post.content.trim() || autoRecycleVariantLoadingId) return;
+    setAutoRecycleVariantLoadingId(post.id);
+    try {
+      const res = await fetch("/api/linkedin/transform-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: post.content,
+          fullText: post.content,
+          responseMode: "text",
+          instruction: autoRecyclePrompt,
+          contextLabel: "relance automatique LinkedIn",
+          openrouterApiKey: settings?.openrouterApiKey || undefined,
+          model: settings?.model,
+          prompt: "Tu prepares une relance automatique LinkedIn. Tu dois conserver le hook et les deux premieres phrases exactement identiques. Le reste doit etre quasi identique, avec seulement quelques synonymes ou micro-ajustements. Ne reorganise pas le post, ne change pas le fond, ne rallonge pas, ne raccourcis pas fortement. Retourne uniquement le post complet final.",
+        }),
+      });
+      const data = await res.json() as { text?: string; error?: string };
+      if (!res.ok || !data.text?.trim()) throw new Error(data.error || "Generation impossible");
+      setGeneratedContent(data.text.trim());
+      setEditorHistory((current) => [
+        {
+          id: crypto.randomUUID(),
+          label: "Version auto-planification generee",
+          before: post.content,
+          after: data.text!.trim(),
+          createdAt: new Date().toISOString(),
+        },
+        ...current,
+      ]);
+    } catch (error) {
+      setGenerationError(String(error));
+    } finally {
+      setAutoRecycleVariantLoadingId(null);
+    }
+  }
+
   function confirmScheduleOverlay() {
     if (!scheduleOverlayDate) return;
     if (scheduleOverlayPostId) {
@@ -1512,7 +2131,12 @@ export default function PostsPage() {
     closeScheduleOverlay();
   }
 
-  function deletePost(id: string) { const updated = normalizePosts(posts.filter(p => p.id !== id)); setPosts(updated); saveLinkedInPosts(updated); void persistRemoteLinkedInPosts(updated, true); }
+  function deletePost(id: string) {
+    const updated = normalizePosts(posts.filter(p => p.id !== id));
+    setPosts(updated);
+    saveLinkedInPosts(updated);
+    void persistRemoteLinkedInPosts(updated, true);
+  }
 
   function saveStats(postId: string) {
     const updated = posts.map((post) =>
@@ -1534,15 +2158,19 @@ export default function PostsPage() {
         : post
     );
     const normalized = normalizePosts(updated);
-    setPosts(normalized); saveLinkedInPosts(normalized); void persistRemoteLinkedInPosts(normalized, true); setStatsPost(null);
+    setPosts(normalized);
+    saveLinkedInPosts(normalized);
+    void persistRemoteLinkedInPosts(normalized, true);
+    setStatsPost(null);
   }
 
   const hasGenerated = (postType === "carousel" && generatedSlides.length > 0) || (postType === "post" && generatedContent.trim().length > 0);
   const editorVisible = hasGenerated && !manualEditorStarted && !editingPostId;
   const rightEditorVisible = manualEditorStarted || Boolean(editingPostId);
   const stats = {
-    drafts: posts.filter(p => p.status === "draft").length,
-    scheduled: posts.filter(p => p.status === "scheduled").length,
+    drafts: posts.filter(p => p.status === "draft" && !p.analytics?.autoRecycleSourcePostId).length,
+    scheduled: posts.filter(p => p.status === "scheduled" && !p.analytics?.autoRecycleSourcePostId).length,
+    auto: autoRecyclePosts.length,
   };
   const selectedCarouselTemplate = carouselTemplates.find((template) => template.id === selectedCarouselTemplateId) ?? carouselTemplates[0] ?? null;
   const selectedCarouselTemplateItem = selectedCarouselTemplate?.items.find((item) => item.id === selectedCarouselTemplateItemId) ?? null;
@@ -1571,8 +2199,33 @@ export default function PostsPage() {
   const modelOptions = Array.from(new Set([settings?.model, ...OPENROUTER_MODEL_OPTIONS].filter(Boolean) as string[]));
   const filteredModelOptions = modelOptions.filter((model) => model.toLowerCase().includes(modelSearch.toLowerCase()));
   const activeModelLabel = settings?.carouselContentModel || settings?.model || "anthropic/claude-sonnet-4";
+  const slashCommands = SMART_SELECTION_COMMANDS.filter((command) => command.label.toLowerCase().includes(chatInput.replace(/^\//, "").toLowerCase()));
+  const chatComposerRows = Math.min(7, Math.max(1, ...chatInput.split("\n").map((line) => Math.max(1, Math.ceil(line.length / 24)))));
+  const chatComposerExpanded = chatComposerRows > 1 || Boolean(selectedChatCommandId || selectedChatText);
+  const carouselComposerRows = Math.min(7, Math.max(1, ...carouselGenerationPrompt.split("\n").map((line) => Math.max(1, Math.ceil(line.length / 24)))));
+  const carouselComposerExpanded = carouselComposerRows > 1 || Boolean(selectedChatCommandId || carouselChatTargetSlides.length > 0);
+  const selectedChatCommand = selectedChatCommandId ? SMART_SELECTION_COMMANDS.find((item) => item.id === selectedChatCommandId) : null;
+  const chatCommandCategories = Array.from(new Set(SMART_SELECTION_COMMANDS.map((command) => command.category)));
 
-  const getCarouselPreviewPayload = (page: LinkedInCarouselPageTemplate | null, item?: LinkedInCarouselTemplate["items"][number] | null, index = 0): CarouselSlidePayload => {
+  useEffect(() => {
+    if (!chatActionsOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (chatComposerRef.current?.contains(event.target as Node)) return;
+      setChatActionsOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [chatActionsOpen]);
+
+  useEffect(() => {
+    if (!rightEditorVisible || !editingPostId) return;
+    const timeout = window.setTimeout(() => {
+      persistPostDraft();
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [rightEditorVisible, editingPostId, draftTitle, generatedContent, generatedSlides, selectedPostFormat, selectedStyleId, sourceTab, sourceInput, scrapedTitle, draftMedia, editorHistory, editorChat, carouselGenerationChat]);
+
+  const getCarouselPreviewPayload = (page: LinkedInCarouselPageTemplate | null, item?: LinkedInCarouselTemplate["items"][number] | null): CarouselSlidePayload => {
     if (!page) return { kind: "context", label: "Slide", subtitle: "" };
     if (page.id === FREE_CAROUSEL_PAGE_ID) return { kind: "free", label: "Libre", body: "" };
     const kind = getSlideKind(page.id);
@@ -1581,9 +2234,7 @@ export default function PostsPage() {
     return {
       kind,
       label: page.name,
-      stepNumber: kind === "step" ? index + 1 : undefined,
-      pointNumber: isArgument ? index + 1 : undefined,
-      title: limitSlideTitle(isArgument ? getField("arg-title") : getField("step-title")),
+      title: isArgument ? getField("arg-title") : getField("step-title"),
       subtitle: isArgument ? getField("arg-subtitle") : getField("context-subtitle"),
       body: kind === "why-design" ? getField("why-text") : "",
       result: getField("arg-result"),
@@ -1601,6 +2252,14 @@ export default function PostsPage() {
     };
   };
 
+  const getTemplatePreviewPayloads = (template: LinkedInCarouselTemplate) =>
+    normalizeCarouselSlideCounters(
+      template.items.map((item) => {
+        const page = resolveCarouselPage(item.pageTemplateId);
+        return encodeCarouselSlide(getCarouselPreviewPayload(page, item));
+      })
+    ).map((slide) => decodeCarouselSlide(slide) ?? { kind: "free" as CarouselSlideKind, label: "Libre", body: "" });
+
   const renderSlideMiniPreview = (payload: CarouselSlidePayload, width: number, height: number, radius = 18) => {
     const scale = Math.min(width / 575, height / 690);
     return (
@@ -1613,17 +2272,16 @@ export default function PostsPage() {
   };
 
   const renderTemplateStackPreview = (template: LinkedInCarouselTemplate) => {
-    const items = template.items.slice(0, 3);
-    const previewItems = items.length > 0 ? items : [{ id: "fallback", pageTemplateId: CAROUSEL_SLIDE_LIBRARY[0].id, mode: "single" as const }];
+    const previewItems = getTemplatePreviewPayloads(template).slice(0, 3);
+    const fallbackPayload = getCarouselPreviewPayload(CAROUSEL_SLIDE_LIBRARY[0]);
+    const previewPayloads = previewItems.length > 0 ? previewItems : [fallbackPayload];
     return (
       <span style={{ position: "relative", width: 74, height: 82, flexShrink: 0, display: "inline-block" }}>
-        {previewItems.map((item, index) => {
-          const page = resolveCarouselPage(item.pageTemplateId);
-          const payload = getCarouselPreviewPayload(page, item, index);
+        {previewPayloads.map((payload, index) => {
           const left = index === 0 ? 0 : index === 1 ? 13 : 26;
           const rotate = index === 0 ? -11 : index === 1 ? 0 : 11;
           return (
-            <span key={`${item.id}-${index}`} style={{ position: "absolute", left, top: index === 1 ? 0 : 6, transform: `rotate(${rotate}deg)`, zIndex: index + 1 }}>
+            <span key={`${payload.kind}-${index}`} style={{ position: "absolute", left, top: index === 1 ? 0 : 6, transform: `rotate(${rotate}deg)`, zIndex: index + 1 }}>
               {renderSlideMiniPreview(payload, 48, 62, 7)}
             </span>
           );
@@ -1720,9 +2378,10 @@ export default function PostsPage() {
         {multiline ? (
           <textarea rows={field.id === "context-subtitle" ? 6 : 3} value={value} onChange={(event) => update(event.target.value)} style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.45 }} />
         ) : (
-          <input value={value} maxLength={field.id === "arg-title" ? 22 : undefined} onChange={(event) => update(event.target.value)} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
+          <input value={value} onChange={(event) => update(event.target.value)} style={{ ...inp, minHeight: 54, background: "#f2f2f2", borderRadius: 12 }} />
         )}
-        {field.id === "arg-title" ? <span style={{ fontSize: 11, color: value.length > 22 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{Math.min(value.length, 22)}/22 caracteres</span> : null}
+        {field.id === "arg-title" ? <span style={{ fontSize: 11, color: value.length > 19 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{value.length}/19 caracteres recommandes</span> : null}
+        {field.id === "arg-subtitle" ? <span style={{ fontSize: 11, color: value.length > 105 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{value.length}/105 caracteres recommandes</span> : null}
       </div>
     );
   };
@@ -1760,14 +2419,17 @@ export default function PostsPage() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 6 }}>
-        {(payload.kind === "context" || payload.kind === "argument-blue" || payload.kind === "argument-red" || payload.kind === "step" || payload.kind === "avis") && (
+        {(payload.kind === "argument-blue" || payload.kind === "argument-red" || payload.kind === "step" || payload.kind === "avis") && (
           <div>
             <label style={labelStyle}>Titre</label>
             <input
               value={payload.title ?? ""}
-              onChange={(event) => update({ title: payload.kind === "argument-blue" || payload.kind === "argument-red" ? limitSlideTitle(event.target.value) : event.target.value })}
+              onChange={(event) => update({ title: event.target.value })}
               style={inputStyle}
             />
+            {payload.kind === "argument-blue" || payload.kind === "argument-red" ? (
+              <span style={{ display: "block", marginTop: 6, fontSize: 11, color: (payload.title ?? "").length > 19 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{(payload.title ?? "").length}/19 caracteres recommandes</span>
+            ) : null}
           </div>
         )}
 
@@ -1780,6 +2442,9 @@ export default function PostsPage() {
               onChange={(event) => update({ subtitle: event.target.value })}
               style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.45 }}
             />
+            {payload.kind === "argument-blue" || payload.kind === "argument-red" ? (
+              <span style={{ display: "block", marginTop: 6, fontSize: 11, color: (payload.subtitle ?? "").length > 105 ? "#ef0c0c" : "rgba(18,26,46,0.45)" }}>{(payload.subtitle ?? "").length}/105 caracteres recommandes</span>
+            ) : null}
           </div>
         )}
 
@@ -1794,7 +2459,7 @@ export default function PostsPage() {
             </div>
             {payload.showStepCta !== false && (
               <div>
-                <label style={labelStyle}>Texte du bouton</label>
+                <label style={labelStyle}>Texte du bouton noir</label>
                 <input value={payload.stepCtaText ?? ""} onChange={(event) => update({ stepCtaText: event.target.value })} style={inputStyle} />
               </div>
             )}
@@ -1825,7 +2490,7 @@ export default function PostsPage() {
               </div>
             </div>
             {payload.showResult !== false && (
-              <div>
+              <div style={{ display: "none" }}>
                 <label style={labelStyle}>Texte resultat</label>
                 <input value={payload.result ?? ""} onChange={(event) => update({ result: event.target.value })} style={inputStyle} />
               </div>
@@ -1978,9 +2643,130 @@ export default function PostsPage() {
 
   const renderRightList = () => {
     const showHistoryPanel = carouselStudioTab === "editor" && carouselStudioMode === "generate" && carouselHasGeneratedSlides;
-    const rightRailTitle = carouselStudioTab === "templates" ? "Toutes les templates" : showHistoryPanel ? "Récents" : "Tous les carrousels faits";
+    if (showHistoryPanel) {
+      return (
+        <aside style={{ ...carouselRightRailStyle, width: 525, padding: 0, gap: 0, position: "relative", zIndex: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "24px 24px 16px" }}>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#121a2e" }}>{showCarouselHistory ? "Historique" : "Conversation"}</p>
+            <button type="button" onClick={() => setShowCarouselHistory((value) => !value)} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(0,0,0,0.07)", background: showCarouselHistory ? "#FBFBFB" : "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><History size={16} /></button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 24, padding: "0 24px" }}>
+            {showCarouselHistory ? (
+              carouselGenerationHistory.length === 0 ? <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.42)" }}>Aucune modification pour le moment.</p> : carouselGenerationHistory.map((entry) => (
+                <div key={entry.id} style={{ width: "100%", borderRadius: 18, background: "#FBFBFB", padding: "14px 14px 14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <button type="button" onClick={() => { setGeneratedSlides(normalizeCarouselSlideCounters(entry.slides)); setActiveSlide(0); }} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 750, color: "#121a2e", marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.label}</span>
+                    <span style={{ display: "block", fontSize: 11, color: "rgba(18,26,46,0.42)" }}>{entry.details?.length ? `${entry.details.length} modifications` : `${entry.slides.length} slides`}</span>
+                  </button>
+                  {entry.details?.length ? (
+                    <button type="button" onClick={() => setCarouselHistoryDetails(entry)} aria-label="Voir les modifications" style={{ width: 30, height: 30, borderRadius: 999, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", color: "rgba(18,26,46,0.68)", display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
+                      <Info size={14} />
+                    </button>
+                  ) : null}
+                </div>
+              ))
+            ) : carouselGenerationChat.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.42)" }}>Demande une modification IA sur le carrousel. Par defaut, la demande agit sur la slide active.</p>
+            ) : carouselGenerationChat.map((message) => {
+              const isUser = message.role === "user";
+              return (
+                <div key={message.id} style={{ width: "fit-content", maxWidth: "75%", alignSelf: isUser ? "flex-end" : "flex-start", borderRadius: 20, background: isUser ? "#F4F4F4" : "transparent", padding: isUser ? "14px 16px" : 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.82)", whiteSpace: "pre-wrap" }}>{message.content}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: "auto", width: "100%", display: "flex", flexDirection: "column", gap: 8, padding: "12px 24px 16px" }}>
+            <div ref={chatComposerRef} style={{ position: "relative", width: "100%", minHeight: 66, borderRadius: 34, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: carouselComposerExpanded ? "column" : "row", alignItems: carouselComposerExpanded ? "stretch" : "center", justifyContent: "space-between", gap: carouselComposerExpanded ? 10 : 12, padding: 12, transition: "min-height 0.18s ease, gap 0.18s ease" }}>
+              {chatActionsOpen ? (
+                <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 10px)", borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: carouselPanelShadow, padding: 10, display: "grid", gap: 6, maxHeight: 320, overflowY: "auto", zIndex: 12 }}>
+                  <button type="button" onClick={() => { setCarouselTargetPickerOpen((value) => !value); setCarouselCommandPickerOpen(false); setCarouselFieldPickerOpen(false); }} style={{ border: 0, borderRadius: 12, background: "#FBFBFB", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 750, color: "#121a2e" }}><LayoutTemplate size={14} /> Selectionner un element</span>
+                    <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)" }}>{carouselChatTargetSlides.length || 1}</span>
+                  </button>
+                  <button type="button" onClick={() => { setCarouselCommandPickerOpen((value) => !value); setCarouselTargetPickerOpen(false); setCarouselFieldPickerOpen(false); }} style={{ border: 0, borderRadius: 12, background: "#FBFBFB", padding: "10px 12px", display: "flex", alignItems: "center", gap: 9, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    <Wand2 size={14} />
+                    <span style={{ fontSize: 12, fontWeight: 750, color: "#121a2e" }}>Choisir une commande</span>
+                  </button>
+                  {carouselTargetPickerOpen ? generatedSlides.map((slide, index) => {
+                    const payload = decodeCarouselSlide(slide);
+                    const active = carouselChatTargetSlides.includes(index);
+                    return (
+                      <button key={index} type="button" onClick={() => toggleCarouselTargetSlide(index)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 12, background: active ? "rgba(1,71,255,0.08)" : "#fff", padding: "9px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer", textAlign: "left" }}>
+                        <span style={{ fontSize: 12, fontWeight: 750, color: "#121a2e" }}>Slide {index + 1} - {payload?.label || payload?.kind || "Page"}</span>
+                        {carouselChatTargetSlides.length === 1 && active ? <button type="button" onClick={(event) => { event.stopPropagation(); setCarouselFieldPickerOpen((value) => !value); }} style={{ width: 28, height: 28, borderRadius: 999, border: 0, background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 4px 12px rgba(18,26,46,0.08)", cursor: "pointer" }}><ArrowRight size={14} /></button> : active ? <Check size={14} /> : null}
+                      </button>
+                    );
+                  }) : null}
+                  {carouselFieldPickerOpen && carouselChatTargetSlides.length === 1 ? getCarouselEditableFields(decodeCarouselSlide(generatedSlides[carouselChatTargetSlides[0]])).map((field) => (
+                    <button key={String(field.key)} type="button" onClick={() => { setCarouselChatTargetField(field.key); setCarouselFieldPickerOpen(false); setCarouselTargetPickerOpen(false); setChatActionsOpen(false); }} style={{ border: 0, borderRadius: 12, background: carouselChatTargetField === field.key ? "rgba(1,71,255,0.08)" : "transparent", padding: "9px 10px", display: "flex", flexDirection: "column", gap: 3, textAlign: "left", cursor: "pointer" }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#121a2e" }}>{field.label}</span>
+                      <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{field.value || "Champ vide"}</span>
+                    </button>
+                  )) : null}
+                  {carouselCommandPickerOpen ? chatCommandCategories.map((category) => (
+                    <div key={category} style={{ display: "grid", gap: 4 }}>
+                      <p style={{ margin: "8px 8px 4px", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(18,26,46,0.42)" }}>{category}</p>
+                      {SMART_SELECTION_COMMANDS.filter((command) => command.category === category).map((command) => {
+                        const Icon = command.icon;
+                        return (
+                          <button key={command.id} type="button" onClick={() => { setSelectedChatCommandId(command.id); setChatActionsOpen(false); }} style={{ border: 0, borderRadius: 12, background: selectedChatCommandId === command.id ? "#FBFBFB" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", gap: 9, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                            <span style={{ width: 24, height: 24, borderRadius: 999, background: `${command.color}18`, color: command.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={13} /></span>
+                            <span style={{ fontSize: 12, fontWeight: 750, color: "#121a2e" }}>{command.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )) : null}
+                </div>
+              ) : null}
+              <div style={{ display: carouselComposerExpanded ? "flex" : "none", flexDirection: "column", gap: 8, width: "100%" }}>
+                {carouselChatTargetSlides.length > 0 ? (
+                  <div style={{ borderRadius: 18, background: "#FBFBFB", padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <MoveRight size={16} style={{ color: "rgba(18,26,46,0.5)", flexShrink: 0, marginTop: 2 }} />
+                    <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: "rgba(18,26,46,0.62)" }}>{carouselChatTargetSlides.length === 1 ? `Slide ${carouselChatTargetSlides[0] + 1}${carouselChatTargetField ? ` - ${String(carouselChatTargetField)}` : ""}` : `${carouselChatTargetSlides.length} slides selectionnees`}</p>
+                    <button type="button" onClick={() => { setCarouselChatTargetSlides([]); setCarouselChatTargetField(""); }} style={{ border: 0, background: "transparent", color: "rgba(18,26,46,0.42)", cursor: "pointer", display: "flex", padding: 2 }}><X size={15} /></button>
+                  </div>
+                ) : null}
+                {selectedChatCommand ? (() => {
+                  const Icon = selectedChatCommand.icon;
+                  return <button type="button" onClick={() => setSelectedChatCommandId("")} style={{ alignSelf: "flex-start", border: 0, borderRadius: 999, background: `${selectedChatCommand.color}14`, color: selectedChatCommand.color, minHeight: 24, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif' }}><Icon size={12} />{selectedChatCommand.label}</button>;
+                })() : null}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: carouselComposerExpanded ? "wrap" : "nowrap", gap: carouselComposerExpanded ? "10px 12px" : 12, width: "100%", minWidth: 0 }}>
+                <button type="button" onClick={() => setChatActionsOpen((current) => !current)} style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
+                <textarea wrap="soft" value={carouselGenerationPrompt} disabled={carouselChatLoading} rows={carouselComposerRows} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void runCarouselEditorChat(); } }} placeholder="Taper un texte ici" style={{ order: carouselComposerExpanded ? -1 : 0, flex: carouselComposerExpanded ? "0 0 100%" : 1, width: carouselComposerExpanded ? "100%" : "auto", minWidth: 0, minHeight: 24, maxHeight: 168, height: carouselComposerExpanded ? "auto" : 24, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: carouselComposerExpanded ? "22px" : "24px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif", resize: "none", overflowY: carouselGenerationPrompt.split("\n").length > 7 || carouselGenerationPrompt.length > 238 ? "auto" : "hidden", overflowX: "hidden", background: "transparent", padding: 0, opacity: carouselChatLoading ? 0.55 : 1, transition: "height 0.18s ease, line-height 0.18s ease", whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: "break-word" }} />
+                <div style={{ position: "relative", display: "flex", alignItems: "center", gap: carouselComposerExpanded ? 10 : 16, flexShrink: 0 }}>
+                  <button type="button" onClick={() => setModelPickerOpen((current) => !current)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                    <span>{activeModelLabel}</span>
+                    <ChevronDown size={14} style={{ color: "rgba(18,26,46,0.52)" }} />
+                  </button>
+                  <button type="button" onClick={() => void runCarouselEditorChat()} disabled={carouselChatLoading || !carouselGenerationPrompt.trim()} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: carouselChatLoading || !carouselGenerationPrompt.trim() ? "not-allowed" : "pointer", flexShrink: 0, opacity: carouselChatLoading || !carouselGenerationPrompt.trim() ? 0.72 : 1 }}>{carouselChatLoading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={18} />}</button>
+                  {modelPickerOpen ? (
+                    <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8, zIndex: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
+                        <Search size={14} style={{ color: "#6f7887" }} />
+                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modele..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                      </div>
+                      <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {filteredModelOptions.map((model) => (
+                          <button key={model} type="button" onClick={() => updateActiveModel(model)} style={{ width: "100%", border: 0, borderRadius: 10, background: model === activeModelLabel ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                            {model}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      );
+    }
+    const rightRailTitle = carouselStudioTab === "templates" ? "Toutes les templates" : showHistoryPanel ? "Recents" : "Tous les carrousels faits";
     return (
-      <aside style={carouselRightRailStyle}>
+      <aside style={{ ...carouselRightRailStyle, position: "relative", zIndex: 4 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <h3 style={{ margin: 0, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: showHistoryPanel ? 20 : 18, lineHeight: "22px", letterSpacing: "-0.3px", color: "#121a2e", fontWeight: 600 }}>
             {rightRailTitle}
@@ -1994,15 +2780,15 @@ export default function PostsPage() {
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", flex: 1, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
           {showHistoryPanel ? (
             showCarouselHistory ? (
-              carouselGenerationHistory.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 14, color: "rgba(18,26,46,0.5)" }}>Aucune version enregistrée.</p> : carouselGenerationHistory.map((entry) => (
-                <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(entry.slides); setActiveSlide(0); }} style={{ width: "100%", border: 0, borderBottom: "1px solid rgba(0,0,0,0.08)", background: "#fff", padding: "22px 0", textAlign: "left", cursor: "pointer" }}>
+              carouselGenerationHistory.length === 0 ? <p style={{ margin: "24px 0 0", fontSize: 14, color: "rgba(18,26,46,0.5)" }}>Aucune version enregistree.</p> : carouselGenerationHistory.map((entry) => (
+                <button key={entry.id} type="button" onClick={() => { setGeneratedSlides(normalizeCarouselSlideCounters(entry.slides)); setActiveSlide(0); }} style={{ width: "100%", border: 0, borderBottom: "1px solid rgba(0,0,0,0.08)", background: "#fff", padding: "22px 0", textAlign: "left", cursor: "pointer" }}>
                   <strong style={{ display: "block", fontSize: 14, color: "#121a2e", fontWeight: 600 }}>{entry.label}</strong>
                   <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "rgba(18,26,46,0.7)" }}>{entry.slides.length} slides</span>
                 </button>
               ))
             ) : (
               <div style={{ paddingTop: 38, display: "flex", flexDirection: "column", gap: 24 }}>
-                {carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Les demandes récentes et réponses IA apparaîtront ici.</p> : carouselGenerationChat.map((message) => (
+                {carouselGenerationChat.length === 0 ? <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.5)", lineHeight: 1.55 }}>Les demandes recentes et reponses IA apparaitront ici.</p> : carouselGenerationChat.map((message) => (
                   <div key={message.id} style={{ display: "flex", flexDirection: "column", alignItems: message.role === "user" ? "flex-end" : "flex-start", gap: 12 }}>
                     <span style={{ maxWidth: 168, borderRadius: 12, background: message.role === "user" ? "#f4f4f4" : "transparent", padding: message.role === "user" ? "10px 12px" : 0, color: "rgba(0,0,0,0.7)", fontSize: 12, lineHeight: "20px", letterSpacing: "-0.2px" }}>{message.content}</span>
                   </div>
@@ -2014,10 +2800,14 @@ export default function PostsPage() {
               {carouselTemplates.map((template) => {
                 const isSelected = template.id === selectedCarouselTemplateId;
                 return (
-                  <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: isSelected ? "rgba(0,0,0,0.03)" : "#fff", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
+                  <button key={template.id} type="button" onContextMenu={(event) => { event.preventDefault(); setCarouselTemplateMenu({ id: template.id, x: event.clientX, y: event.clientY }); }} onClick={() => { setSelectedCarouselTemplateId(template.id); setSelectedCarouselTemplateItemId(""); }} style={{ width: "100%", minHeight: 96, border: 0, borderBottom: "1px solid rgba(0,0,0,0.1)", background: isSelected ? "rgba(0,0,0,0.03)" : "#fff", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, padding: "18px 4px", textAlign: "left", cursor: "pointer", overflow: "visible" }}>
                     {renderTemplateStackPreview(template)}
                     <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</strong>
+                      {renamingCarouselTemplateId === template.id ? (
+                        <input value={renamingCarouselTemplateName} onClick={(event) => event.stopPropagation()} onChange={(event) => setRenamingCarouselTemplateName(event.target.value)} onBlur={commitRenameCarouselTemplate} onKeyDown={(event) => { if (event.key === "Enter") commitRenameCarouselTemplate(); if (event.key === "Escape") { setRenamingCarouselTemplateId(""); setRenamingCarouselTemplateName(""); } }} autoFocus style={{ width: 150, border: "1px solid rgba(18,26,46,0.14)", borderRadius: 8, padding: "6px 8px", fontSize: 13, fontWeight: 700, color: "#121a2e" }} />
+                      ) : (
+                        <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 13, lineHeight: "18px", fontWeight: 600, color: "#121a2e", maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</strong>
+                      )}
                       <span style={{ fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.7)", fontWeight: 500 }}>Il y a 2 minutes</span>
                     </span>
                   </button>
@@ -2038,9 +2828,12 @@ export default function PostsPage() {
         <p style={{ margin: 0, fontSize: 14, lineHeight: "22px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>Selectionne une page pour regler ses prompts et ses champs.</p>
       </div>
       <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap", overflow: "visible", paddingBottom: 8 }}>
-        {(selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : []).slice(0, 10).map((item, index) => {
+        {(() => {
+          const templateItems = (selectedCarouselTemplate?.items.length ? selectedCarouselTemplate.items : []).slice(0, 10);
+          const previewPayloads = selectedCarouselTemplate ? getTemplatePreviewPayloads(selectedCarouselTemplate).slice(0, 10) : [];
+          return templateItems.map((item, index) => {
           const page = resolveCarouselPage(item.pageTemplateId);
-          const previewPayload = getCarouselPreviewPayload(page, item, index);
+          const previewPayload = previewPayloads[index] ?? getCarouselPreviewPayload(page, item);
           const selected = selectedCarouselTemplateItemId === item.id;
           const selectedShadow = "0px 20px 12px rgba(1,71,255,0.02), 0px 9px 9px rgba(1,71,255,0.03), 0px 2px 5px rgba(1,71,255,0.03)";
           return (
@@ -2102,12 +2895,13 @@ export default function PostsPage() {
                     zIndex: 3,
                   }}
                 >
-                  {item.mode === "repeat_ai" ? "Répéter (IA)" : "1x"}
+                  {item.mode === "repeat_ai" ? "Repeter (IA)" : "1x"}
                 </button>
               )}
             </button>
           );
-        })}
+          });
+        })()}
         <button type="button" onClick={(event) => { event.stopPropagation(); setShowCarouselPagePicker(true); }} style={{ width: "fit-content", minWidth: 210, minHeight: 268, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", color: "#121a2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "20px", fontWeight: 600, cursor: "pointer", padding: "28px 24px", textAlign: "center", alignSelf: "stretch" }}>
           <Plus size={20} /> Ajouter une page
         </button>
@@ -2132,7 +2926,7 @@ export default function PostsPage() {
           .map((post) => {
           const slides = post.slides?.length ? post.slides : [post.content];
           return (
-            <button key={post.id} type="button" onClick={() => { setGeneratedSlides(slides); setActiveSlide(0); setCarouselStudioMode("generate"); setCarouselStudioTab("editor"); setEditingPostId(post.id); setPostType("carousel"); setManualEditorStarted(true); setCarouselDraftName(post.sourceTitle ?? ""); setCarouselDraftCategory(post.styleId ?? ""); setModelPickerOpen(false); }} style={{ position: "relative", width: 280, minHeight: 292, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
+            <button key={post.id} type="button" onClick={() => { setGeneratedSlides(normalizeCarouselSlideCounters(slides)); setActiveSlide(0); setCarouselStudioMode("generate"); setCarouselStudioTab("editor"); setEditingPostId(post.id); setPostType("carousel"); setManualEditorStarted(true); setCarouselDraftName(post.sourceTitle ?? ""); setCarouselDraftCategory(post.styleId ?? ""); setCarouselGenerationChat((post.editorChat ?? []).filter((entry) => entry.role === "user" || entry.role === "assistant").map((entry) => ({ id: entry.id, role: entry.role as "user" | "assistant", content: entry.content }))); setCarouselGenerationHistory([]); setCarouselChatTargetSlides([]); setCarouselChatTargetField(""); setCarouselTargetPickerOpen(false); setCarouselFieldPickerOpen(false); setModelPickerOpen(false); }} style={{ position: "relative", width: 280, minHeight: 292, borderRadius: 24, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18, padding: 28, cursor: "pointer", overflow: "visible" }}>
               <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); deletePost(post.id); } }} style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.04)", background: "#fff", color: "rgba(18,26,46,0.72)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 14px rgba(18,26,46,0.08)", cursor: "pointer", zIndex: 3 }}>
                 <Trash2 size={13} />
               </span>
@@ -2144,7 +2938,7 @@ export default function PostsPage() {
             </button>
           );
         })}
-        <button type="button" onClick={() => { setCarouselDraftName(""); setCarouselDraftCategory(""); setShowCarouselTemplatePicker(true); }} style={{ width: 280, minHeight: 292, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 28, cursor: "pointer", color: "#121a2e", textAlign: "center" }}>
+        <button type="button" onClick={() => { resetCarouselCreateState(); setShowCarouselTemplatePicker(true); }} style={{ width: 280, minHeight: 292, borderRadius: 24, border: "1px dashed rgba(18,26,46,0.18)", background: "#f3f3f3", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 28, cursor: "pointer", color: "#121a2e", textAlign: "center" }}>
           <Plus size={20} />
           <strong style={{ fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 15, lineHeight: "21px", fontWeight: 600, color: "#121a2e" }}>Creer un carrousel</strong>
         </button>
@@ -2154,23 +2948,39 @@ export default function PostsPage() {
 
   const scrollEditorToSlide = (index: number) => {
     const nextIndex = Math.max(0, Math.min(generatedSlides.length - 1, index));
-    editorCarouselRef.current?.scrollTo({ left: nextIndex * 458, behavior: "smooth" });
+    editorCarouselRef.current?.scrollTo({ left: nextIndex * 546, behavior: "smooth" });
     setActiveSlide(nextIndex);
   };
 
   const handleEditorCarouselScroll = () => {
     const container = editorCarouselRef.current;
     if (!container) return;
-    const nextIndex = Math.max(0, Math.min(generatedSlides.length - 1, Math.round(container.scrollLeft / 458)));
+    const nextIndex = Math.max(0, Math.min(generatedSlides.length - 1, Math.round(container.scrollLeft / 546)));
     if (nextIndex !== activeSlide) setActiveSlide(nextIndex);
   };
 
   const renderEditorMode = () => (
     <main data-carousel-editor style={{ position: "relative", flex: 1, minWidth: 0, background: "#fbfbfb", overflow: "hidden" }}>
-      <button type="button" onClick={() => { setCarouselStudioMode("builder"); setCarouselStudioTab("editor"); setModelPickerOpen(false); setCarouselGenerationPrompt(""); setSelectedCarouselTemplateItemId(""); }} style={{ position: "absolute", top: 24, right: 24, zIndex: 8, minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center", cursor: "pointer", padding: "0 14px", color: "#121a2e", fontSize: 13, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0 8px 20px rgba(18,26,46,0.08)" }} aria-label="Revenir aux carrousels">
-        <ArrowLeft size={15} />
-        Revenir aux carrousels
-      </button>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 64, zIndex: 8, borderBottom: "1px solid rgba(18,26,46,0.06)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 24px" }}>
+        <button type="button" onClick={() => { resetCarouselCreateState(); setCarouselStudioMode("builder"); setCarouselStudioTab("editor"); setModelPickerOpen(false); }} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} aria-label="Revenir aux carrousels">
+          <ArrowLeft size={14} />
+          Revenir aux carrousels
+        </button>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+          <button type="button" onClick={() => void generatePostFromCurrentCarousel(false)} disabled={generating || generatedSlides.length === 0} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: generating || generatedSlides.length === 0 ? "not-allowed" : "pointer", opacity: generating || generatedSlides.length === 0 ? 0.7 : 1 }}>
+            {generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />}
+            Generer le format long
+          </button>
+          <button type="button" onClick={downloadCurrentCarousel} disabled={carouselDownloading || generatedSlides.length === 0} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: carouselDownloading || generatedSlides.length === 0 ? "not-allowed" : "pointer", opacity: carouselDownloading || generatedSlides.length === 0 ? 0.55 : 1 }}>
+            {carouselDownloading ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Download size={15} />}
+            Telecharger
+          </button>
+          <button type="button" onClick={() => openScheduleOverlay()} disabled={saving || generatedSlides.length === 0} style={{ minHeight: 40, borderRadius: 10, border: "1px solid #121A2E", background: "#121A2E", color: "#fff", boxShadow: "none", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: saving || generatedSlides.length === 0 ? "not-allowed" : "pointer", opacity: saving || generatedSlides.length === 0 ? 0.7 : 1 }}>
+            <CalendarIcon size={15} />
+            Planifier le post
+          </button>
+        </div>
+      </div>
       <div
         ref={editorCarouselRef}
         className="carousel-editor-strip"
@@ -2201,7 +3011,7 @@ export default function PostsPage() {
           editorDragRef.current.active = false;
           container.releasePointerCapture(event.pointerId);
           container.style.cursor = "grab";
-          scrollEditorToSlide(Math.round(container.scrollLeft / 458));
+          scrollEditorToSlide(Math.round(container.scrollLeft / 546));
         }}
         onPointerLeave={() => {
           const container = editorCarouselRef.current;
@@ -2209,20 +3019,20 @@ export default function PostsPage() {
           editorDragRef.current.active = false;
           container.style.cursor = "grab";
         }}
-        style={{ position: "absolute", left: 0, right: 0, top: 84, height: 640, display: "flex", alignItems: "center", gap: 28, overflowX: "auto", overflowY: "hidden", padding: "0 max(32px, calc(50% - 215px))", scrollSnapType: "x proximity", scrollbarWidth: "none", cursor: "grab", userSelect: "none", WebkitUserSelect: "none", scrollBehavior: "smooth", WebkitOverflowScrolling: "touch" }}
+        style={{ position: "absolute", left: 0, right: 0, top: 88, height: 688, display: "flex", alignItems: "center", gap: 28, overflowX: "auto", overflowY: "visible", padding: "0 max(32px, calc(50% - 259px))", scrollSnapType: "x proximity", scrollbarWidth: "none", cursor: "grab", userSelect: "none", WebkitUserSelect: "none", scrollBehavior: "smooth", WebkitOverflowScrolling: "touch" }}
       >
         {generatedSlides.map((slide, index) => (
-          <button key={`${index}-${slide.slice(0, 24)}`} data-carousel-slide type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 430, height: 516, borderRadius: 34, background: "#fff", border: "7px solid #fff", boxShadow: carouselSlideShadow, padding: 0, flex: "0 0 430px", overflow: "hidden", scrollSnapAlign: "center", cursor: "grab", transition: "box-shadow 0.2s ease", userSelect: "none", WebkitUserSelect: "none" }}>
-            <CarouselSlideCanvas payload={decodeCarouselSlide(slide)} raw={slide} scale={430 / 575} />
+          <button key={`${index}-${slide.slice(0, 24)}`} data-carousel-slide type="button" draggable={false} onDragStart={(event) => event.preventDefault()} onClick={() => scrollEditorToSlide(index)} style={{ width: 518, height: 621, borderRadius: 31, background: "#fff", border: "6px solid #fff", boxShadow: carouselSlideShadow, padding: 0, flex: "0 0 518px", overflow: "hidden", scrollSnapAlign: "center", cursor: "grab", transition: "box-shadow 0.2s ease", userSelect: "none", WebkitUserSelect: "none" }}>
+            <CarouselSlideCanvas payload={decodeCarouselSlide(slide)} raw={slide} scale={0.9} />
           </button>
         ))}
       </div>
       {generatedSlides.length > 1 ? (
-        <div style={{ position: "absolute", left: "50%", bottom: 143, transform: "translateX(-50%)", display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", padding: "14px 18px", minWidth: 70, height: 44, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
+        <div style={{ position: "absolute", left: "50%", bottom: 18, transform: "translateX(-50%)", display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", padding: "14px 18px", minWidth: 70, height: 44, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
           {generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 12, height: 12, padding: 0, border: 0, borderRadius: 999, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.19)", cursor: "pointer" }} />)}
         </div>
       ) : null}
-      <div style={{ position: "absolute", left: 46, right: 46, bottom: 45, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12 }}>
+      <div style={{ display: "none", position: "absolute", left: 46, right: 46, bottom: 45, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, alignItems: "center", justifyContent: "space-between", padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
           <button type="button" title="Ajouter une page" onClick={() => { if (selectedCarouselTemplate) setShowCarouselPagePicker(true); }} style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: selectedCarouselTemplate ? "pointer" : "default" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
           <input value={carouselGenerationPrompt} onChange={(event) => setCarouselGenerationPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runCarouselGenerationChat(); }} placeholder="Taper un texte ici" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
@@ -2237,7 +3047,7 @@ export default function PostsPage() {
             <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
                 <Search size={14} style={{ color: "#6f7887" }} />
-                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modèle..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modele..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
               </div>
               <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                 {filteredModelOptions.map((model) => (
@@ -2254,10 +3064,13 @@ export default function PostsPage() {
   );
 
   const carouselStudioView = (
-    <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden", background: "#fbfbfb" }}>
+    <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden", background: "#fbfbfb", position: "relative" }}>
+      {(generating || carouselApplyingEdit) && postsMode === "carousel" ? (
+        <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -220, left: "12%", width: "76%", height: 760, objectFit: "fill", pointerEvents: "none", opacity: 0, animation: "editorLoaderIn 0.42s ease-in-out forwards, editorLoaderPulse 2s ease-in-out 0.42s infinite alternate", zIndex: 2 }} />
+      ) : null}
       {activeCarouselEditor && (carouselHasGeneratedSlides && carouselStudioMode === "generate" ? renderEditorMode() : renderEditorBeforeClick())}
       {carouselStudioTab === "templates" && renderTemplateMode()}
-      {carouselStudioTab === "templates" || (activeCarouselEditor && carouselHasGeneratedSlides) ? renderRightList() : null}
+      {carouselStudioTab === "templates" || (activeCarouselEditor && carouselHasGeneratedSlides && carouselStudioMode === "generate") ? renderRightList() : null}
       {showCarouselPagePicker && selectedCarouselTemplate && (
         <div onClick={() => setShowCarouselPagePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 30, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div onClick={(event) => event.stopPropagation()} style={{ width: 560, maxHeight: "82vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
@@ -2268,7 +3081,7 @@ export default function PostsPage() {
             </div>
             <div style={{ padding: 18, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
               {filteredCarouselPickerPages.map((page) => {
-                const previewPayload = getCarouselPreviewPayload(page, null, 0);
+                const previewPayload = getCarouselPreviewPayload(page, null);
                 return (
                 <button key={page.id} type="button" onClick={() => addPageToCarouselTemplate(selectedCarouselTemplate.id, page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: page.id === FREE_CAROUSEL_PAGE_ID ? "#fbfbfb" : "#fff", padding: 13, minHeight: 198, height: "fit-content", textAlign: "left", cursor: "pointer" }}>
                   <span style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
@@ -2282,9 +3095,17 @@ export default function PostsPage() {
           </div>
         </div>
       )}
+      {carouselTemplateMenu ? (
+        <div onClick={() => setCarouselTemplateMenu(null)} style={{ position: "fixed", inset: 0, zIndex: 60 }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ position: "fixed", left: carouselTemplateMenu.x, top: carouselTemplateMenu.y, width: 190, borderRadius: 14, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 18px 50px rgba(18,26,46,0.16)", padding: 6, display: "grid", gap: 4 }}>
+            <button type="button" onClick={() => startRenameCarouselTemplate(carouselTemplateMenu.id)} style={{ border: 0, borderRadius: 10, background: "transparent", padding: "10px 12px", textAlign: "left", cursor: "pointer", fontSize: 13, fontWeight: 750, color: "#121a2e" }}>Renommer</button>
+            <button type="button" onClick={() => deleteCarouselTemplate(carouselTemplateMenu.id)} style={{ border: 0, borderRadius: 10, background: "transparent", padding: "10px 12px", textAlign: "left", cursor: "pointer", fontSize: 13, fontWeight: 750, color: "#ef0c0c" }}>Supprimer</button>
+          </div>
+        </div>
+      ) : null}
       {showCarouselTemplatePicker && (
         <div onClick={() => setShowCarouselTemplatePicker(false)} style={{ position: "absolute", inset: 0, zIndex: 31, background: "rgba(255,255,255,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div onClick={(event) => event.stopPropagation()} style={{ width: "fit-content", maxWidth: "min(96vw, 1200px)", maxHeight: "90vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: "fit-content", maxWidth: "min(98vw, 1360px)", maxHeight: "94vh", overflow: "hidden", borderRadius: 22, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
             <div style={{ padding: 16, borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
               <Search size={16} />
               <input value={carouselTemplateSearch} onChange={(event) => setCarouselTemplateSearch(event.target.value)} placeholder="Rechercher une template..." style={{ flex: 1, border: 0, outline: "none", fontSize: 14 }} />
@@ -2292,15 +3113,19 @@ export default function PostsPage() {
             </div>
             <div style={{ padding: 20, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 320px))", justifyContent: "center", gap: 18, alignItems: "start" }}>
               {filteredCarouselTemplates.map((template) => (
-                <button key={template.id} type="button" onClick={() => { setSelectedCarouselTemplateId(template.id); setCarouselGenerationTemplateId(template.id); }} style={{ width: 320, border: template.id === (carouselGenerationTemplateId || selectedCarouselTemplateId) ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", padding: 16, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <button key={template.id} type="button" onContextMenu={(event) => { event.preventDefault(); setCarouselTemplateMenu({ id: template.id, x: event.clientX, y: event.clientY }); }} onClick={() => { setSelectedCarouselTemplateId(template.id); setCarouselGenerationTemplateId(template.id); }} style={{ width: 320, border: template.id === (carouselGenerationTemplateId || selectedCarouselTemplateId) ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fff", padding: 16, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
                   <span style={{ display: "flex", justifyContent: "center" }}>
                     {renderTemplateStackPreview(template)}
                   </span>
-                  <strong style={{ display: "block", fontSize: 13, lineHeight: "18px", color: "#121a2e", textAlign: "center" }}>{template.name}</strong>
+                  {renamingCarouselTemplateId === template.id ? (
+                    <input value={renamingCarouselTemplateName} onClick={(event) => event.stopPropagation()} onChange={(event) => setRenamingCarouselTemplateName(event.target.value)} onBlur={commitRenameCarouselTemplate} onKeyDown={(event) => { if (event.key === "Enter") commitRenameCarouselTemplate(); if (event.key === "Escape") { setRenamingCarouselTemplateId(""); setRenamingCarouselTemplateName(""); } }} autoFocus style={{ width: "100%", border: "1px solid rgba(18,26,46,0.14)", borderRadius: 10, padding: "8px 10px", fontSize: 13, fontWeight: 700, color: "#121a2e", textAlign: "center" }} />
+                  ) : (
+                    <strong style={{ display: "block", fontSize: 13, lineHeight: "18px", color: "#121a2e", textAlign: "center" }}>{template.name}</strong>
+                  )}
                 </button>
               ))}
             </div>
-            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "setup" ? "flex" : "none", flexDirection: "column", gap: 10 }}>
               <input value={carouselDraftName} onChange={(event) => setCarouselDraftName(event.target.value)} placeholder="Nom du carrousel" style={{ ...inp, minHeight: 44, background: "#f2f2f2", borderRadius: 12 }} />
               <select
                 value={carouselDraftCategory}
@@ -2318,33 +3143,71 @@ export default function PostsPage() {
               </select>
               {selectedCarouselTemplateForPicker ? (
                 <>
-                  <ClientBlueButton type="button" onClick={() => void startCarouselGeneration(selectedCarouselTemplateForPicker)} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
+                  <ClientBlueButton type="button" onClick={() => setCarouselCreateStep("ai-options")} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!carouselDraftName.trim() || !carouselDraftCategory}>
                     Generer avec l'IA
                   </ClientBlueButton>
-                  <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     Demarrer manuellement
                   </button>
                 </>
               ) : null}
             </div>
+            <div style={{ padding: 20, borderTop: "1px solid rgba(18,26,46,0.08)", display: carouselCreateStep === "ai-options" ? "flex" : "none", flexDirection: "column", gap: 14 }}>
+              <button type="button" onClick={() => setCarouselCreateStep("setup")} style={{ alignSelf: "flex-start", border: 0, background: "transparent", color: "rgba(18,26,46,0.58)", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <ArrowLeft size={14} /> Retour
+              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ fontSize: 16, color: "#121a2e" }}>Options de generation IA</strong>
+                <span style={{ fontSize: 13, color: "rgba(18,26,46,0.52)", lineHeight: 1.5 }}>Choisis si les slides qui acceptent une image doivent etre preparees pour une generation d'image IA.</span>
+              </div>
+              <button type="button" onClick={() => setCarouselGenerateImagesWithAI((value) => !value)} style={{ minHeight: 54, borderRadius: 14, border: carouselGenerateImagesWithAI ? "1px solid rgba(1,71,255,0.34)" : "1px solid rgba(18,26,46,0.12)", background: carouselGenerateImagesWithAI ? "rgba(1,71,255,0.08)" : "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "0 16px", cursor: "pointer", fontSize: 13, fontWeight: 800, color: "#121a2e" }}>
+                Generer les images avec IA
+                <span style={{ width: 38, height: 22, borderRadius: 999, background: carouselGenerateImagesWithAI ? "#0147ff" : "#d8d8d8", display: "flex", alignItems: "center", justifyContent: carouselGenerateImagesWithAI ? "flex-end" : "flex-start", padding: 3 }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 999, background: "#fff" }} />
+                </span>
+              </button>
+              <ClientBlueButton type="button" onClick={() => selectedCarouselTemplateForPicker ? void startCarouselGeneration(selectedCarouselTemplateForPicker) : undefined} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%" }} disabled={!selectedCarouselTemplateForPicker}>
+                Demarrer la generation
+              </ClientBlueButton>
+            </div>
           </div>
         </div>
       )}
+      {carouselHistoryDetails ? (
+        <div onClick={() => setCarouselHistoryDetails(null)} style={{ position: "absolute", inset: 0, zIndex: 42, background: "rgba(255,255,255,0.62)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(event) => event.stopPropagation()} style={{ width: 520, maxWidth: "92vw", maxHeight: "72vh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "18px 20px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <strong style={{ display: "block", fontSize: 15, color: "#121a2e" }}>{carouselHistoryDetails.label}</strong>
+                <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "rgba(18,26,46,0.5)" }}>{carouselHistoryDetails.details?.length ?? 0} modifications</span>
+              </div>
+              <button type="button" onClick={() => setCarouselHistoryDetails(null)} style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "#FBFBFB", display: "grid", placeItems: "center", cursor: "pointer" }}><X size={16} /></button>
+            </div>
+            <div style={{ padding: 20, overflowY: "auto", display: "grid", gap: 10 }}>
+              {(carouselHistoryDetails.details ?? []).map((detail, index) => (
+                <div key={`${detail}-${index}`} style={{ borderRadius: 14, background: "#FBFBFB", padding: "12px 14px", fontSize: 12, lineHeight: 1.55, color: "rgba(18,26,46,0.76)" }}>{detail}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
-  const showCarouselEditorSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides;
-  const showCarouselBuilderSidebar = postsMode === "carousel" && !showCarouselEditorSidebar;
-  const showCarouselGeneratedSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides;
+  const showCarouselEditorSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides && carouselStudioMode === "generate";
+  const showCarouselBuilderSidebar = postsMode === "carousel" && carouselStudioTab === "templates";
+  const showCarouselGeneratedSidebar = postsMode === "carousel" && activeCarouselEditor && carouselHasGeneratedSlides && carouselStudioMode === "generate";
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", ...jk }}>
       {/* Left: Create panel */}
-      <div style={{ width: 384, borderRight: "1px solid rgba(0,0,0,0.09)", background: "#fff", display: "flex", flexDirection: "column", flexShrink: 0, overflowY: "auto" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>
-            {showCarouselBuilderSidebar
-              ? "Paramètres de template"
-              : "Créer un post"}
-          </h2>
+      <div style={{ width: 384, borderRight: "1px solid rgba(0,0,0,0.09)", background: "#fff", display: postsMode === "post" ? "none" : "flex", flexDirection: "column", flexShrink: 0, overflowY: "auto", position: "relative", zIndex: 4 }}>
+        <div style={{ padding: postsMode === "post" ? "0 20px" : "16px 20px", borderBottom: postsMode === "post" ? "none" : "1px solid rgba(0,0,0,0.07)" }}>
+          {postsMode !== "post" ? (
+            <h2 style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.3px" }}>
+              {showCarouselBuilderSidebar
+                ? "Parametres de template"
+                : "Creer un post"}
+            </h2>
+          ) : null}
 
           {postsMode === "carousel" ? (
             <div style={{ marginTop: 12 }}>
@@ -2353,9 +3216,9 @@ export default function PostsPage() {
           ) : null}
 
           {/* Source tabs */}
-          {!isCarouselRoute && !rightEditorVisible && !showCarouselBuilderSidebar && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
+          {!isCarouselRoute && !rightEditorVisible && !showCarouselBuilderSidebar && postsMode !== "post" && <div style={{ display: "flex", gap: 2, marginTop: 12, background: "#f2f2f2", borderRadius: 9, padding: 3 }}>
             {([
-              { id: "idea", icon: <Lightbulb size={12} />, label: "Idée" },
+              { id: "idea", icon: <Lightbulb size={12} />, label: "Idee" },
               { id: "url", icon: <Link2 size={12} />, label: "URL" },
               { id: "youtube", icon: <Youtube size={12} />, label: "YouTube" },
               { id: "manual", icon: <AlignLeft size={12} />, label: "Libre" },
@@ -2373,7 +3236,13 @@ export default function PostsPage() {
         </div>
 
         <div style={{ flex: 1, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
-          {showCarouselBuilderSidebar ? (
+          {postsMode === "post" && !rightEditorVisible ? (
+            <div style={{ display: "flex", flexDirection: "column", paddingTop: 16 }}>
+              <ClientBlueButton type="button" onClick={startManualPost} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 54, fontSize: 16, padding: "0 22px" }}>
+                Creer un post
+              </ClientBlueButton>
+            </div>
+          ) : showCarouselBuilderSidebar ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minHeight: "100%" }}>
               {selectedCarouselTemplate && selectedCarouselTemplateItem && selectedTemplateItemPage ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, paddingTop: 6 }}>
@@ -2403,11 +3272,7 @@ export default function PostsPage() {
                   <textarea
                     rows={14}
                     readOnly
-                    value={selectedCarouselTemplate ? selectedCarouselTemplate.items.map((item) => {
-                      const page = resolveCarouselPage(item.pageTemplateId);
-                      const prompt = getCarouselTemplateItemPrompt(item, page, "pagePrompt");
-                      return prompt;
-                    }).filter(Boolean).join("\n\n---\n\n") : ""}
+                    value={selectedCarouselTemplate ? buildCarouselGlobalPrompt(selectedCarouselTemplate) : ""}
                     style={{ ...inp, background: "#f2f2f2", borderRadius: 12, resize: "vertical", lineHeight: 1.5, minHeight: 280, fontFamily: "monospace" }}
                   />
                   <p style={{ margin: 0, fontSize: 11, color: "rgba(18,26,46,0.45)" }}>Ce prompt est la concatenation automatique de tous les pre-prompts des pages du template.</p>
@@ -2418,25 +3283,14 @@ export default function PostsPage() {
           ) : showCarouselGeneratedSidebar ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
               {renderGeneratedCarouselSlideFields()}
-              <ClientBlueButton
-                type="button"
-                onClick={() => void generatePostFromCurrentCarousel(false)}
-                loading={generating}
-                wrapperStyle={{ width: "100%" }}
-                style={{ width: "100%", fontSize: 14 }}
-                disabled={generatedSlides.length === 0}
-              >
-                <Wand2 size={14} />
-                Generer le format long
-              </ClientBlueButton>
               <button
                 type="button"
                 onClick={downloadCurrentCarousel}
                 disabled={generatedSlides.length === 0}
-                style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: "auto", opacity: generatedSlides.length === 0 ? 0.5 : 1 }}
+                style={{ display: "none", width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', alignItems: "center", justifyContent: "center", gap: 8, marginTop: "auto", opacity: generatedSlides.length === 0 ? 0.5 : 1 }}
               >
                 <Download size={14} />
-                Télécharger
+                Telecharger
               </button>
             </div>
           ) : postsMode === "carousel" ? (
@@ -2447,7 +3301,7 @@ export default function PostsPage() {
             </div>
           ) : rightEditorVisible ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div>
+              <div style={{ display: "none" }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Format du post</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {MANUAL_POST_FORMATS.map((format) => {
@@ -2460,7 +3314,7 @@ export default function PostsPage() {
                   })}
                 </div>
               </div>
-              <div>
+              <div style={{ display: "none" }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)", marginBottom: 7 }}>Style du post</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {styles.map((style) => {
@@ -2479,7 +3333,7 @@ export default function PostsPage() {
                   Sauvegarder
                 </ClientBlueButton>
                 <button type="button" onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim() || !selectedPostFormat} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", opacity: generatedContent.trim() && selectedPostFormat ? 1 : 0.45 }}>
-                  Programmer
+                  Planifier
                 </button>
               </div>
             </div>
@@ -2488,19 +3342,19 @@ export default function PostsPage() {
           {/* Source input */}
           {sourceTab === "idea" && (
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Sélectionner une idée</label>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>S?lectionner une id?e</label>
               {ideas.filter(i => i.status === "new").length > 0 ? (
                 <select value={selectedIdeaId} onChange={e => setSelectedIdeaId(e.target.value)} style={inp}>
-                  <option value="">— Choisir une idée —</option>
+                  <option value="">? Choisir une id?e ?</option>
                   {ideas.filter(i => i.status === "new").map(i => <option key={i.id} value={i.id}>{i.title}</option>)}
                 </select>
               ) : (
-                <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic" }}>Aucune idée disponible. Allez dans l&apos;onglet Idées pour en générer.</p>
+                <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", fontStyle: "italic" }}>Aucune id?e disponible. Allez dans l&apos;onglet Id?es pour en g?n?rer.</p>
               )}
               <div style={{ marginTop: 8 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Ajouter des précisions</label>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Ajouter des pr?cisions</label>
                 <textarea rows={3} value={manualIdea} onChange={e => setManualIdea(e.target.value)}
-                  placeholder="Ajoute un angle, une nuance, un exemple à intégrer..."
+                  placeholder="Ajoute un angle, une nuance, un exemple ? int?grer..."
                   style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
               </div>
             </div>
@@ -2509,7 +3363,7 @@ export default function PostsPage() {
           {(sourceTab === "url" || sourceTab === "youtube") && (
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>
-                {sourceTab === "youtube" ? "URL de la vidéo YouTube" : "URL de l'article"}
+                {sourceTab === "youtube" ? "URL de la vid?o YouTube" : "URL de l&apos;article"}
               </label>
               <div style={{ display: "flex", gap: 8 }}>
                 <input type="url" value={sourceInput} onChange={e => setSourceInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleScrapeUrl()}
@@ -2532,16 +3386,16 @@ export default function PostsPage() {
 
           {sourceTab === "manual" && (
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Votre idée / contenu</label>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Votre id?e / contenu</label>
               <textarea rows={5} value={manualIdea} onChange={e => setManualIdea(e.target.value)}
-                placeholder="Décrivez votre idée, copiez un texte brut, vos notes..."
+                placeholder="D?crivez votre id?e, copiez un texte brut, vos notes..."
                 style={{ ...inp, resize: "none", lineHeight: 1.6 }} />
             </div>
           )}
 
           {/* Style */}
           <div>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Style de rédaction</label>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Style de r?daction</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
               {styles.map((style) => {
                 const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
@@ -2558,11 +3412,11 @@ export default function PostsPage() {
           {/* Generate button */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
           <ClientBlueButton type="button" onClick={handleGenerate} loading={generating} icon={<Wand2 size={14} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", fontSize: 14 }}>
-            {generating ? "Génération..." : "Générer avec l'IA"}
+            {generating ? "G?n?ration..." : "G?n?rer avec l&apos;IA"}
           </ClientBlueButton>
             {postsMode === "post" && (
               <button type="button" onClick={startManualPost} style={{ minHeight: 48, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 13, background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
-                Démarrer manuellement
+                D?marrer manuellement
               </button>
             )}
           </div>
@@ -2575,7 +3429,7 @@ export default function PostsPage() {
               style={{ width: "100%", minHeight: 46, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: "auto", opacity: generatedSlides.length === 0 && !generatedContent.trim() ? 0.5 : 1 }}
             >
               <Download size={14} />
-              Télécharger
+              T?l?charger
             </button>
           )}
 
@@ -2590,13 +3444,13 @@ export default function PostsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {postType !== "carousel" && (
                 <div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6, marginTop: 0 }}>Post généré</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6, marginTop: 0 }}>Post g?n?r?</p>
                   <SmartSelectionTextarea
                     rows={10}
                     value={generatedContent}
                     onChange={setGeneratedContent}
                     contextLabel="post LinkedIn"
-                    globalLabel="Améliorer tout le post"
+                    globalLabel="Am?liorer tout le post"
                     apiKey={settings?.openrouterApiKey || undefined}
                     model={settings?.model}
                     style={{ ...inp, background: "#f6f6f6", lineHeight: 1.6 }}
@@ -2654,7 +3508,7 @@ export default function PostsPage() {
         <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", padding: "10px 24px", display: "none", alignItems: "center", gap: 24, flexShrink: 0 }}>
           {[
             { label: "Brouillons", value: "", color: "rgba(18,26,46,0.5)" },
-            { label: "Planifiés", value: stats.scheduled, color: "#073e63" },
+            { label: "Planifies", value: stats.scheduled, color: "#073e63" },
           ].map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ fontSize: 17, fontWeight: 700, color: s.color }}>{s.value}</span>
@@ -2664,12 +3518,13 @@ export default function PostsPage() {
         </div>
 
         {/* Posts grid */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: rightEditorVisible ? 0 : 24 }}>
           <div style={{ display: rightEditorVisible ? "none" : "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, borderRadius: 999, background: "#ededed" }}>
               {([
                 ["draft", "Brouillons", stats.drafts],
-                ["scheduled", "Planifiés", stats.scheduled],
+                ["scheduled", "Planifies", stats.scheduled],
+                ["auto", "Auto-planification", stats.auto],
               ] as const).map(([view, label]) => (
                 <button
                   key={view}
@@ -2693,10 +3548,42 @@ export default function PostsPage() {
                 </button>
               ))}
             </div>
+            {postsView === "auto" ? (
+              <button type="button" onClick={() => setAutoRecycleSettingsOpen(true)} style={{ minHeight: 36, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", padding: "0 13px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif', boxShadow: "0px 4px 12px rgba(18,26,46,0.05)" }}>
+                <Settings size={14} />
+                Parametres
+              </button>
+            ) : null}
+            {postsView !== "auto" ? (
+              <ClientBlueButton type="button" onClick={startManualPost} wrapperStyle={{ width: "auto" }} style={{ fontSize: 14, minHeight: 48, padding: "0 22px" }}>
+                Creer un nouveau post
+              </ClientBlueButton>
+            ) : null}
           </div>
 
           {rightEditorVisible ? (
-            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 0, alignItems: "stretch", minHeight: "calc(100vh - 180px)" }}>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "580px minmax(0, 1fr)", gridTemplateRows: "64px minmax(0, 1fr)", columnGap: 128, rowGap: 0, alignItems: "stretch", height: "100%", minHeight: 0, paddingRight: 0, paddingBottom: 0, boxSizing: "border-box", width: "100%" }}>
+            {editorApplyingEdit ? (
+              <img
+                src="/linkedin-chat-loader.svg"
+                alt=""
+                aria-hidden="true"
+                style={{ position: "absolute", top: -354, left: "calc(580px + 128px + (100% - 580px - 128px) / 2)", width: "calc(125% - 610px)", height: 888, transform: "translateX(-54%)", objectFit: "fill", pointerEvents: "none", opacity: 0, animation: "editorLoaderIn 0.42s ease-in-out forwards, editorLoaderPulse 2s ease-in-out 0.42s infinite alternate", zIndex: 2 }}
+              />
+            ) : null}
+            <div style={{ position: "relative", zIndex: 4, gridColumn: "1 / -1", gridRow: 1, minHeight: 64, borderBottom: "1px solid rgba(18,26,46,0.06)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "0 24px" }}>
+              <button type="button" onClick={resetEditor} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                <ArrowLeft size={14} />
+                Retourner a l&apos;accueil
+              </button>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: STATUS_STYLES.draft.bg, color: STATUS_STYLES.draft.color }}>Brouillon</span>
+                <button type="button" onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim()} style={{ minHeight: 40, borderRadius: 10, border: "1px solid #2f4d9d", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: saving || !generatedContent.trim() ? "not-allowed" : "pointer", opacity: saving || !generatedContent.trim() ? 0.7 : 1 }}>
+                  <CalendarIcon size={15} />
+                  Planifier
+                </button>
+              </div>
+            </div>
             <div
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
@@ -2704,38 +3591,63 @@ export default function PostsPage() {
                 const file = event.dataTransfer.files?.[0];
                 if (file) void handleDraftMedia(file);
               }}
-              style={{ background: "transparent", border: "none", borderRadius: 0, boxShadow: "none", padding: "0 28px 0 0", display: "flex", flexDirection: "column", gap: 18, maxWidth: "none" }}
+              style={{ position: "relative", zIndex: 1, gridColumn: 2, gridRow: 2, background: "transparent", border: "none", borderRadius: 0, boxShadow: "none", padding: "24px 24px 24px 0", display: "flex", flexDirection: "column", gap: 18, maxWidth: "none", minWidth: 0, minHeight: 0 }}
             >
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>{editingPostId ? "Modifier le brouillon" : "Nouveau brouillon manuel"}</h3>
-                </div>
-                <button type="button" onClick={resetEditor} style={{ position: "absolute", top: 24, right: 344, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 999, background: "#fff", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                  <X size={12} />
+              <div style={{ display: "none" }}>
+                <button type="button" onClick={resetEditor} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  <ArrowLeft size={14} />
+                  Retourner a l&apos;accueil
                 </button>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: STATUS_STYLES.draft.bg, color: STATUS_STYLES.draft.color, marginLeft: "auto" }}>Brouillon</span>
               </div>
-              <div style={{ width: "100%", maxWidth: 700, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 20, background: "#fff", boxShadow: "none", padding: 20 }}>
+              <div style={{ position: "relative", width: "100%", maxWidth: 700, flex: 1, minHeight: 0, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 20, background: "#fff", boxShadow: "none", padding: 20, display: "flex", flexDirection: "column", overflow: "hidden", zIndex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg,#dbeafe,#eef2ff)", flexShrink: 0 }} />
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#121a2e" }}>Louis Staub</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(18,26,46,0.45)" }}>Prévisualisation LinkedIn</p>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#d9d9d9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, letterSpacing: "-0.03em", flexShrink: 0 }}>LS</div>
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", minHeight: 42 }}>
+                    <strong style={{ display: "block", fontSize: 15, fontWeight: 700, color: "#121a2e" }}>Louis Staub</strong>
+                    <div style={{ display: "none" }} />
                   </div>
                 </div>
                 <SmartSelectionTextarea
                   rows={18}
                   value={generatedContent}
                   onChange={setGeneratedContent}
-                  placeholder="Écris ton post ici..."
+                  placeholder="Ecris ton post ici..."
                   contextLabel="post LinkedIn"
                   showGlobalAction={false}
-                  autoFit
-                  showWordCount
+                  autoFit={false}
+                  richFormatting
                   onHistory={pushEditorHistory}
+                  onAiAction={(entry) => {
+                    if (entry.scope === "format") return;
+                  }}
                   apiKey={settings?.openrouterApiKey || undefined}
                   model={settings?.model}
-                  style={{ ...inp, minHeight: 42, background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: 0, resize: "none", whiteSpace: "pre-wrap", fontFamily: "Arial, Helvetica, sans-serif" }}
+                  onUseSelection={(text) => {
+                    setSelectedChatText(text);
+                    setEditorPanelMode("conversation");
+                  }}
+                  style={{ ...inp, flex: 1, minHeight: 0, overflowY: "auto", background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: "0 0 96px", resize: "none", whiteSpace: "pre-wrap", fontFamily: "Arial, Helvetica, sans-serif" }}
                 />
+                <div style={{ position: "sticky", bottom: 0, zIndex: 3, background: "#fff", paddingTop: 12 }}>
+                <div style={{ height: 1, background: "rgba(18,26,46,0.04)", margin: "0 0 12px" }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer", flexShrink: 0 }}>
+                      <ImageIcon size={14} />
+                      <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void handleDraftMedia(file);
+                        event.currentTarget.value = "";
+                      }} />
+                    </label>
+                    <button type="button" onClick={() => void copyGeneratedPost()} title="Copier le post" style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: postCopied ? "rgba(22,139,100,0.1)" : "#F6F6F6", display: "flex", alignItems: "center", justifyContent: "center", color: postCopied ? "#168b64" : "rgba(18,26,46,0.58)", cursor: "pointer", flexShrink: 0, transition: "background 0.18s ease, color 0.18s ease" }}>
+                      {postCopied ? <Check size={15} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.42)" }}>{countWords(generatedContent)} mots</span>
+                </div>
+                </div>
                 <div style={{ marginTop: 16 }}>
                   {draftMedia ? (
                   <div onMouseEnter={() => setHoveredDraftImage(true)} onMouseLeave={() => setHoveredDraftImage(false)} style={{ position: "relative", width: "100%", minHeight: 240, borderRadius: 16, overflow: "hidden", background: "#f5f7fa" }}>
@@ -2745,7 +3657,7 @@ export default function PostsPage() {
                     </button>
                   </div>
                 ) : (
-                  <label style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer" }}>
+                  <label style={{ display: "none", width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer" }}>
                     <ImageIcon size={16} />
                     <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
                       const file = event.target.files?.[0];
@@ -2756,10 +3668,20 @@ export default function PostsPage() {
                 )}
                 </div>
               </div>
-              <div style={{ width: "100%", maxWidth: 700, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12 }}>
+              <div style={{ display: "none" }}>
+                {chatInput.startsWith("/") && slashCommands.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {slashCommands.slice(0, 6).map((command) => (
+                      <button key={command.id} type="button" onClick={() => setChatInput(`/${command.id} `)} style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 999, background: "#f7f7f7", padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#121a2e", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                        /{command.id}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
                   <button type="button" style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
-                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void runEditorChat(); }} placeholder="Taper un texte ici" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
+                  <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void runEditorChat(); } }} placeholder="Taper un texte ici" style={{ flex: 1, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: "20px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif" }} />
                 </div>
                 <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 16 }}>
                   <button type="button" onClick={() => setModelPickerOpen((current) => !current)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
@@ -2771,7 +3693,7 @@ export default function PostsPage() {
                     <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
                         <Search size={14} style={{ color: "#6f7887" }} />
-                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modèle..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                        <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modele..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
                       </div>
                       <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                         {filteredModelOptions.map((model) => (
@@ -2783,23 +3705,138 @@ export default function PostsPage() {
                     </div>
                   ) : null}
                 </div>
+                </div>
               </div>
             </div>
-            <aside style={{ borderLeft: "1px solid rgba(18,26,46,0.12)", borderRadius: 0, background: "#fff", boxShadow: "none", padding: "34px 24px 24px", display: "flex", flexDirection: "column", gap: 18, minHeight: "100%" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#121a2e" }}>Récents</p>
-                <button type="button" style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(0,0,0,0.07)", background: "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+            <aside style={{ position: "relative", zIndex: 3, gridColumn: 1, gridRow: 2, borderRight: "1px solid rgba(18,26,46,0.12)", borderRadius: 0, background: "#fff", boxShadow: "none", padding: 0, display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", alignSelf: "stretch" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "24px 24px 16px" }}>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#121a2e" }}>{editorPanelMode === "history" ? "Historique" : "Conversation"}</p>
+                <button type="button" onClick={() => setEditorPanelMode((current) => current === "history" ? "conversation" : "history")} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(0,0,0,0.07)", background: editorPanelMode === "history" ? "#FBFBFB" : "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                   <History size={16} />
                 </button>
               </div>
-              {editorHistory.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 12, color: "rgba(18,26,46,0.45)", lineHeight: 1.5 }}>Les modifications IA apparaîtront ici. Tu pourras restaurer une ancienne version.</p>
-              ) : editorHistory.map((entry) => (
-                <button key={entry.id} type="button" onClick={() => setGeneratedContent(entry.after)} style={{ border: 0, borderBottom: "1px solid rgba(0,0,0,0.08)", background: "#fff", padding: "18px 0", textAlign: "left", cursor: "pointer" }}>
-                  <strong style={{ display: "block", fontSize: 13, color: "#121a2e", marginBottom: 5 }}>{entry.label}</strong>
-                  <span style={{ fontSize: 11, color: "rgba(18,26,46,0.48)", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{entry.after}</span>
-                </button>
-              ))}
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 24, padding: "0 24px 0" }}>
+                {editorPanelMode === "history" ? (
+                  editorHistory.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.42)" }}>Aucune modification pour le moment.</p>
+                  ) : editorHistory.map((entry) => (
+                    <button key={entry.id} type="button" onClick={() => restoreEditorHistory(entry)} style={{ width: "100%", border: 0, borderRadius: 18, background: "#FBFBFB", padding: "14px 16px", textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 750, color: "#121a2e", marginBottom: 4 }}>{entry.label}</span>
+                      <span style={{ display: "block", fontSize: 11, color: "rgba(18,26,46,0.42)" }}>Cliquer pour revenir a cette version</span>
+                    </button>
+                  ))
+                ) : editorChat.map((entry) => {
+                  const isUser = entry.role === "user";
+                  return (
+                    <div
+                      key={entry.id}
+                      style={{
+                        width: "fit-content",
+                        maxWidth: "75%",
+                        alignSelf: isUser ? "flex-end" : "flex-start",
+                        borderRadius: 20,
+                        background: isUser ? "#F4F4F4" : "transparent",
+                        padding: isUser ? "14px 16px" : 0,
+                      }}
+                    >
+                      <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.82)", whiteSpace: "pre-wrap" }}>
+                        {entry.content}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: "auto", width: "100%", background: "transparent", display: "flex", flexDirection: "column", gap: 8, padding: "12px 24px 16px" }}>
+                {chatInput.startsWith("/") && slashCommands.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {slashCommands.slice(0, 6).map((command) => (
+                      <button key={command.id} type="button" onClick={() => setChatInput(`/${command.id} `)} style={{ border: "1px solid rgba(18,26,46,0.1)", borderRadius: 999, background: "#f7f7f7", padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#121a2e", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                        /{command.id}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div ref={chatComposerRef} style={{ position: "relative", width: "100%", minHeight: 66, borderRadius: 34, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, display: "flex", flexDirection: chatComposerExpanded ? "column" : "row", alignItems: chatComposerExpanded ? "stretch" : "center", justifyContent: "space-between", gap: chatComposerExpanded ? 10 : 12, padding: 12, transition: "min-height 0.18s ease, gap 0.18s ease" }}>
+                  {chatActionsOpen ? (
+                    <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 10px)", borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: carouselPanelShadow, padding: 10, display: "grid", gap: 6, maxHeight: 280, overflowY: "auto", zIndex: 12 }}>
+                      {chatCommandCategories.map((category) => (
+                        <div key={category} style={{ display: "grid", gap: 4 }}>
+                          <p style={{ margin: "8px 8px 4px", fontSize: 10, fontWeight: 850, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(18,26,46,0.42)" }}>{category}</p>
+                          {SMART_SELECTION_COMMANDS.filter((command) => command.category === category).map((command) => {
+                            const Icon = command.icon;
+                            const active = selectedChatCommandId === command.id;
+                            return (
+                              <button key={command.id} type="button" onClick={() => { setSelectedChatCommandId(command.id); setChatActionsOpen(false); }} style={{ border: 0, borderRadius: 12, background: active ? "#FBFBFB" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", gap: 9, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                                <span style={{ width: 24, height: 24, borderRadius: 999, background: `${command.color}18`, color: command.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={13} /></span>
+                                <span style={{ fontSize: 12, fontWeight: 750, color: "#121a2e" }}>{command.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div style={{ display: chatComposerExpanded ? "flex" : "none", flexDirection: "column", gap: 8, width: "100%" }}>
+                      {selectedChatText ? (
+                        <div style={{ borderRadius: 18, background: "#FBFBFB", padding: "10px 12px", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <MoveRight size={16} style={{ color: "rgba(18,26,46,0.5)", flexShrink: 0, marginTop: 2 }} />
+                          <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: "rgba(18,26,46,0.62)", whiteSpace: "pre-wrap", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{selectedChatText}</p>
+                          <button type="button" onClick={() => setSelectedChatText("")} style={{ border: 0, background: "transparent", color: "rgba(18,26,46,0.42)", cursor: "pointer", display: "flex", padding: 2 }}><X size={15} /></button>
+                        </div>
+                      ) : null}
+                      <div style={{ display: selectedChatCommand ? "flex" : "none", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {selectedChatCommand ? (() => {
+                          const Icon = selectedChatCommand.icon;
+                          return (
+                            <button type="button" onClick={() => setSelectedChatCommandId("")} style={{ border: 0, borderRadius: 999, background: `${selectedChatCommand.color}14`, color: selectedChatCommand.color, minHeight: 24, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                              <Icon size={12} />
+                              {selectedChatCommand.label}
+                            </button>
+                          );
+                        })() : null}
+                      </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", flexWrap: chatComposerExpanded ? "wrap" : "nowrap", gap: chatComposerExpanded ? "10px 12px" : 12, width: "100%", minWidth: 0 }}>
+                    <button type="button" onClick={() => setChatActionsOpen((current) => !current)} style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
+                    <div style={{ order: chatComposerExpanded ? -1 : 0, flex: chatComposerExpanded ? "0 0 100%" : 1, width: chatComposerExpanded ? "100%" : "auto", minWidth: 0, display: "flex", flexDirection: chatComposerExpanded ? "column" : "row", alignItems: chatComposerExpanded ? "stretch" : "center", gap: chatComposerExpanded ? 7 : 8, transition: "gap 0.18s ease, flex-basis 0.18s ease" }}>
+                      <div style={{ display: !chatComposerExpanded && selectedChatCommand ? "flex" : "none", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {selectedChatCommand ? (() => {
+                          const Icon = selectedChatCommand.icon;
+                          return (
+                            <button type="button" onClick={() => setSelectedChatCommandId("")} style={{ border: 0, borderRadius: 999, background: `${selectedChatCommand.color}14`, color: selectedChatCommand.color, minHeight: 24, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                              <Icon size={12} />
+                              {selectedChatCommand.label}
+                            </button>
+                          );
+                        })() : null}
+                      </div>
+                      <textarea wrap="soft" value={chatInput} disabled={editorChatLoading} rows={chatComposerRows} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void runEditorChat(); } }} placeholder="Taper un texte ici" style={{ width: "100%", minHeight: 24, maxHeight: 168, height: chatComposerExpanded ? "auto" : 24, border: 0, outline: "none", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: chatComposerExpanded ? "22px" : "24px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif", resize: "none", overflowY: chatInput.split("\n").length > 7 || chatInput.length > 238 ? "auto" : "hidden", overflowX: "hidden", background: "transparent", padding: 0, opacity: editorChatLoading ? 0.55 : 1, transition: "height 0.18s ease, line-height 0.18s ease", whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: "break-word" }} />
+                    </div>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center", gap: chatComposerExpanded ? 10 : 16, flexShrink: 0 }}>
+                    <button type="button" onClick={() => setModelPickerOpen((current) => !current)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                      <span>{activeModelLabel}</span>
+                      <ChevronDown size={14} style={{ color: "rgba(18,26,46,0.52)" }} />
+                    </button>
+                    <button type="button" onClick={() => void runEditorChat()} disabled={editorChatLoading || !chatInput.trim()} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: editorChatLoading || !chatInput.trim() ? "not-allowed" : "pointer", flexShrink: 0, opacity: editorChatLoading || !chatInput.trim() ? 0.72 : 1 }}>{editorChatLoading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={18} />}</button>
+                    {modelPickerOpen ? (
+                      <div style={{ position: "absolute", right: 58, bottom: 56, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: carouselPanelShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
+                          <Search size={14} style={{ color: "#6f7887" }} />
+                          <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modele..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                        </div>
+                        <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                          {filteredModelOptions.map((model) => (
+                            <button key={model} type="button" onClick={() => updateActiveModel(model)} style={{ width: "100%", border: 0, borderRadius: 10, background: model === activeModelLabel ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                              {model}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  </div>
+                </div>
+              </div>
             </aside>
             </div>
           ) : null}
@@ -2810,13 +3847,16 @@ export default function PostsPage() {
             <div style={{ textAlign: "center", paddingTop: 64 }}>
               <Edit3 size={32} style={{ color: "rgba(18,26,46,0.1)", margin: "0 auto 12px" }} />
               <p style={{ fontSize: 14, fontWeight: 500, color: "rgba(18,26,46,0.5)", margin: 0 }}>Aucun post</p>
-              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Créez votre premier post depuis le panneau de gauche.</p>
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Creez votre premier post depuis le panneau de gauche.</p>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+            <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))" }}>
               {filteredPosts.map(post => {
                 const ss = STATUS_STYLES[post.status];
                 const analytics = normalizeAnalytics(post.analytics);
+                const sourceAutoPost = post.analytics?.autoRecycleSourcePostId
+                  ? posts.find((entry) => entry.id === post.analytics?.autoRecycleSourcePostId)
+                  : null;
                 return (
                   <div
                     key={post.id}
@@ -2835,6 +3875,12 @@ export default function PostsPage() {
                         {post.type === "carousel" && (
                           <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: "#E1D1FA", color: "#6236AA" }}>Carrousel</span>
                         )}
+                        {sourceAutoPost ? (
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#f3e8ff", color: "#6d28d9", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <Repeat2 size={11} />
+                            Relance auto
+                          </span>
+                        ) : null}
                         {post.styleName && <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{post.styleName}</span>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
@@ -2851,6 +3897,20 @@ export default function PostsPage() {
                             Planifier
                           </button>
                         )}
+                        {sourceAutoPost ? (
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openPostForEdit(post);
+                              void generateAutoRecycleVariant(post);
+                            }}
+                            title="Generer une nouvelle version"
+                            style={{ padding: "5px 8px", borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", cursor: "pointer", color: "#6d28d9", display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                          >
+                            {autoRecycleVariantLoadingId === post.id ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={12} />}
+                            Nouvelle version
+                          </button>
+                        ) : null}
                         <button onClick={(event) => { event.stopPropagation(); deletePost(post.id); }} title="Supprimer" style={{ padding: 5, background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.72)", display: "flex" }}>
                           <Trash2 size={13} />
                         </button>
@@ -2858,20 +3918,28 @@ export default function PostsPage() {
                     </div>
 
                     {/* Content preview */}
-                    {analytics.mediaPreviewUrl && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          router.push(`/admin/linkedin/statistiques?postId=${encodeURIComponent(post.id)}`);
-                        }}
-                        style={{ width: "100%", height: 138, border: "none", borderRadius: 11, background: `url(${analytics.mediaPreviewUrl}) center / cover`, cursor: "pointer", boxShadow: "0 12px 26px rgba(18,26,46,0.1)" }}
-                        aria-label="Ouvrir les statistiques du post"
-                      />
-                    )}
+                    {post.title ? (
+                      <p style={{ fontSize: 14, fontWeight: 700, color: "#121a2e", lineHeight: 1.4, margin: 0 }}>
+                        {post.title}
+                      </p>
+                    ) : null}
                     <p style={{ fontSize: 13, color: "#121a2e", lineHeight: 1.6, margin: 0, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", whiteSpace: "pre-line" }}>
                       {post.content}
                     </p>
+                    {sourceAutoPost ? (
+                      <div style={{ borderRadius: 12, border: "1px solid rgba(109,40,217,0.12)", background: "rgba(109,40,217,0.04)", padding: 12 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#6d28d9", textTransform: "uppercase", letterSpacing: "0.04em" }}>Ancien post source</p>
+                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "rgba(18,26,46,0.68)", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-line" }}>
+                          {sourceAutoPost.content}
+                        </p>
+                      </div>
+                    ) : null}
+                    {analytics.mediaPreviewUrl && (
+                      <div
+                        style={{ width: "100%", height: 168, borderRadius: 11, background: `url(${analytics.mediaPreviewUrl}) center / cover`, boxShadow: "0 12px 26px rgba(18,26,46,0.1)" }}
+                        aria-label="Apercu image du post"
+                      />
+                    )}
 
                     {/* Stats */}
                     {post.status === "published" && (
@@ -2910,26 +3978,170 @@ export default function PostsPage() {
         )}
       </div>
 
+      {autoRecycleSettingsOpen ? (
+        <div style={{ position: "fixed", inset: 0, zIndex: 46, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(10px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setAutoRecycleSettingsOpen(false)}>
+          <div style={{ width: "min(560px, 100%)", borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 24, display: "flex", flexDirection: "column", gap: 18 }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Settings size={17} style={{ color: "#6d28d9" }} />
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 750, color: "#121a2e" }}>Auto-planification</h3>
+                </div>
+                <p style={{ margin: "7px 0 0", fontSize: 13, lineHeight: 1.5, color: "rgba(18,26,46,0.52)" }}>Regle les conditions de relance automatique et le prompt de micro-variation.</p>
+              </div>
+              <button type="button" onClick={() => setAutoRecycleSettingsOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => updateAutoRecyclePreferences({ enabled: !autoRecycleEnabled })}
+              style={{ minHeight: 44, borderRadius: 13, border: autoRecycleEnabled ? "1px solid #d8b4fe" : "1px solid rgba(18,26,46,0.1)", background: autoRecycleEnabled ? "#f3e8ff" : "#f6f6f6", color: autoRecycleEnabled ? "#6d28d9" : "rgba(18,26,46,0.62)", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+            >
+              {autoRecycleEnabled ? "Auto-planification activee" : "Auto-planification desactivee"}
+            </button>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label>
+                <span style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 750, color: "rgba(18,26,46,0.58)" }}>Temps avant relance (jours)</span>
+                <input type="number" min={1} value={autoRecycleDelayDays} onChange={(event) => updateAutoRecyclePreferences({ delayDays: Number(event.target.value) || 1 })} style={{ ...inp, minHeight: 44 }} />
+              </label>
+              <label>
+                <span style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 750, color: "rgba(18,26,46,0.58)" }}>Seuil minimum de likes</span>
+                <input type="number" min={0} value={autoRecycleMinLikes} onChange={(event) => updateAutoRecyclePreferences({ minLikes: Number(event.target.value) || 0 })} style={{ ...inp, minHeight: 44 }} />
+              </label>
+            </div>
+
+            <label>
+              <span style={{ display: "block", marginBottom: 7, fontSize: 12, fontWeight: 750, color: "rgba(18,26,46,0.58)" }}>Prompt de nouvelle version</span>
+              <textarea value={autoRecyclePrompt} onChange={(event) => updateAutoRecyclePreferences({ prompt: event.target.value })} rows={7} style={{ ...inp, padding: 12, lineHeight: 1.55, resize: "vertical" }} />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      {createPostOverlayOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 44, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setCreatePostOverlayOpen(false)}>
+          <div style={{ width: "min(560px, 100%)", borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 24, display: "flex", flexDirection: "column", gap: 18 }} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#121a2e" }}>Creer un nouveau post</h3>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "rgba(18,26,46,0.5)" }}>Le brouillon est cree tout de suite avec ses parametres.</p>
+              </div>
+              <button type="button" onClick={() => setCreatePostOverlayOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={16} />
+              </button>
+            </div>
+            <input value={newPostTitle} onChange={(event) => setNewPostTitle(event.target.value)} placeholder="Nom du brouillon" style={{ ...inp, minHeight: 46 }} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {([
+                { id: "idea", label: "Idee" },
+                { id: "url", label: "URL" },
+                { id: "youtube", label: "YouTube" },
+                { id: "manual", label: "Libre" },
+              ] as Array<{ id: SourceTab; label: string }>).map((item) => (
+                <button key={item.id} type="button" onClick={() => setNewPostSourceTab(item.id)} style={{ minHeight: 38, padding: "0 14px", borderRadius: 999, border: newPostSourceTab === item.id ? "1px solid rgba(1,71,255,0.34)" : "1px solid rgba(18,26,46,0.1)", background: newPostSourceTab === item.id ? "rgba(45,110,253,0.1)" : "#fff", color: newPostSourceTab === item.id ? "#0147ff" : "#121a2e", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            {(newPostSourceTab === "url" || newPostSourceTab === "youtube") ? (
+              <input value={newPostSourceValue} onChange={(event) => setNewPostSourceValue(event.target.value)} placeholder={newPostSourceTab === "youtube" ? "URL YouTube" : "URL source"} style={{ ...inp, minHeight: 46 }} />
+            ) : null}
+            <div>
+              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>Style de redaction</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {styles.map((style) => {
+                  const tag = STYLE_TAGS[style.category] ?? STYLE_TAGS.custom;
+                  const active = newPostStyleId === style.id;
+                  return (
+                    <button key={style.id} type="button" onClick={() => setNewPostStyleId(style.id)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? `1px solid ${tag.border}` : inactiveStyleTag.border, background: active ? tag.bg : inactiveStyleTag.background, color: active ? tag.color : inactiveStyleTag.color, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      {style.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.58)" }}>Format du post</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {MANUAL_POST_FORMATS.map((format) => {
+                  const active = newPostFormat === format.value;
+                  return (
+                    <button key={format.value} type="button" onClick={() => setNewPostFormat(format.value)} style={{ padding: "6px 12px", borderRadius: 20, border: active ? "1px solid rgba(1,71,255,0.34)" : inactiveStyleTag.border, background: active ? "rgba(45,110,253,0.1)" : inactiveStyleTag.background, color: active ? "#0147ff" : inactiveStyleTag.color, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      {format.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "stretch" }}>
+              <button type="button" onClick={() => setCreatePostOverlayOpen(false)} style={{ width: "100%", minHeight: 48, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                Annuler
+              </button>
+              <ClientBlueButton type="button" onClick={createManualDraft} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 48, fontSize: 16 }}>
+                Commencer a rediger
+              </ClientBlueButton>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats modal */}
       {(scheduleOverlayPostId !== null || scheduleOverlayDate) && (
         <div style={{ position: "fixed", inset: 0, zIndex: 45, background: "rgba(18,26,46,0.18)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={closeScheduleOverlay}>
           <div style={{ width: "min(420px, 100%)", borderRadius: 20, background: "#fff", border: "1px solid rgba(18,26,46,0.12)", boxShadow: "0 24px 70px rgba(18,26,46,0.18)", padding: 22, display: "flex", flexDirection: "column", gap: 16 }} onClick={(event) => event.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>Programmer le post</h3>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e" }}>Planifier le post</h3>
                 <p style={{ margin: "6px 0 0", fontSize: 13, color: "rgba(18,26,46,0.5)" }}>Choisis la date de programmation avant validation.</p>
               </div>
               <button type="button" onClick={closeScheduleOverlay} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 <X size={16} />
               </button>
             </div>
-            <input type="datetime-local" value={scheduleOverlayDate} onChange={(event) => setScheduleOverlayDate(event.target.value)} style={{ ...inp, minHeight: 46 }} />
+            {(() => {
+              const monthValue = scheduleCalendarMonth || scheduleOverlayDate.slice(0, 7) || new Date().toISOString().slice(0, 7);
+              const monthDate = new Date(`${monthValue}-01T00:00`);
+              const firstDay = (monthDate.getDay() + 6) % 7;
+              const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+              const selectedDay = scheduleOverlayDate.startsWith(monthValue) ? Number(scheduleOverlayDate.slice(8, 10)) : 0;
+              const monthLabel = monthDate.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <button type="button" onClick={() => moveScheduleCalendarMonth(-1)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}><ArrowLeft size={15} /></button>
+                    <strong style={{ fontSize: 14, color: "#121a2e", textTransform: "capitalize" }}>{monthLabel}</strong>
+                    <button type="button" onClick={() => moveScheduleCalendarMonth(1)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}><ArrowRight size={15} /></button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+                    {["L", "M", "M", "J", "V", "S", "D"].map((day) => <span key={day} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "rgba(18,26,46,0.38)" }}>{day}</span>)}
+                    {Array.from({ length: firstDay }).map((_, index) => <span key={`empty-${index}`} />)}
+                    {Array.from({ length: daysInMonth }).map((_, index) => {
+                      const day = index + 1;
+                      const selected = selectedDay === day;
+                      return (
+                        <button key={day} type="button" onClick={() => selectScheduleCalendarDay(day)} style={{ height: 38, borderRadius: 12, border: selected ? "1px solid rgba(1,71,255,0.34)" : "1px solid rgba(18,26,46,0.08)", background: selected ? "rgba(1,71,255,0.1)" : "#fff", color: selected ? "#0147ff" : "#121a2e", fontSize: 13, fontWeight: 750, cursor: "pointer" }}>{day}</button>
+                      );
+                    })}
+                  </div>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 12, fontWeight: 700, color: "#121a2e" }}>
+                    Heure
+                    <input type="time" value={scheduleOverlayDate.includes("T") ? scheduleOverlayDate.slice(11, 16) : "09:00"} onChange={(event) => {
+                      const datePart = scheduleOverlayDate.slice(0, 10) || `${monthValue}-01`;
+                      setScheduleOverlayDate(`${datePart}T${event.target.value}`);
+                    }} style={{ ...inp, minHeight: 46 }} />
+                  </label>
+                </div>
+              );
+            })()}
             <div style={{ display: "flex", gap: 10 }}>
               <button type="button" onClick={closeScheduleOverlay} style={{ flex: 1, minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                 Annuler
               </button>
               <ClientBlueButton type="button" onClick={confirmScheduleOverlay} wrapperStyle={{ flex: 1 }} style={{ width: "100%", minHeight: 44, fontSize: 13 }} disabled={!scheduleOverlayDate}>
-                Programmer
+                Planifier
               </ClientBlueButton>
             </div>
           </div>
@@ -2950,12 +4162,12 @@ export default function PostsPage() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               {([
-                ["reactions", "Réactions"],
+                ["reactions", "Reactions"],
                 ["comments", "Commentaires"],
                 ["impressions", "Impressions"],
-                ["reach", "Membres touchés"],
+                ["reach", "Membres touches"],
                 ["profileViews", "Vues profil"],
-                ["followersGained", "Abonnés gagnés"],
+                ["followersGained", "Abonnes gagnes"],
                 ["reposts", "Republications"],
                 ["saves", "Enregistrements"],
                 ["sends", "Envois LinkedIn"],
@@ -2976,7 +4188,7 @@ export default function PostsPage() {
               ))}
             </div>
             <a href="/admin/linkedin/statistiques" style={{ fontSize: 12, color: "#0147ff", textDecoration: "none" }}>
-              Ouvrir l’onglet Statistiques pour l’import `.xlsx/.csv` complet
+              Ouvrir l'onglet Statistiques pour l'import `.xlsx/.csv` complet
             </a>
             <button onClick={() => saveStats(statsPost.id)} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13 }}>
               Sauvegarder
@@ -2985,7 +4197,7 @@ export default function PostsPage() {
         </div>
       )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .carousel-editor-strip::-webkit-scrollbar { display: none; }`}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes editorLoaderIn { from { opacity: 0; } to { opacity: 1; } } @keyframes editorLoaderPulse { from { opacity: 1; } to { opacity: 0.75; } } .carousel-editor-strip::-webkit-scrollbar { display: none; }`}</style>
     </div>
   );
 }
@@ -2996,11 +4208,11 @@ const SLIDE_FIELD_LABELS: Record<string, { label: string; color: string }> = {
   TITRE: { label: "Titre", color: "font-semibold" },
   "SOUS-TITRE": { label: "Sous-titre", color: "" },
   TEXTE: { label: "Texte", color: "" },
-  VISUEL: { label: "Visuel suggéré", color: "" },
+  VISUEL: { label: "Visuel suggere", color: "" },
   CTA: { label: "CTA", color: "" },
   EXEMPLE: { label: "Exemple", color: "" },
   STAT: { label: "Statistique", color: "" },
-  PROBLEMATIQUE: { label: "Problématique", color: "" },
+  PROBLEMATIQUE: { label: "Problematique", color: "" },
   ACCROCHE: { label: "Accroche", color: "" },
 };
 
@@ -3025,7 +4237,7 @@ function parseSlideFields(content: string): { key: string; value: string }[] | n
   return fields.length >= 2 ? fields : null;
 }
 
-function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSlidePayload | null; raw: string; scale?: number }) {
+function LegacyCarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSlidePayload | null; raw: string; scale?: number }) {
   const data = payload ?? { kind: "context" as CarouselSlideKind, label: "Slide", body: raw };
   const isRed = data.kind === "argument-red";
   const accent = isRed ? "#EF0C0C" : "#0147FF";
@@ -3216,7 +4428,7 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
         {logo}
         <div style={{ position: "absolute", left: 86, top: 98, width: 403, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Case numéro */}
+            {/* Case numero */}
             <span style={{
               width: 66,
               height: 65,
@@ -3256,7 +4468,7 @@ function CarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: CarouselSli
               boxShadow: isRed
                 ? "0 24px 9.38px rgba(150,13,13,0.02), 0 13.39px 8.04px rgba(150,13,13,0.08), 0 6.03px 6.03px rgba(150,13,13,0.13), 0 1.34px 3.35px rgba(150,13,13,0.15)"
                 : "0 24px 9.38px rgba(1,71,255,0.02), 0 13.39px 8.04px rgba(1,71,255,0.08), 0 6.03px 6.03px rgba(1,71,255,0.13), 0 1.34px 3.35px rgba(1,71,255,0.15)",
-            }}>{limitSlideTitle(data.title || "")}</span>
+            }}>{data.title || ""}</span>
           </div>
           <p style={{
             margin: "12px 0 0",
@@ -3391,7 +4603,7 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
       <div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
           {fields && (
-            <button onClick={() => setRawMode(false)} style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Vue structurée</button>
+            <button onClick={() => setRawMode(false)} style={{ fontSize: 11, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Vue structuree</button>
           )}
         </div>
         <textarea rows={8} value={content} onChange={e => onChange(e.target.value)}
@@ -3404,7 +4616,7 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
     <div style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 11, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f6f6f6", padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
         <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(18,26,46,0.5)", ...jkSlide }}></span>
-        <button onClick={() => setRawMode(true)} style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Éditer brut</button>
+        <button onClick={() => setRawMode(true)} style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", background: "none", border: "none", cursor: "pointer", ...jkSlide }}>Editer brut</button>
       </div>
       <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: 10, background: "#fff" }}>
         {fields.map(f => (
@@ -3413,7 +4625,7 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
               {SLIDE_FIELD_LABELS[f.key]?.label || f.key}
             </p>
             <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: SLIDE_FIELD_COLORS[f.key] || "rgba(18,26,46,0.7)", ...jkSlide }}>
-              {f.value || <span style={{ color: "rgba(18,26,46,0.2)", fontStyle: "italic" }}>—</span>}
+              {f.value || <span style={{ color: "rgba(18,26,46,0.2)", fontStyle: "italic" }}>-</span>}
             </p>
           </div>
         ))}
@@ -3421,4 +4633,5 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
     </div>
   );
 }
+
 

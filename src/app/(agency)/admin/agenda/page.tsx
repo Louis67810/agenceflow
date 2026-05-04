@@ -1,23 +1,19 @@
 "use client";
 
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
-import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
-import { CheckSquare, Flame, Star, TrendingUp, ChevronRight, Circle, CheckCircle2, Calendar, Target, PenLine, Timer } from "lucide-react";
-import type { AgendaTask, AgendaHabit } from "@/types/agenda";
 import { calculateDayScore } from "@/lib/agenda/points";
+import type { AgendaHabit, AgendaTask } from "@/types/agenda";
+import { Calendar, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Plus, Star, Target, Timer } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+
+type PeriodKey = "week" | "month" | "twoMonths" | "threeMonths" | "year";
 
 interface DashboardData {
   todayTasks: AgendaTask[];
   habits: (AgendaHabit & { done_today: boolean })[];
-  recentRecap?: { day_score: number; recap_date: string };
-}
-
-interface DailyScore {
-  date: string;
-  score: number;
-  done: number;
-  total: number;
+  recentRecap?: { day_score: number; recap_date: string; mood?: string };
 }
 
 interface HabitLog {
@@ -25,430 +21,510 @@ interface HabitLog {
   logged_date: string;
 }
 
+interface RecapData {
+  recap_date: string;
+  day_score: number;
+  tasks_completed: number;
+  tasks_planned?: number;
+  habits_done: number;
+  mood?: string;
+}
+
 interface StatsData {
   monthlyData: Record<string, { done: number; total: number; score: number }>;
   habitLogs: HabitLog[];
-  recaps: { recap_date: string; day_score: number; tasks_completed: number; habits_done: number; points_earned: number; bonus_points: number }[];
+  recaps: RecapData[];
 }
 
-function scoreToColor(score: number): string {
-  const alpha = score / 100 * 0.9 + 0.05;
-  return `rgba(1, 71, 255, ${alpha})`;
+const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
+const panelShadow = "0px 10px 24px rgba(18,26,46,0.035)";
+const softBorder = "1px solid rgba(18,26,46,0.12)";
+const blue = "#0147ff";
+const jk = '"Plus Jakarta Sans", sans-serif';
+
+const periodOptions: Array<{ key: PeriodKey; label: string; days: number }> = [
+  { key: "week", label: "Cette semaine", days: 7 },
+  { key: "month", label: "Ce mois", days: 30 },
+  { key: "twoMonths", label: "2 mois", days: 60 },
+  { key: "threeMonths", label: "3 mois", days: 90 },
+  { key: "year", label: "Annee entiere", days: 365 },
+];
+
+const pageStyle: CSSProperties = {
+  minHeight: "100vh",
+  background: "#fbfbfb",
+  padding: "34px 48px 42px",
+  color: "#121a2e",
+};
+
+const panelStyle: CSSProperties = {
+  background: "#fff",
+  border: softBorder,
+  borderRadius: 12,
+  boxShadow: panelShadow,
+};
+
+function formatDateKey(date: Date) {
+  return date.toISOString().split("T")[0];
 }
 
-function getWeeksForHeatmap(days: number) {
-  const weeks: { date: Date; key: string }[][] = [];
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - days + 1);
-
-  // Adjust start to Monday
-  const startDay = start.getDay();
-  const mondayOffset = startDay === 0 ? -6 : 1 - startDay;
-  start.setDate(start.getDate() + mondayOffset);
-
-  let current = new Date(start);
-  while (current <= end) {
-    const week: { date: Date; key: string }[] = [];
-    for (let i = 0; i < 7; i++) {
-      week.push({ date: new Date(current), key: current.toISOString().split("T")[0] });
-      current.setDate(current.getDate() + 1);
-    }
-    weeks.push(week);
-  }
-  return weeks;
+function addMonths(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + amount);
+  return next;
 }
 
-function getMonthLabels(weeks: { date: Date; key: string }[][]) {
-  const labels: { month: string; weekIndex: number }[] = [];
-  let lastMonth = "";
-  weeks.forEach((week, i) => {
-    const mid = week[3];
-    const month = mid.date.toLocaleDateString("fr-FR", { month: "short" });
-    if (month !== lastMonth) {
-      labels.push({ month, weekIndex: i });
-      lastMonth = month;
-    }
+function getMonthDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const count = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: count }, (_, index) => new Date(year, month, index + 1, 12));
+}
+
+function formatShortDate(date: Date) {
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }).replace(".", "");
+}
+
+function getPeriodDates(periodKey: PeriodKey) {
+  const option = periodOptions.find((item) => item.key === periodKey) ?? periodOptions[1];
+  const today = new Date();
+  return Array.from({ length: option.days }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (option.days - 1 - index));
+    return date;
   });
-  return labels;
+}
+
+function getMoodColor(mood?: string) {
+  const normalized = (mood ?? "").toLowerCase();
+  if (normalized === "exhausted") return "#ff5a61";
+  if (normalized === "hard") return "#ff8b5b";
+  if (normalized === "okay") return "#ffc957";
+  if (normalized === "good") return "#93d95e";
+  if (normalized === "excellent") return "#4dc84a";
+  return "#f1f1f1";
+}
+
+function buildSmoothPath(points: Array<{ x: number; y: number }>) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 0; index < points.length - 1; index++) {
+    const current = points[index];
+    const next = points[index + 1];
+    const controlX = (current.x + next.x) / 2;
+    path += ` C ${controlX} ${current.y}, ${controlX} ${next.y}, ${next.x} ${next.y}`;
+  }
+  return path;
 }
 
 export default function AgendaDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedHabitId, setSelectedHabitId] = useState<string>("");
-  const today = new Date().toISOString().split("T")[0];
+  const [periodKey, setPeriodKey] = useState<PeriodKey>("month");
+  const [habitFilter, setHabitFilter] = useState("");
+  const [openMenu, setOpenMenu] = useState<"period" | "habit" | null>(null);
+  const [moodMonth, setMoodMonth] = useState(() => new Date());
+  const [scoreMonth, setScoreMonth] = useState(() => new Date());
+  const [completionMonth, setCompletionMonth] = useState(() => new Date());
+
+  const today = formatDateKey(new Date());
 
   useEffect(() => {
     async function load() {
-      const [tasksRes, habitsRes, recapRes, statsRes] = await Promise.all([
-        agendaFetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()),
-        agendaFetch("/api/agenda/habits").then(r => r.json()),
-        agendaFetch(`/api/agenda/recap?date=${today}`).then(r => r.json()),
-        agendaFetch("/api/agenda/stats").then(r => r.json()).catch(() => null),
-      ]);
+      try {
+        const [tasksRes, habitsRes, recapRes, statsRes] = await Promise.all([
+          agendaFetch(`/api/agenda/tasks?date=${today}`).then((response) => response.json()),
+          agendaFetch("/api/agenda/habits").then((response) => response.json()),
+          agendaFetch(`/api/agenda/recap?date=${today}`).then((response) => response.json()),
+          agendaFetch("/api/agenda/stats").then((response) => response.json()).catch(() => null),
+        ]);
 
-      setData({
-        todayTasks: tasksRes.tasks ?? [],
-        habits: habitsRes.habits ?? [],
-        recentRecap: recapRes.recap ? { day_score: recapRes.recap.day_score, recap_date: recapRes.recap.recap_date } : undefined,
-      });
-
-      if (statsRes && !statsRes.error) {
-        setStats({
-          monthlyData: statsRes.monthlyData ?? {},
-          habitLogs: statsRes.habitLogs ?? [],
-          recaps: statsRes.recaps ?? [],
+        setData({
+          todayTasks: tasksRes.tasks ?? [],
+          habits: habitsRes.habits ?? [],
+          recentRecap: recapRes.recap
+            ? {
+                day_score: recapRes.recap.day_score,
+                recap_date: recapRes.recap.recap_date,
+                mood: recapRes.recap.mood,
+              }
+            : undefined,
         });
-      }
 
-      if (habitsRes.habits?.length > 0) {
-        setSelectedHabitId(habitsRes.habits[0].id);
+        if (statsRes && !statsRes.error) {
+          setStats({
+            monthlyData: statsRes.monthlyData ?? {},
+            habitLogs: statsRes.habitLogs ?? [],
+            recaps: statsRes.recaps ?? [],
+          });
+        }
+        if ((habitsRes.habits ?? []).length > 0) {
+          setHabitFilter((current) => current || habitsRes.habits[0].id);
+        }
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     }
-    load();
+
+    void load();
   }, [today]);
 
-  const handleToggleTask = async (task: AgendaTask) => {
-    const newStatus = task.status === "done" ? "todo" : "done";
-    await agendaFetch(`/api/agenda/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    setData(prev => prev ? {
-      ...prev,
-      todayTasks: prev.todayTasks.map(t => t.id === task.id ? { ...t, status: newStatus } : t),
-    } : prev);
-  };
+  const doneTasks = data?.todayTasks.filter((task) => task.status === "done").length ?? 0;
+  const totalTasks = data?.todayTasks.length ?? 0;
+  const doneHabits = data?.habits.filter((habit) => habit.done_today).length ?? 0;
+  const totalHabits = data?.habits.length ?? 0;
+  const currentDayScore = data?.recentRecap?.day_score ?? calculateDayScore(doneTasks, totalTasks, doneHabits, totalHabits);
+  const bestStreak = Math.max(...(data?.habits.map((habit) => habit.streak_current) ?? [0]), 0);
 
-  const handleToggleHabit = async (habit: AgendaHabit & { done_today: boolean }) => {
-    if (habit.done_today) {
-      await agendaFetch(`/api/agenda/habits/${habit.id}/log`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: today }),
-      });
-    } else {
-      await agendaFetch(`/api/agenda/habits/${habit.id}/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: today }),
-      });
-    }
-    setData(prev => prev ? {
-      ...prev,
-      habits: prev.habits.map(h => h.id === habit.id ? { ...h, done_today: !h.done_today } : h),
-    } : prev);
-  };
+  const periodSeries = useMemo(() => {
+    const dates = getPeriodDates(periodKey);
+    const logSet = new Set((stats?.habitLogs ?? []).filter((log) => log.habit_id === habitFilter).map((log) => log.logged_date));
+    return dates.map((date, index) => {
+      const key = formatDateKey(date);
+      const score = habitFilter ? (logSet.has(key) ? 100 : 0) : 0;
+      return { date, key, score };
+    });
+  }, [periodKey, stats, habitFilter]);
+
+  const selectedPeriodLabel = periodOptions.find((option) => option.key === periodKey)?.label ?? "Ce mois";
+  const selectedHabitLabel = data?.habits.find((habit) => habit.id === habitFilter)?.title ?? "Habitude";
 
   if (loading) {
-    return <div className="p-8 text-gray-400">Chargement...</div>;
+    return (
+      <div style={pageStyle}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "rgba(18,26,46,0.55)" }}>Chargement...</p>
+      </div>
+    );
   }
 
-  const doneTasks = data?.todayTasks.filter(t => t.status === "done").length ?? 0;
-  const totalTasks = data?.todayTasks.length ?? 0;
-  const doneHabits = data?.habits.filter(h => h.done_today).length ?? 0;
-  const totalHabits = data?.habits.length ?? 0;
-  const taskPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const currentDayScore = data?.recentRecap?.day_score ?? calculateDayScore(doneTasks, totalTasks, doneHabits, totalHabits);
+  return (
+    <main style={pageStyle} onClick={() => setOpenMenu(null)}>
+      <div style={{ maxWidth: 1110, margin: "0 auto" }}>
+        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, paddingBottom: 28, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <h1 style={{ margin: 0, fontFamily: jk, fontSize: 26, lineHeight: "32px", fontWeight: 700, letterSpacing: "-0.45px" }}>
+            Centre d&apos;activit&eacute;
+          </h1>
+          <Link href="/admin/agenda/tasks" style={{ textDecoration: "none" }}>
+            <ClientBlueButton wrapperStyle={{ width: "auto" }} style={{ minHeight: 48, padding: "0 22px", fontSize: 14 }} icon={<Plus size={16} />}>
+              Ajouter une t&acirc;che
+            </ClientBlueButton>
+          </Link>
+        </header>
 
-  const todayFmt = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 28 }}>
+          <DashboardMetricCard icon={<CheckSquare size={17} />} value={`${doneTasks}/${totalTasks}`} label="Taches realisees" />
+          <DashboardMetricCard icon={<Timer size={17} />} value={`${doneHabits}/${totalHabits}`} label="Habitudes completees" />
+          <DashboardMetricCard icon={<Star size={17} />} value={`${currentDayScore}/100`} label="Score de journee" />
+          <DashboardMetricCard icon={<Target size={17} />} value={`${bestStreak}j`} label="Meilleure serie" />
+        </section>
 
-  // Heatmap data (~90 days)
-  const heatmapWeeks = getWeeksForHeatmap(91);
-  const monthLabels = getMonthLabels(heatmapWeeks);
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 304px", gap: 16, marginTop: 18 }}>
+          <article style={{ ...panelStyle, minHeight: 388, padding: "18px 24px 24px", boxSizing: "border-box" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
+              <h2 style={{ margin: 0, fontFamily: jk, fontSize: 16, lineHeight: "22px", fontWeight: 700, letterSpacing: "-0.25px" }}>
+                Evolution du score par habitude
+              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }} onClick={(event) => event.stopPropagation()}>
+                <FilterTag icon={<Calendar size={15} />} label={selectedPeriodLabel} active={openMenu === "period"} onClick={() => setOpenMenu(openMenu === "period" ? null : "period")} />
+                <FilterTag label={selectedHabitLabel} active={openMenu === "habit"} onClick={() => setOpenMenu(openMenu === "habit" ? null : "habit")} />
+                {openMenu === "period" ? (
+                  <Dropdown right={154}>
+                    {periodOptions.map((option) => (
+                      <DropdownItem key={option.key} active={periodKey === option.key} onClick={() => { setPeriodKey(option.key); setOpenMenu(null); }}>
+                        {option.label}
+                      </DropdownItem>
+                    ))}
+                  </Dropdown>
+                ) : null}
+                {openMenu === "habit" ? (
+                  <Dropdown right={0}>
+                    {(data?.habits ?? []).map((habit) => (
+                      <DropdownItem key={habit.id} active={habitFilter === habit.id} onClick={() => { setHabitFilter(habit.id); setOpenMenu(null); }}>
+                        {habit.title}
+                      </DropdownItem>
+                    ))}
+                  </Dropdown>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ height: 1, background: "rgba(18,26,46,0.06)", marginTop: 20 }} />
+            <ScoreAreaChart data={periodSeries} />
+          </article>
 
-  // Habit evolution data (last 30 days)
-  const last30Days = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (29 - i));
-    return d.toISOString().split("T")[0];
+          <article style={{ ...panelStyle, minHeight: 388, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+            <PanelTitleWithMonth title="Niveau d'humeur" month={moodMonth} onPrev={() => setMoodMonth((current) => addMonths(current, -1))} onNext={() => setMoodMonth((current) => addMonths(current, 1))} />
+            <MoodHeatmap month={moodMonth} stats={stats} />
+          </article>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginTop: 18 }}>
+          <article style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+            <PanelTitleWithMonth title="Evolution du score" month={scoreMonth} onPrev={() => setScoreMonth((current) => addMonths(current, -1))} onNext={() => setScoreMonth((current) => addMonths(current, 1))} />
+            <MiniScoreChart month={scoreMonth} stats={stats} currentDayScore={currentDayScore} />
+          </article>
+          <article style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+            <PanelTitleWithMonth title="Completion des taches" month={completionMonth} onPrev={() => setCompletionMonth((current) => addMonths(current, -1))} onNext={() => setCompletionMonth((current) => addMonths(current, 1))} />
+            <TaskCompletionBars month={completionMonth} stats={stats} />
+          </article>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function DashboardMetricCard({ icon, value, label }: { icon: ReactNode; value: string; label: string }) {
+  return (
+    <article style={{ minHeight: 160, borderRadius: 18, border: softBorder, background: "#fff", boxShadow: cardShadow, padding: "24px 24px", boxSizing: "border-box" }}>
+      <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.28)", marginBottom: 18 }}>
+        {icon}
+      </div>
+      <strong style={{ display: "block", fontFamily: jk, fontSize: 28, lineHeight: "32px", fontWeight: 700, letterSpacing: "-0.5px", color: "#121a2e" }}>
+        {value}
+      </strong>
+      <span style={{ display: "block", marginTop: 8, fontFamily: jk, fontSize: 13, lineHeight: "18px", fontWeight: 700, color: "rgba(18,26,46,0.56)" }}>
+        {label}
+      </span>
+    </article>
+  );
+}
+
+function FilterTag({ icon, label, active, onClick }: { icon?: ReactNode; label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        minHeight: 36,
+        borderRadius: 8,
+        border: active ? "1px solid rgba(1,71,255,0.28)" : "1px solid rgba(18,26,46,0.12)",
+        background: "#fff",
+        boxShadow: "0px 4px 8px rgba(18,26,46,0.03)",
+        padding: "0 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 13,
+        fontWeight: 700,
+        color: "rgba(18,26,46,0.7)",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {icon}
+      {label}
+      <ChevronDown size={15} />
+    </button>
+  );
+}
+
+function Dropdown({ children, right }: { children: ReactNode; right: number }) {
+  return (
+    <div style={{ position: "absolute", top: 44, right, zIndex: 10, minWidth: 190, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6 }}>
+      {children}
+    </div>
+  );
+}
+
+function DropdownItem({ children, active, onClick }: { children: ReactNode; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ width: "100%", border: 0, borderRadius: 10, background: active ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 700, color: "rgba(18,26,46,0.78)", cursor: "pointer" }}>
+      {children}
+    </button>
+  );
+}
+
+function ScoreAreaChart({ data }: { data: Array<{ date: Date; key: string; score: number }> }) {
+  const width = 920;
+  const chartLeft = 42;
+  const chartRight = 900;
+  const chartTop = 32;
+  const chartBottom = 232;
+  const maxValue = 100;
+  const points = data.map((item, index) => {
+    const x = chartLeft + (index / Math.max(data.length - 1, 1)) * (chartRight - chartLeft);
+    const y = chartBottom - (Math.min(maxValue, Math.max(0, item.score)) / maxValue) * (chartBottom - chartTop);
+    return { x, y };
+  });
+  const linePath = buildSmoothPath(points);
+  const areaPath = points.length > 0 ? `${linePath} L ${points[points.length - 1].x} ${chartBottom} L ${points[0].x} ${chartBottom} Z` : "";
+  const labelIndexes = Array.from(new Set([0, Math.floor(data.length * 0.25), Math.floor(data.length * 0.5), Math.floor(data.length * 0.75), data.length - 1])).filter((index) => index >= 0);
+  const toPercentX = (x: number) => `${(x / width) * 100}%`;
+  const toPercentY = (y: number) => `${(y / 285) * 100}%`;
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: 300, marginTop: 12 }}>
+      <svg viewBox={`0 0 ${width} 285`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}>
+        <defs>
+          <linearGradient id="agendaScoreFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7d9fff" stopOpacity="0.42" />
+            <stop offset="100%" stopColor="#7d9fff" stopOpacity="0.08" />
+          </linearGradient>
+        </defs>
+        {[100, 80, 60, 40, 20, 0].map((value) => {
+          const y = chartBottom - (value / maxValue) * (chartBottom - chartTop);
+          return value > 0 ? <line key={value} x1={chartLeft} x2={chartRight} y1={y} y2={y} stroke="rgba(18,26,46,0.04)" strokeWidth="1" /> : null;
+        })}
+        {areaPath ? <path d={areaPath} fill="url(#agendaScoreFill)" /> : null}
+        {linePath ? <path d={linePath} fill="none" stroke="#7b9cff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /> : null}
+      </svg>
+      {[100, 80, 60, 40, 20, 0].map((value) => {
+        const y = chartBottom - (value / maxValue) * (chartBottom - chartTop);
+        return (
+          <span key={value} style={{ position: "absolute", left: 0, top: `calc(${toPercentY(y)} - 11px)`, width: 48, fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.58)", lineHeight: "22px", whiteSpace: "nowrap", fontStretch: "normal", transform: "none" }}>
+            {value === 0 ? "0" : `${value}%`}
+          </span>
+        );
+      })}
+      {labelIndexes.map((index) => {
+        const item = data[index];
+        const x = chartLeft + (index / Math.max(data.length - 1, 1)) * (chartRight - chartLeft);
+        return (
+          <span key={index} style={{ position: "absolute", left: toPercentX(x), bottom: 0, width: 78, transform: "translateX(-34px)", fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.58)", lineHeight: "22px", whiteSpace: "nowrap", fontStretch: "normal" }}>
+            {formatShortDate(item.date)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function PanelTitleWithMonth({ title, month, onPrev, onNext }: { title: string; month: Date; onPrev: () => void; onNext: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 16, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+      <h2 style={{ margin: 0, fontFamily: jk, fontSize: 16, lineHeight: "22px", fontWeight: 700, letterSpacing: "-0.25px" }}>{title}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", textTransform: "capitalize" }}>
+          {month.toLocaleDateString("fr-FR", { month: "long" })}
+        </span>
+        <MonthButton ariaLabel="Mois precedent" onClick={onPrev}><ChevronLeft size={13} /></MonthButton>
+        <MonthButton ariaLabel="Mois suivant" onClick={onNext}><ChevronRight size={13} /></MonthButton>
+      </div>
+    </div>
+  );
+}
+
+function MoodHeatmap({ month, stats }: { month: Date; stats: StatsData | null }) {
+  const todayKey = formatDateKey(new Date());
+  const days = getMonthDays(month);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 7, paddingTop: 18 }}>
+      {days.map((date) => {
+        const key = formatDateKey(date);
+        const recap = stats?.recaps.find((item) => item.recap_date === key);
+        const isToday = key === todayKey;
+        return (
+          <span
+            key={key}
+            title={key}
+            style={{
+              aspectRatio: "1 / 1",
+              minHeight: 30,
+              borderRadius: 4,
+              background: getMoodColor(recap?.mood),
+              border: isToday ? "1px solid rgba(0,0,0,0.3)" : "1px solid transparent",
+              boxShadow: recap?.mood ? "inset 0 0 0 1px rgba(0,0,0,0.04)" : "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniScoreChart({ month, stats, currentDayScore }: { month: Date; stats: StatsData | null; currentDayScore: number }) {
+  const days = getMonthDays(month).map((date) => {
+    const key = formatDateKey(date);
+    const score = stats?.monthlyData?.[key]?.score ?? stats?.recaps.find((recap) => recap.recap_date === key)?.day_score ?? (key === formatDateKey(new Date()) ? currentDayScore : 0);
+    return { date, key, score };
+  });
+  return <ScoreAreaChart data={days} />;
+}
+
+function TaskCompletionBars({ month, stats }: { month: Date; stats: StatsData | null }) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const days = getMonthDays(month).map((date) => {
+    const key = formatDateKey(date);
+    const day = stats?.monthlyData?.[key];
+    const percent = day && day.total > 0 ? Math.round((day.done / day.total) * 100) : 0;
+    return { key, date, percent, done: day?.done ?? 0, total: day?.total ?? 0 };
   });
 
-  const habitLogsForSelected = stats?.habitLogs?.filter(l => l.habit_id === selectedHabitId) ?? [];
-  const habitLogSet = new Set(habitLogsForSelected.map(l => l.logged_date));
-
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-[#fbfbfb] min-h-screen">
-      {/* Header */}
-      <div className="mb-6">
-        <p className="text-sm text-gray-500 capitalize">{todayFmt}</p>
-        <h1 className="text-2xl font-bold text-gray-900 mt-1">Bonjour</h1>
-      </div>
-
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 gap-4 mb-6 sm:grid-cols-4">
-        <StatCard
-          icon={<CheckSquare size={20} className="text-[#0147FF]" />}
-          label="Tâches aujourd'hui"
-          value={`${doneTasks}/${totalTasks}`}
-          sub={`${taskPct}% complétées`}
-        />
-        <StatCard
-          icon={<Flame size={20} className="text-orange-500" />}
-          label="Habitudes"
-          value={`${doneHabits}/${totalHabits}`}
-          sub={totalHabits > 0 ? `${Math.round((doneHabits / totalHabits) * 100)}% faites` : "Aucune habitude"}
-        />
-        <StatCard
-          icon={<Star size={20} className="text-yellow-500" />}
-          label="Score du jour"
-          value={`${currentDayScore}/100`}
-          sub={data?.recentRecap ? "Récap enregistré" : "En cours"}
-        />
-        <StatCard
-          icon={<TrendingUp size={20} className="text-green-500" />}
-          label="Série active"
-          value={`${Math.max(...(data?.habits.map(h => h.streak_current) ?? [0]), 0)}j`}
-          sub="meilleure série"
-        />
-      </div>
-
-      {/* Day score progress bar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Score du jour</span>
-          <span className="text-sm text-[#0147FF] font-semibold">{currentDayScore}/100</span>
-        </div>
-        <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${
-              currentDayScore >= 80 ? "bg-green-500" : currentDayScore >= 60 ? "bg-yellow-400" : "bg-red-400"
-            }`}
-            style={{ width: `${currentDayScore}%` }}
-          />
-        </div>
-        <p className="text-xs text-gray-400 mt-1">
-          {doneTasks}/{totalTasks} tâches · {doneHabits}/{totalHabits} habitudes
-        </p>
-      </div>
-
-      {/* Heatmap */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <h2 className="font-semibold text-gray-800 mb-3">Activité des 3 derniers mois</h2>
-        <div className="overflow-x-auto">
-          <div className="inline-block min-w-full">
-            {/* Month labels */}
-            <div className="flex mb-1" style={{ paddingLeft: 20 }}>
-              {monthLabels.map((m, i) => (
-                <span
-                  key={i}
-                  className="text-[10px] text-gray-400 uppercase tracking-wide absolute"
-                  style={{ marginLeft: `${m.weekIndex * (12 + 2)}px` }}
-                >
-                  {m.month}
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-[2px]">
-              {heatmapWeeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-[2px]">
-                  {week.map((day, di) => {
-                    const dayData = stats?.monthlyData?.[day.key];
-                    const score = dayData?.score ?? 0;
-                    const isFuture = day.key > today;
-                    return (
-                      <div
-                        key={di}
-                        className="rounded-sm"
-                        style={{
-                          width: 12,
-                          height: 12,
-                          background: isFuture ? "#f3f4f6" : scoreToColor(score),
-                        }}
-                        title={`${day.key}: ${score}/100`}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mt-3 text-xs text-gray-400">
-          <span>Moins</span>
-          {[0, 25, 50, 75, 100].map(s => (
+    <div style={{ height: 236, display: "grid", gridTemplateRows: "1fr 18px", padding: "8px 0 0" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, position: "relative", minHeight: 0, alignSelf: "end" }}>
+        {days.map((day, index) => {
+          const hovered = hoveredKey === day.key;
+          return (
             <div
-              key={s}
-              className="rounded-sm"
-              style={{ width: 12, height: 12, background: scoreToColor(s) }}
-            />
-          ))}
-          <span>Plus</span>
-        </div>
-      </div>
-
-      {/* Habit evolution chart */}
-      {data?.habits && data.habits.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-800">Suivi d'habitude (30 jours)</h2>
-            <select
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0147FF]/20"
-              value={selectedHabitId}
-              onChange={e => setSelectedHabitId(e.target.value)}
+              key={day.key}
+              onMouseEnter={() => setHoveredKey(day.key)}
+              onMouseLeave={() => setHoveredKey((current) => (current === day.key ? null : current))}
+              style={{ flex: 1, height: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", position: "relative" }}
             >
-              {data.habits.map(h => (
-                <option key={h.id} value={h.id}>{h.title}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end gap-[3px] h-24">
-            {last30Days.map(date => {
-              const isDone = habitLogSet.has(date);
-              const isToday = date === today;
-              return (
-                <div key={date} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className={`w-full rounded-sm transition-all ${isToday ? "ring-1 ring-[#0147FF]" : ""}`}
-                    style={{
-                      height: "100%",
-                      background: isDone ? "#0147FF" : "#f3f4f6",
-                      minHeight: 4,
-                    }}
-                    title={`${date}: ${isDone ? "Fait" : "Non fait"}`}
-                  />
+              {hovered ? (
+                <div style={{ position: "absolute", bottom: `calc(${Math.max(8, day.percent)}% + 12px)`, left: "50%", transform: "translateX(-50%)", zIndex: 4, width: 176, borderRadius: 8, background: "rgba(18,18,18,0.88)", color: "#fff", padding: "10px 11px", boxShadow: "0px 12px 24px rgba(0,0,0,0.22)", pointerEvents: "none" }}>
+                  <strong style={{ display: "block", marginBottom: 6, fontSize: 12, fontWeight: 700 }}>Jour {dateDayNumber(day.date)}</strong>
+                  <span style={{ display: "block", fontSize: 11, lineHeight: 1.45, color: "rgba(255,255,255,0.78)" }}>{day.done} taches realisees</span>
+                  <span style={{ display: "block", fontSize: 11, lineHeight: 1.45, color: "rgba(255,255,255,0.78)" }}>{day.total} taches prevues</span>
+                  <span style={{ display: "block", fontSize: 11, lineHeight: 1.45, color: "rgba(255,255,255,0.78)" }}>{day.percent}% complete</span>
+                  <span style={{ position: "absolute", left: "50%", bottom: -6, width: 12, height: 12, background: "rgba(18,18,18,0.88)", transform: "translateX(-50%) rotate(45deg)" }} />
                 </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-            <span>{new Date(last30Days[0]).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
-            <span>Aujourd'hui</span>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {/* Today's tasks */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-800">Tâches du jour</h2>
-            <Link href="/admin/agenda/tasks" className="text-xs text-[#0147FF] hover:underline flex items-center gap-0.5">
-              Voir tout <ChevronRight size={12} />
-            </Link>
-          </div>
-          {data?.todayTasks.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">Aucune tâche pour aujourd&apos;hui</p>
-          ) : (
-            <ul className="space-y-2">
-              {data?.todayTasks.slice(0, 5).map(task => (
-                <li
-                  key={task.id}
-                  className="flex items-center gap-3 cursor-pointer group"
-                  onClick={() => handleToggleTask(task)}
-                >
-                  {task.status === "done"
-                    ? <CheckCircle2 size={18} className="text-green-500 shrink-0" />
-                    : <Circle size={18} className="text-gray-300 group-hover:text-[#0147FF] shrink-0 transition-colors" />
-                  }
-                  <span className={`text-sm flex-1 ${task.status === "done" ? "line-through text-gray-400" : "text-gray-700"}`}>
-                    {task.title}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link
-            href="/admin/agenda/tasks"
-            className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-full bg-[#121A2E] text-white text-sm font-medium hover:bg-[#1a2540] transition-colors"
-          >
-            + Ajouter une tâche
-          </Link>
-        </div>
-
-        {/* Habits */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-800">Habitudes du jour</h2>
-            <Link href="/admin/agenda/habits" className="text-xs text-[#0147FF] hover:underline flex items-center gap-0.5">
-              Gérer <ChevronRight size={12} />
-            </Link>
-          </div>
-          {data?.habits.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">Aucune habitude configurée</p>
-          ) : (
-            <ul className="space-y-2">
-              {data?.habits.map(habit => (
-                <li
-                  key={habit.id}
-                  className="flex items-center gap-3 cursor-pointer group"
-                  onClick={() => handleToggleHabit(habit)}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all ${
-                      habit.done_today ? "opacity-100 scale-100" : "opacity-50 scale-95 group-hover:opacity-75"
-                    }`}
-                    style={{ background: habit.done_today ? habit.color + "20" : "#f3f4f6" }}
-                  >
-                    {habit.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium ${habit.done_today ? "text-gray-500 line-through" : "text-gray-700"}`}>
-                      {habit.title}
-                    </p>
-                    {habit.streak_current > 0 && (
-                      <p className="text-xs text-orange-500 flex items-center gap-1"><Flame size={12} /> {habit.streak_current} jours</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              ) : null}
+              <span
+                style={{
+                  width: "100%",
+                  maxWidth: 16,
+                  minHeight: day.percent > 0 ? 10 : 5,
+                  height: `${Math.max(5, day.percent)}%`,
+                  borderRadius: 6,
+                  background: blue,
+                  border: "1px solid rgba(0,0,0,0.05)",
+                  boxShadow: hovered ? "0px 4px 10px rgba(1,71,255,0.22)" : "0px 2px 4px rgba(18,26,46,0.08)",
+                  opacity: day.percent > 0 ? 0.9 : 0.08,
+                  transition: "height 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease",
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
-
-      {/* Quick actions */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <QuickAction href="/admin/agenda/calendar" icon={<Calendar size={20} />} label="Calendrier" />
-        <QuickAction href="/admin/agenda/objectives" icon={<Target size={20} />} label="Objectifs" />
-        <QuickAction href="/admin/agenda/recap" icon={<PenLine size={20} />} label="Récap du jour" />
-        <QuickAction href="/admin/agenda/pomodoro" icon={<Timer size={20} />} label="Pomodoro" />
+      <div style={{ display: "flex", gap: 8, alignItems: "end", paddingTop: 2 }}>
+        {days.map((day, index) => (
+          <span key={day.key} style={{ flex: 1, textAlign: "center", fontFamily: "Inter, sans-serif", fontSize: 12, lineHeight: "16px", fontWeight: 600, color: "rgba(18,26,46,0.48)" }}>
+            {index % 4 === 0 ? day.date.getDate() : ""}
+          </span>
+        ))}
       </div>
-
-      {data?.recentRecap && (
-        <div className="mt-4 bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4">
-          <TrendingUp size={24} className="text-[#0147FF] shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-gray-700">Dernier récap · {new Date(data.recentRecap.recap_date).toLocaleDateString("fr-FR")}</p>
-            <p className="text-xs text-gray-500">Score de la journée: <strong>{data.recentRecap.day_score}/100</strong></p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function StatCard({ icon, label, value, sub }: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  sub: string;
-}) {
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-xs text-gray-500">{label}</span>
-      </div>
-      <p className="text-xl font-bold text-gray-900">{value}</p>
-      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-    </div>
-  );
+function dateDayNumber(date: Date) {
+  return date.getDate();
 }
 
-function QuickAction({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
+function MonthButton({ children, ariaLabel, onClick }: { children: ReactNode; ariaLabel: string; onClick: () => void }) {
   return (
-    <Link
-      href={href}
-      className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-white border border-gray-200 hover:border-[#0147FF] hover:text-[#0147FF] transition-colors"
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      onClick={onClick}
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 5,
+        border: "1px solid rgba(18,26,46,0.1)",
+        background: "#fff",
+        color: "#121a2e",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+      }}
     >
-      <span className="text-[#0147FF]">{icon}</span>
-      <span className="text-xs font-medium text-gray-600">{label}</span>
-    </Link>
+      {children}
+    </button>
   );
 }

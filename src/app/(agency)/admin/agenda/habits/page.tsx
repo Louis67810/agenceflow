@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, Flame, CheckCircle2, Circle, Star } from "lucide-react";
 import type { AgendaHabit } from "@/types/agenda";
 import { SqlMissingBanner } from "@/components/agenda/SqlMissingBanner";
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 
 type HabitWithMeta = AgendaHabit & { done_today: boolean; done_this_week: number };
 
@@ -98,13 +99,15 @@ export default function HabitsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Habitudes</h1>
           <p className="text-sm text-gray-400 mt-0.5">{doneToday}/{totalToday} complétées aujourd&apos;hui</p>
         </div>
-        <button
+        <ClientBlueButton
+          type="button"
           onClick={() => setShowForm(s => !s)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]"
+          icon={<Plus size={16} />}
+          wrapperStyle={{ width: "auto" }}
+          style={{ minHeight: 48, padding: "0 22px", fontSize: 14 }}
         >
-          <Plus size={16} />
           Nouvelle habitude
-        </button>
+        </ClientBlueButton>
       </div>
 
       {/* Progress */}
@@ -166,7 +169,7 @@ export default function HabitsPage() {
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500">Annuler</button>
-            <button onClick={handleCreate} className="px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]">Créer</button>
+            <ClientBlueButton type="button" onClick={handleCreate} wrapperStyle={{ width: "auto" }} style={{ minHeight: 42, padding: "0 18px", fontSize: 13 }}>Créer</ClientBlueButton>
           </div>
           {formError && <p className="text-red-500 text-xs mt-2">{formError}</p>}
         </div>

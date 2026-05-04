@@ -1,25 +1,34 @@
 "use client";
 
+import ClientBlueButton from "@/components/shared/ClientBlueButton";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
-import { useEffect, useMemo, useState } from "react";
-import {
-  Plus,
-  Trash2,
-  Circle,
-  CheckCircle2,
-  Target,
-  CalendarDays,
-  Link2,
-  X,
-  Check,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
 import type { AgendaObjective, AgendaTask } from "@/types/agenda";
+import {
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  ExternalLink,
+  Link2,
+  Plus,
+  Search,
+  Target,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 interface ObjectiveWithChildren extends AgendaObjective {
   children: ObjectiveWithChildren[];
 }
+
+type ObjectiveFilter = "active" | "completed" | "all";
+
+const filterLabels: Record<ObjectiveFilter, string> = {
+  active: "Objectifs actifs",
+  completed: "Objectifs termines",
+  all: "Tous les objectifs",
+};
 
 export default function ObjectivesPage() {
   const [objectives, setObjectives] = useState<ObjectiveWithChildren[]>([]);
@@ -27,9 +36,11 @@ export default function ObjectivesPage() {
   const [tasks, setTasks] = useState<AgendaTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ObjectiveFilter>("active");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
   const [linkModalObjectiveId, setLinkModalObjectiveId] = useState<string | null>(null);
-
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -37,13 +48,17 @@ export default function ObjectivesPage() {
     target_date: "",
   });
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function load() {
+    setLoading(true);
     const [objRes, tasksRes] = await Promise.all([
-      agendaFetch("/api/agenda/objectives").then(r => r.json()),
-      agendaFetch("/api/agenda/tasks").then(r => r.json()),
+      agendaFetch("/api/agenda/objectives").then((response) => response.json()),
+      agendaFetch("/api/agenda/tasks").then((response) => response.json()),
     ]);
+
     setObjectives(objRes.objectives ?? []);
     setFlat(objRes.flat ?? []);
     setTasks(tasksRes.tasks ?? []);
@@ -52,6 +67,7 @@ export default function ObjectivesPage() {
 
   async function handleCreate() {
     if (!form.title.trim()) return;
+
     const res = await agendaFetch("/api/agenda/objectives", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -62,17 +78,39 @@ export default function ObjectivesPage() {
         color: "#0147FF",
       }),
     });
+
     const data = await res.json();
     if (data.objective) {
-      load();
       setForm({ title: "", description: "", parent_id: "", target_date: "" });
       setShowForm(false);
+      setSelectedObjectiveId(data.objective.id);
+      await load();
     }
+  }
+
+  async function handleCreateChild(parentId: string, title: string) {
+    if (!title.trim()) return;
+
+    const res = await agendaFetch("/api/agenda/objectives", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title.trim(),
+        description: "",
+        parent_id: parentId,
+        target_date: null,
+        color: "#0147FF",
+      }),
+    });
+
+    const data = await res.json();
+    if (data.objective) await load();
   }
 
   async function handleDelete(id: string) {
     await agendaFetch(`/api/agenda/objectives/${id}`, { method: "DELETE" });
-    load();
+    if (selectedObjectiveId === id) setSelectedObjectiveId(null);
+    await load();
   }
 
   async function handleComplete(id: string) {
@@ -81,12 +119,12 @@ export default function ObjectivesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed", progress: 100 }),
     });
-    load();
+    await load();
   }
 
   async function handleLinkTasks(objectiveId: string, taskIds: string[]) {
     await Promise.all(
-      taskIds.map(id =>
+      taskIds.map((id) =>
         agendaFetch(`/api/agenda/tasks/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -94,7 +132,7 @@ export default function ObjectivesPage() {
         })
       )
     );
-    load();
+    await load();
   }
 
   async function handleUnlinkTask(taskId: string) {
@@ -103,135 +141,238 @@ export default function ObjectivesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ objective_id: null }),
     });
-    load();
+    await load();
   }
 
   async function handleToggleTaskStatus(task: AgendaTask) {
-    const newStatus = task.status === "done" ? "todo" : "done";
     await agendaFetch(`/api/agenda/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ status: task.status === "done" ? "todo" : "done" }),
     });
-    load();
+    await load();
   }
 
-  const availableTasks = useMemo(() => {
-    return tasks.filter(t => !t.objective_id && !t.parent_task_id);
-  }, [tasks]);
+  const visibleObjectives = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return flat
+      .filter((objective) => {
+        if (filter === "active") return objective.status !== "completed";
+        if (filter === "completed") return objective.status === "completed";
+        return true;
+      })
+      .filter((objective) => {
+        if (!query) return true;
+        return [objective.title, objective.description ?? ""].some((value) =>
+          value.toLowerCase().includes(query)
+        );
+      });
+  }, [filter, flat, search]);
 
-  if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
+  const selectedObjective = flat.find((objective) => objective.id === selectedObjectiveId) ?? null;
+  const availableTasks = tasks.filter((task) => !task.objective_id && !task.parent_task_id);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#fbfbfb] p-8 text-sm text-slate-400">Chargement...</div>;
+  }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-[#fbfbfb] min-h-screen">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Objectifs</h1>
-        <button
-          onClick={() => setShowForm(s => !s)}
-          className="flex items-center gap-2 px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a243a] transition-colors"
-        >
-          <Plus size={16} />
-          Nouvel objectif
-        </button>
+    <main className="min-h-screen bg-[#fbfbfb] px-10 py-8">
+      <div className="mx-auto max-w-[1230px]">
+        <header className="mb-8 flex items-center justify-between border-b border-black/[0.06] pb-8">
+          <h1
+            className="text-[28px] font-bold tracking-[-0.02em] text-[#121A2E]"
+            style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+          >
+            Objectifs
+          </h1>
+          <ClientBlueButton
+            type="button"
+            onClick={() => setShowForm((current) => !current)}
+            icon={<Plus size={16} />}
+            wrapperStyle={{ width: "auto" }}
+            style={{ minHeight: 42, padding: "0 18px", fontSize: 14 }}
+          >
+            Ajouter un objectif
+          </ClientBlueButton>
+        </header>
+
+        <div className="mb-6 flex items-center gap-6">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#121A2E]/45" size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Recherche"
+              className="h-12 w-full rounded-[7px] border border-black/10 bg-[#f2f2f2] pl-12 pr-4 text-sm font-medium text-[#121A2E] outline-none transition focus:border-black/10 focus:bg-[#f2f2f2]"
+            />
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFilterOpen((current) => !current)}
+              className="flex h-10 min-w-[140px] items-center justify-between gap-5 rounded-[7px] border border-black/10 bg-white px-4 text-sm font-medium text-slate-600 shadow-[0_8px_18px_rgba(18,26,46,0.06)]"
+            >
+              {filterLabels[filter]}
+              <ChevronDown size={16} />
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-12 z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white p-1 shadow-[0_18px_40px_rgba(18,26,46,0.12)]">
+                {(Object.keys(filterLabels) as ObjectiveFilter[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setFilter(key);
+                      setFilterOpen(false);
+                    }}
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-[#f6f6f6]"
+                  >
+                    {filterLabels[key]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {showForm && (
+          <ObjectiveFormOverlay
+            form={form}
+            objectives={flat}
+            onChange={setForm}
+            onCancel={() => setShowForm(false)}
+            onCreate={handleCreate}
+          />
+        )}
+
+        {visibleObjectives.length === 0 ? (
+          <EmptyState onCreate={() => setShowForm(true)} />
+        ) : (
+          <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {visibleObjectives.map((objective) => (
+              <ObjectiveCard
+                key={objective.id}
+                objective={objective}
+                tasks={tasks}
+                onOpen={() => setSelectedObjectiveId(objective.id)}
+              />
+            ))}
+          </section>
+        )}
       </div>
 
-      {showForm && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-4">Nouvel objectif</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-500 mb-1">Titre *</label>
-              <input
-                value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                placeholder="Ex: Augmenter le CA de 30%"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Objectif parent</label>
-              <select
-                value={form.parent_id}
-                onChange={e => setForm(f => ({ ...f, parent_id: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              >
-                <option value="">Aucun (objectif racine)</option>
-                {flat.map(o => (
-                  <option key={o.id} value={o.id}>{o.title}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Date cible</label>
-              <input
-                type="date"
-                value={form.target_date}
-                onChange={e => setForm(f => ({ ...f, target_date: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-500 mb-1">Description</label>
-              <textarea
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                rows={2}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
-              Annuler
-            </button>
-            <button onClick={handleCreate} className="px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540]">
-              Créer
-            </button>
-          </div>
-        </div>
-      )}
-
-      {objectives.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <Target size={40} className="mx-auto mb-3 opacity-30" />
-          <p>Aucun objectif</p>
-          <button onClick={() => setShowForm(true)} className="mt-3 text-sm text-[#0147FF] hover:underline">
-            + Créer votre premier objectif
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {objectives.map(obj => (
-            <ObjectiveCard
-              key={obj.id}
-              objective={obj}
-              tasks={tasks}
-              expanded={expanded}
-              onToggle={id => setExpanded(prev => {
-                const n = new Set(prev);
-                if (n.has(id)) n.delete(id); else n.add(id);
-                return n;
-              })}
-              onDelete={handleDelete}
-              onComplete={handleComplete}
-              onLinkTasks={handleLinkTasks}
-              onUnlinkTask={handleUnlinkTask}
-              onToggleTaskStatus={handleToggleTaskStatus}
-              onOpenLinkModal={setLinkModalObjectiveId}
-            />
-          ))}
-        </div>
+      {selectedObjective && (
+        <ObjectiveDetailsPanel
+          objective={selectedObjective}
+          objectives={objectives}
+          tasks={tasks}
+          onClose={() => setSelectedObjectiveId(null)}
+          onCreateChild={handleCreateChild}
+          onOpenLinkModal={setLinkModalObjectiveId}
+          onDelete={handleDelete}
+          onUnlinkTask={handleUnlinkTask}
+          onToggleTaskStatus={handleToggleTaskStatus}
+        />
       )}
 
       {linkModalObjectiveId && (
         <LinkTasksModal
           objectiveId={linkModalObjectiveId}
-          objectiveTitle={flat.find(o => o.id === linkModalObjectiveId)?.title ?? ""}
+          objectiveTitle={flat.find((objective) => objective.id === linkModalObjectiveId)?.title ?? ""}
           availableTasks={availableTasks}
           onClose={() => setLinkModalObjectiveId(null)}
           onLink={handleLinkTasks}
         />
       )}
+    </main>
+  );
+}
+
+function ObjectiveFormOverlay({
+  form,
+  objectives,
+  onChange,
+  onCancel,
+  onCreate,
+}: {
+  form: { title: string; description: string; parent_id: string; target_date: string };
+  objectives: AgendaObjective[];
+  onChange: (form: { title: string; description: string; parent_id: string; target_date: string }) => void;
+  onCancel: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-[560px] rounded-[24px] border border-black/10 bg-white p-6 shadow-[0_24px_70px_rgba(18,26,46,0.18)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-bold tracking-[-0.02em] text-[#121A2E]">Nouvel objectif</h2>
+          <button type="button" onClick={onCancel} className="rounded-full p-2 text-slate-400 hover:bg-[#f6f6f6] hover:text-[#121A2E]">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label className="md:col-span-2">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Nom</span>
+            <input
+              value={form.title}
+              onChange={(event) => onChange({ ...form, title: event.target.value })}
+              placeholder="Ex: Finir le porteur client"
+              className="h-11 w-full rounded-xl border border-black/10 bg-[#fbfbfb] px-4 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
+              autoFocus
+            />
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Objectif parent</span>
+            <select
+              value={form.parent_id}
+              onChange={(event) => onChange({ ...form, parent_id: event.target.value })}
+              className="h-11 w-full rounded-xl border border-black/10 bg-[#fbfbfb] px-4 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
+            >
+              <option value="">Aucun</option>
+              {objectives.map((objective) => (
+                <option key={objective.id} value={objective.id}>
+                  {objective.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Date cible</span>
+            <input
+              type="date"
+              value={form.target_date}
+              onChange={(event) => onChange({ ...form, target_date: event.target.value })}
+              className="h-11 w-full rounded-xl border border-black/10 bg-[#fbfbfb] px-4 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
+            />
+          </label>
+          <label className="md:col-span-2">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Description</span>
+            <textarea
+              value={form.description}
+              onChange={(event) => onChange({ ...form, description: event.target.value })}
+              rows={3}
+              className="w-full resize-none rounded-xl border border-black/10 bg-[#fbfbfb] px-4 py-3 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-3">
+          <button type="button" onClick={onCancel} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-[#f6f6f6]">
+            Annuler
+          </button>
+          <ClientBlueButton
+            type="button"
+            onClick={onCreate}
+            wrapperStyle={{ width: "auto" }}
+            style={{ minHeight: 42, padding: "0 18px", fontSize: 13 }}
+          >
+            Creer
+          </ClientBlueButton>
+        </div>
+      </div>
     </div>
   );
 }
@@ -239,105 +380,149 @@ export default function ObjectivesPage() {
 function ObjectiveCard({
   objective,
   tasks,
-  expanded,
-  onToggle,
-  onDelete,
-  onComplete,
-  onLinkTasks,
-  onUnlinkTask,
-  onToggleTaskStatus,
-  onOpenLinkModal,
+  onOpen,
 }: {
-  objective: ObjectiveWithChildren;
+  objective: AgendaObjective;
   tasks: AgendaTask[];
-  expanded: Set<string>;
-  onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onComplete: (id: string) => void;
-  onLinkTasks: (objectiveId: string, taskIds: string[]) => void;
-  onUnlinkTask: (taskId: string) => void;
-  onToggleTaskStatus: (task: AgendaTask) => void;
-  onOpenLinkModal: (id: string) => void;
+  onOpen: () => void;
 }) {
-  const isExpanded = expanded.has(objective.id);
-  const hasChildren = objective.children.length > 0;
-  const isCompleted = objective.status === "completed";
-  const linkedTasks = tasks.filter(t => t.objective_id === objective.id && !t.parent_task_id);
-  const progress = objective.progress ?? 0;
+  const linkedTasks = getLinkedTasks(objective.id, tasks);
+  const progress = getObjectiveProgress(objective, tasks);
+  const doneCount = linkedTasks.filter((task) => task.status === "done").length;
+  const progressLabel = linkedTasks.length > 0 ? `${doneCount}/${linkedTasks.length} taches realisees` : `${progress}% complete`;
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-xl p-4 transition-opacity ${isCompleted ? "opacity-60" : ""}`}>
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-[#0147FF]/10">
-          {isCompleted
-            ? <CheckCircle2 size={20} className="text-[#0147FF]" />
-            : <Circle size={20} className="text-[#0147FF]" />
-          }
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpen();
+      }}
+      className="min-h-[218px] rounded-[21px] border border-black/10 bg-white p-[26px] shadow-[0_20px_12px_rgba(0,0,0,0.02),0_9px_9px_rgba(0,0,0,0.03),0_2px_5px_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5"
+    >
+      <div className="mb-5 flex items-start justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-black/10 bg-[#ededed] text-[#a5a5a5] shadow-[0_20px_12px_rgba(0,0,0,0.02),0_9px_9px_rgba(0,0,0,0.03),0_2px_5px_rgba(0,0,0,0.03)]">
+          <CheckCircle2 size={19} strokeWidth={2.2} />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {hasChildren && (
-              <button onClick={() => onToggle(objective.id)} className="text-gray-400 hover:text-gray-600">
-                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-            )}
-            <h3 className={`font-semibold text-gray-800 ${isCompleted ? "line-through text-gray-500" : ""}`}>
-              {objective.title}
-            </h3>
-            {objective.target_date && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-400">
-                <CalendarDays size={12} />
-                {new Date(objective.target_date).toLocaleDateString("fr-FR")}
-              </span>
-            )}
-            {isCompleted && (
-              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-600">
-                <Check size={10} /> Terminé
-              </span>
-            )}
-          </div>
-          {objective.description && (
-            <p className="text-sm text-gray-500 mt-1">{objective.description}</p>
-          )}
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+          className="flex h-9 w-9 items-center justify-center rounded-[7px] border border-black/10 bg-white text-slate-300 transition hover:text-[#0147FF]"
+          aria-label="Ouvrir l'objectif"
+        >
+          <ExternalLink size={17} />
+        </button>
+      </div>
+      <h2 className="line-clamp-1 text-[19px] font-bold leading-tight tracking-[-0.02em] text-[#121A2E]">{objective.title}</h2>
+      <p className="mt-2 line-clamp-1 text-[28px] font-bold leading-none tracking-[-0.02em] text-[#121A2E]">{progress}%</p>
+      <p className="mt-2 line-clamp-1 text-[14px] font-medium text-slate-400">{progressLabel}</p>
+      <div className="mt-6 h-4 overflow-hidden rounded-[5px] bg-[#f3f3f3]">
+        <div
+          className="h-full rounded-[4px] bg-[#0147FF] transition-all duration-500"
+          style={{ width: `${Math.max(3, progress)}%` }}
+        />
+      </div>
+    </article>
+  );
+}
 
-          {/* Progress bar */}
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-500">Progression</span>
-              <span className="text-xs font-medium text-[#0147FF]">{progress}%</span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%`, background: "#0147FF" }}
-              />
-            </div>
-          </div>
+function ObjectiveDetailsPanel({
+  objective,
+  objectives,
+  tasks,
+  onClose,
+  onCreateChild,
+  onOpenLinkModal,
+  onDelete,
+  onUnlinkTask,
+  onToggleTaskStatus,
+}: {
+  objective: AgendaObjective;
+  objectives: ObjectiveWithChildren[];
+  tasks: AgendaTask[];
+  onClose: () => void;
+  onCreateChild: (parentId: string, title: string) => Promise<void>;
+  onOpenLinkModal: (objectiveId: string) => void;
+  onDelete: (id: string) => void;
+  onUnlinkTask: (taskId: string) => void;
+  onToggleTaskStatus: (task: AgendaTask) => void;
+}) {
+  const linkedTasks = getLinkedTasks(objective.id, tasks);
+  const children = findChildren(objective.id, objectives);
+  const progress = getObjectiveProgress(objective, tasks);
+  const [childTitle, setChildTitle] = useState("");
 
-          {/* Linked tasks */}
-          {linkedTasks.length > 0 && (
-            <div className="mt-3 space-y-1.5">
-              {linkedTasks.map(task => (
-                <div key={task.id} className="flex items-center gap-2 text-sm group">
-                  <button
-                    onClick={() => onToggleTaskStatus(task)}
-                    className="shrink-0"
-                  >
-                    {task.status === "done"
-                      ? <CheckCircle2 size={14} className="text-green-500" />
-                      : <Circle size={14} className="text-gray-300 hover:text-[#0147FF]" />
-                    }
+  async function submitChild() {
+    if (!childTitle.trim()) return;
+    await onCreateChild(objective.id, childTitle);
+    setChildTitle("");
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={onClose}>
+      <aside
+        className="h-full w-full max-w-[420px] overflow-y-auto border-l border-black/10 bg-[#fbfbfb] p-6 shadow-[-24px_0_50px_rgba(18,26,46,0.14)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-[-0.02em] text-[#121A2E]">{objective.title}</h2>
+            {objective.description && <p className="mt-2 text-sm font-medium leading-6 text-slate-500">{objective.description}</p>}
+          </div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => onDelete(objective.id)} className="rounded-full p-2 text-slate-400 hover:bg-white hover:text-red-500" aria-label="Supprimer">
+              <Trash2 size={18} />
+            </button>
+            <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-white hover:text-[#121A2E]" aria-label="Fermer">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-[18px] border border-black/10 bg-white p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-500">Progression globale</span>
+            <span className="text-xl font-bold text-[#0147FF]">{progress}%</span>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-[#f1f1f1]">
+            <div className="h-full rounded-full bg-[#0147FF]" style={{ width: `${Math.max(3, progress)}%` }} />
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => onOpenLinkModal(objective.id)}
+            className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-[#121A2E] hover:bg-[#f6f6f6]"
+          >
+            <Link2 size={15} />
+            Lier des taches
+          </button>
+        </div>
+
+        <div className="mb-6">
+          {linkedTasks.length === 0 ? (
+            <p className="text-sm font-medium text-slate-400">Aucune tache liee.</p>
+          ) : (
+            <div className="space-y-2">
+              {linkedTasks.map((task) => (
+                <div key={task.id} className="flex items-center gap-3 rounded-xl border border-black/10 bg-white p-3">
+                  <button type="button" onClick={() => onToggleTaskStatus(task)}>
+                    {task.status === "done" ? (
+                      <CheckCircle2 size={18} className="text-[#0147FF]" />
+                    ) : (
+                      <Circle size={18} className="text-slate-300" />
+                    )}
                   </button>
-                  <span className={`flex-1 min-w-0 truncate ${task.status === "done" ? "line-through text-gray-400" : "text-gray-700"}`}>
+                  <span className={`flex-1 text-sm font-medium ${task.status === "done" ? "text-slate-400 line-through" : "text-[#121A2E]"}`}>
                     {task.title}
                   </span>
-                  <button
-                    onClick={() => onUnlinkTask(task.id)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-opacity"
-                    title="Délier la tâche"
-                  >
-                    <X size={12} />
+                  <button type="button" onClick={() => onUnlinkTask(task.id)} className="text-slate-300 hover:text-red-500">
+                    <X size={15} />
                   </button>
                 </div>
               ))}
@@ -345,170 +530,98 @@ function ObjectiveCard({
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => onOpenLinkModal(objective.id)}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs text-[#0147FF] hover:bg-[#0147FF]/5 rounded-lg transition-colors"
-            title="Lier des tâches"
-          >
-            <Link2 size={12} />
-            Lier des tâches
-          </button>
-          {!isCompleted && progress === 100 && (
-            <button
-              onClick={() => onComplete(objective.id)}
-              className="px-2 py-1.5 text-xs bg-green-50 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-              title="Marquer comme terminé"
-            >
-              Marquer comme terminé
-            </button>
-          )}
-          <button onClick={() => onDelete(objective.id)} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg transition-colors">
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Children objectives */}
-      {isExpanded && hasChildren && (
-        <div className="mt-4 ml-4 pl-4 border-l-2 border-gray-100 space-y-3">
-          {objective.children.map(child => (
-            <ChildObjectiveCard
-              key={child.id}
-              objective={child}
-              tasks={tasks}
-              onDelete={onDelete}
-              onComplete={onComplete}
-              onLinkTasks={onLinkTasks}
-              onUnlinkTask={onUnlinkTask}
-              onToggleTaskStatus={onToggleTaskStatus}
-              onOpenLinkModal={onOpenLinkModal}
+        <div className="mb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <input
+              value={childTitle}
+              onChange={(event) => setChildTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitChild();
+              }}
+              placeholder="Ajouter un sous-objectif"
+              className="h-10 flex-1 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
             />
-          ))}
+            <button
+              type="button"
+              onClick={submitChild}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-black/10 bg-white text-[#121A2E] hover:bg-[#f6f6f6]"
+              aria-label="Ajouter le sous-objectif"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {children.length > 0 && (
+            <div className="space-y-2">
+              {children.map((child) => (
+                <ChildObjectiveRow
+                  key={child.id}
+                  objective={child}
+                  tasks={tasks}
+                  onOpenLinkModal={onOpenLinkModal}
+                  onUnlinkTask={onUnlinkTask}
+                  onToggleTaskStatus={onToggleTaskStatus}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </aside>
     </div>
   );
 }
 
-function ChildObjectiveCard({
+function ChildObjectiveRow({
   objective,
   tasks,
-  onDelete,
-  onComplete,
-  onLinkTasks,
+  onOpenLinkModal,
   onUnlinkTask,
   onToggleTaskStatus,
-  onOpenLinkModal,
 }: {
-  objective: ObjectiveWithChildren;
+  objective: AgendaObjective;
   tasks: AgendaTask[];
-  onDelete: (id: string) => void;
-  onComplete: (id: string) => void;
-  onLinkTasks: (objectiveId: string, taskIds: string[]) => void;
+  onOpenLinkModal: (objectiveId: string) => void;
   onUnlinkTask: (taskId: string) => void;
   onToggleTaskStatus: (task: AgendaTask) => void;
-  onOpenLinkModal: (id: string) => void;
 }) {
-  const isCompleted = objective.status === "completed";
-  const linkedTasks = tasks.filter(t => t.objective_id === objective.id && !t.parent_task_id);
-  const progress = objective.progress ?? 0;
+  const linkedTasks = getLinkedTasks(objective.id, tasks);
+  const progress = getObjectiveProgress(objective, tasks);
 
   return (
-    <div className={`bg-gray-50 border border-gray-100 rounded-lg p-3 transition-opacity ${isCompleted ? "opacity-60" : ""}`}>
-      <div className="flex items-start gap-2">
-        <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 bg-[#0147FF]/10">
-          {isCompleted
-            ? <CheckCircle2 size={16} className="text-[#0147FF]" />
-            : <Circle size={16} className="text-[#0147FF]" />
-          }
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h4 className={`font-medium text-sm text-gray-800 ${isCompleted ? "line-through text-gray-500" : ""}`}>
-              {objective.title}
-            </h4>
-            {objective.target_date && (
-              <span className="inline-flex items-center gap-1 text-xs text-gray-400">
-                <CalendarDays size={10} />
-                {new Date(objective.target_date).toLocaleDateString("fr-FR")}
-              </span>
-            )}
-            {isCompleted && (
-              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">
-                <Check size={8} /> Terminé
-              </span>
-            )}
-          </div>
-          {objective.description && (
-            <p className="text-xs text-gray-500 mt-0.5">{objective.description}</p>
-          )}
-
-          {/* Progress bar */}
-          <div className="mt-2">
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[10px] text-gray-400">Progression</span>
-              <span className="text-[10px] font-medium text-[#0147FF]">{progress}%</span>
-            </div>
-            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%`, background: "#0147FF" }}
-              />
-            </div>
-          </div>
-
-          {/* Linked tasks */}
-          {linkedTasks.length > 0 && (
-            <div className="mt-2 space-y-1">
-              {linkedTasks.map(task => (
-                <div key={task.id} className="flex items-center gap-2 text-xs group">
-                  <button onClick={() => onToggleTaskStatus(task)} className="shrink-0">
-                    {task.status === "done"
-                      ? <CheckCircle2 size={12} className="text-green-500" />
-                      : <Circle size={12} className="text-gray-300 hover:text-[#0147FF]" />
-                    }
-                  </button>
-                  <span className={`flex-1 min-w-0 truncate ${task.status === "done" ? "line-through text-gray-400" : "text-gray-600"}`}>
-                    {task.title}
-                  </span>
-                  <button
-                    onClick={() => onUnlinkTask(task.id)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-opacity"
-                    title="Délier la tâche"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 shrink-0">
+    <div className="rounded-xl border border-black/10 bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-bold text-[#121A2E]">{objective.title}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-[#0147FF]">{progress}%</span>
           <button
+            type="button"
             onClick={() => onOpenLinkModal(objective.id)}
-            className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-[#0147FF] hover:bg-[#0147FF]/5 rounded transition-colors"
-            title="Lier des tâches"
+            className="rounded-lg p-1.5 text-slate-300 hover:bg-[#f6f6f6] hover:text-[#0147FF]"
+            aria-label="Lier des taches"
           >
-            <Link2 size={10} />
-            Lier
-          </button>
-          {!isCompleted && progress === 100 && (
-            <button
-              onClick={() => onComplete(objective.id)}
-              className="px-1.5 py-1 text-[10px] bg-green-50 text-green-600 hover:bg-green-100 rounded transition-colors"
-            >
-              Terminer
-            </button>
-          )}
-          <button onClick={() => onDelete(objective.id)} className="p-1 text-gray-300 hover:text-red-400 rounded transition-colors">
-            <Trash2 size={12} />
+            <Link2 size={14} />
           </button>
         </div>
       </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#f1f1f1]">
+        <div className="h-full rounded-full bg-[#0147FF]" style={{ width: `${Math.max(3, progress)}%` }} />
+      </div>
+      {linkedTasks.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {linkedTasks.map((task) => (
+            <div key={task.id} className="flex items-center gap-2 text-sm">
+              <button type="button" onClick={() => onToggleTaskStatus(task)}>
+                {task.status === "done" ? <CheckCircle2 size={16} className="text-[#0147FF]" /> : <Circle size={16} className="text-slate-300" />}
+              </button>
+              <span className={`flex-1 truncate font-medium ${task.status === "done" ? "text-slate-400 line-through" : "text-[#121A2E]"}`}>
+                {task.title}
+              </span>
+              <button type="button" onClick={() => onUnlinkTask(task.id)} className="text-slate-300 hover:text-red-500">
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -528,14 +641,6 @@ function LinkTasksModal({
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const toggle = (id: string) => {
-    setSelected(prev => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
-      return n;
-    });
-  };
-
   const handleConfirm = () => {
     if (selected.size === 0) return;
     onLink(objectiveId, Array.from(selected));
@@ -543,63 +648,107 @@ function LinkTasksModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg w-full max-w-md max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(18,26,46,0.18)]">
+        <div className="flex items-center justify-between border-b border-black/[0.06] p-5">
           <div>
-            <h3 className="font-semibold text-gray-800">Lier des tâches</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{objectiveTitle}</p>
+            <h3 className="font-bold text-[#121A2E]">Lier des taches</h3>
+            <p className="mt-1 text-xs font-medium text-slate-400">{objectiveTitle}</p>
           </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 rounded-lg">
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-[#f6f6f6]">
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-5">
           {availableTasks.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">Aucune tâche disponible</p>
+            <p className="py-8 text-center text-sm font-medium text-slate-400">Aucune tache disponible</p>
           ) : (
             <div className="space-y-2">
-              {availableTasks.map(task => (
-                <button
-                  key={task.id}
-                  onClick={() => toggle(task.id)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
-                    selected.has(task.id)
-                      ? "border-[#0147FF] bg-[#0147FF]/5"
-                      : "border-gray-100 hover:border-gray-200 bg-white"
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
-                    selected.has(task.id) ? "bg-[#0147FF] border-[#0147FF]" : "border-gray-300"
-                  }`}>
-                    {selected.has(task.id) && <Check size={12} className="text-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{task.title}</p>
-                    {task.date && (
-                      <p className="text-xs text-gray-400">{new Date(task.date).toLocaleDateString("fr-FR")}</p>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {availableTasks.map((task) => {
+                const isSelected = selected.has(task.id);
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (next.has(task.id)) next.delete(task.id);
+                        else next.add(task.id);
+                        return next;
+                      })
+                    }
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+                      isSelected ? "border-[#0147FF] bg-[#0147FF]/5" : "border-black/10 bg-white hover:bg-[#f6f6f6]"
+                    }`}
+                  >
+                    <span className={`flex h-5 w-5 items-center justify-center rounded border ${isSelected ? "border-[#0147FF] bg-[#0147FF]" : "border-slate-300"}`}>
+                      {isSelected && <Check size={12} className="text-white" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-[#121A2E]">{task.title}</span>
+                      {task.date && <span className="text-xs font-medium text-slate-400">{formatDate(task.date)}</span>}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+        <div className="flex items-center justify-end gap-3 border-t border-black/[0.06] p-5">
+          <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-[#f6f6f6]">
             Annuler
           </button>
-          <button
+          <ClientBlueButton
+            type="button"
             onClick={handleConfirm}
             disabled={selected.size === 0}
-            className="px-4 py-2 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] disabled:opacity-40 disabled:cursor-not-allowed"
+            wrapperStyle={{ width: "auto" }}
+            style={{ minHeight: 42, padding: "0 18px", fontSize: 13 }}
           >
             Lier {selected.size > 0 ? `(${selected.size})` : ""}
-          </button>
+          </ClientBlueButton>
         </div>
       </div>
     </div>
   );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="rounded-[21px] border border-black/10 bg-white py-16 text-center shadow-[0_18px_35px_rgba(18,26,46,0.06)]">
+      <Target size={38} className="mx-auto mb-3 text-slate-300" />
+      <p className="text-sm font-semibold text-slate-500">Aucun objectif pour ce filtre.</p>
+      <button type="button" onClick={onCreate} className="mt-3 text-sm font-semibold text-[#0147FF] hover:underline">
+        Creer un objectif
+      </button>
+    </div>
+  );
+}
+
+function getLinkedTasks(objectiveId: string, tasks: AgendaTask[]) {
+  return tasks.filter((task) => task.objective_id === objectiveId && !task.parent_task_id);
+}
+
+function getObjectiveProgress(objective: AgendaObjective, tasks: AgendaTask[]) {
+  const linkedTasks = getLinkedTasks(objective.id, tasks);
+  if (linkedTasks.length > 0) {
+    return Math.round((linkedTasks.filter((task) => task.status === "done").length / linkedTasks.length) * 100);
+  }
+  return Math.max(0, Math.min(100, Math.round(objective.progress ?? 0)));
+}
+
+function findChildren(objectiveId: string, objectives: ObjectiveWithChildren[]): AgendaObjective[] {
+  for (const objective of objectives) {
+    if (objective.id === objectiveId) return objective.children ?? [];
+    const nested = findChildren(objectiveId, objective.children ?? []);
+    if (nested.length > 0) return nested;
+  }
+  return [];
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 }
