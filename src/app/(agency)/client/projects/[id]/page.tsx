@@ -1,10 +1,6 @@
 "use client";
 
-<<<<<<< HEAD
 import { useState, useEffect, use, useRef } from "react";
-=======
-import { useState, use } from "react";
->>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import {
@@ -63,7 +59,6 @@ const STATUS_COLORS: Record<string, string> = {
   completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
-<<<<<<< HEAD
 const FILE_ICONS: Record<string, string> = {
   figma: "🎨",
   google_doc: "📄",
@@ -203,12 +198,6 @@ export default function ClientProjectDetailPage({
     { key: "messages", label: "Messages", icon: <MessageSquare size={14} />, count: messages.length > 0 ? messages.length : undefined },
     { key: "fichiers", label: "Fichiers", icon: <Paperclip size={14} />, count: files.length > 0 ? files.length : undefined },
   ];
-=======
-export default function ClientProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  use(params);
-  const [message, setMessage] = useState("");
-  const project = mockProject;
->>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 
   return (
     <div className="p-6 lg:p-10 max-w-5xl">

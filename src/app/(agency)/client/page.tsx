@@ -88,7 +88,6 @@ function stageDeadline(stages: Stage[], upToIdx: number, startDate: string): str
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ClientDashboard() {
-<<<<<<< HEAD
   const [project, setProject]       = useState<Project | null>(null);
   const [loading, setLoading]       = useState(true);
   const [files, setFiles]           = useState<ProjectFile[]>([]);
@@ -111,22 +110,6 @@ export default function ClientDashboard() {
   // Tutorial
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
-=======
-  const project = {
-    id: "1",
-    name: "Site web Startup XYZ",
-    status: "in_progress" as const,
-    current_stage: "design" as const,
-    stages: [
-      { stage: "copywriting" as const, label: "Copywriting", duration_days: 5, completed: true },
-      { stage: "wireframe" as const, label: "Wireframe", duration_days: 7, completed: true },
-      { stage: "design" as const, label: "Design", duration_days: 14, completed: false },
-      { stage: "development" as const, label: "Développement", duration_days: 10, completed: false },
-      { stage: "revision" as const, label: "Révisions", duration_days: 5, completed: false },
-    ],
-    deadline: "2026-03-28",
-  };
->>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 
   /* ── Conversation (gardé en commentaire au cas où) ──────────────────────────
   const [messages, setMessages]     = useState<Message[]>([]);
@@ -301,7 +284,6 @@ export default function ClientDashboard() {
       </div>
     </div>
   );
-<<<<<<< HEAD
 
   const stages      = project.stages ?? [];
   const currentIdx  = project.current_stage_index ?? 0;
@@ -1184,6 +1166,4 @@ function HeroBanner({ mediaFiles }: { mediaFiles: TickerFile[] }) {
       )}
     </div>
   );
-=======
->>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 }

@@ -2,76 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-<<<<<<< HEAD
 import { Search, Loader2, FolderOpen, ChevronRight } from "lucide-react";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
-=======
-import { Plus, Search, FolderKanban } from "lucide-react";
-import { ProjectCard } from "@/components/shared/ProjectCard";
-import type { Project, ProjectStatus } from "@/types/agency";
-
-const mockProjects: Project[] = [
-  {
-    id: "1",
-    name: "Site web Startup XYZ",
-    description: "Refonte complète du site vitrine avec Framer",
-    status: "in_progress",
-    client_id: "c1",
-    client: { id: "c1", name: "Martin Dupont", email: "martin@xyz.com", created_at: "", payment_status: "paid" },
-    designer_id: "d1",
-    designer: { id: "d1", name: "Sarah K.", email: "sarah@agency.com", created_at: "" },
-    current_stage: "design",
-    stages: [
-      { stage: "copywriting", label: "Copywriting", duration_days: 5, completed: true },
-      { stage: "wireframe", label: "Wireframe", duration_days: 7, completed: true },
-      { stage: "design", label: "Design", duration_days: 14, completed: false },
-      { stage: "development", label: "Développement", duration_days: 10, completed: false },
-      { stage: "revision", label: "Révisions", duration_days: 5, completed: false },
-    ],
-    deadline: "2026-03-28",
-    created_at: "2026-01-15",
-    updated_at: "2026-03-20",
-  },
-  {
-    id: "2",
-    name: "Identité visuelle Brand Co",
-    description: "Logo, charte graphique, brand book",
-    status: "review",
-    client_id: "c2",
-    client: { id: "c2", name: "Sophie Laurent", email: "sophie@brandco.fr", created_at: "", payment_status: "paid" },
-    current_stage: "revision",
-    stages: [
-      { stage: "copywriting", label: "Copywriting", duration_days: 3, completed: true },
-      { stage: "design", label: "Design", duration_days: 21, completed: true },
-      { stage: "revision", label: "Révisions", duration_days: 7, completed: false },
-    ],
-    deadline: "2026-03-30",
-    created_at: "2026-02-01",
-    updated_at: "2026-03-18",
-  },
-  {
-    id: "3",
-    name: "App mobile TechStart",
-    description: "Design UI/UX pour application de gestion",
-    status: "in_progress",
-    client_id: "c3",
-    client: { id: "c3", name: "Pierre Martin", email: "pierre@techstart.io", created_at: "", payment_status: "partial" },
-    designer_id: "d2",
-    designer: { id: "d2", name: "Tom A.", email: "tom@agency.com", created_at: "" },
-    current_stage: "wireframe",
-    stages: [
-      { stage: "copywriting", label: "Copywriting", duration_days: 3, completed: true },
-      { stage: "wireframe", label: "Wireframe", duration_days: 10, completed: false },
-      { stage: "design", label: "Design", duration_days: 20, completed: false },
-      { stage: "revision", label: "Révisions", duration_days: 7, completed: false },
-    ],
-    deadline: "2026-04-15",
-    created_at: "2026-02-20",
-    updated_at: "2026-03-15",
-  },
-];
->>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 
 interface Project {
   id: string;
