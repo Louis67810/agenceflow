@@ -12,10 +12,14 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
+<<<<<<< HEAD
         setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
+=======
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
+>>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
             );
           } catch {
             // The `setAll` method was called from a Server Component.

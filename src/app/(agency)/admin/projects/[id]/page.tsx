@@ -1,6 +1,10 @@
 ﻿"use client";
 
+<<<<<<< HEAD
 import { useEffect, useRef, useState, use } from "react";
+=======
+import { useState, use } from "react";
+>>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 import Link from "next/link";
 import {
   AlertCircle,
@@ -103,11 +107,21 @@ const FILE_LABELS: Record<string, string> = {
 
 type AdminTab = "brief" | "messages" | "fichiers" | "review" | "settings";
 
+<<<<<<< HEAD
 function stageDate(stages: Stage[], upToIdx: number, startDate: string): Date {
   const date = new Date(startDate);
   for (let i = 0; i <= upToIdx; i++) date.setDate(date.getDate() + (stages[i]?.duration_days ?? 0));
   return date;
 }
+=======
+export default function AdminProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("messages");
+  const [newMessage, setNewMessage] = useState("");
+  const [tasks, setTasks] = useState(mockTasks);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [showNewTask, setShowNewTask] = useState(false);
+>>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 
 export default function AdminProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -146,12 +160,29 @@ export default function AdminProjectDetailPage({ params }: { params: Promise<{ i
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (!project || !timelineRef.current) return;
     const currentEl = timelineRef.current.querySelector(`[data-stage="${project.current_stage_index}"]`) as HTMLElement | null;
     if (currentEl) currentEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
     setBannerUrl(project.banner_url ?? "");
   }, [project]);
+=======
+  const handleAddTask = () => {
+    if (!newTaskTitle.trim()) return;
+    const newTask: Task = {
+      id: `t${Date.now()}`,
+      project_id: resolvedParams.id,
+      title: newTaskTitle,
+      status: "todo",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setTasks((prev) => [...prev, newTask]);
+    setNewTaskTitle("");
+    setShowNewTask(false);
+  };
+>>>>>>> c88e0ce48fe80b5fb1ab34a6e4723e21fb1c8425
 
   async function loadData() {
     setLoading(true);
