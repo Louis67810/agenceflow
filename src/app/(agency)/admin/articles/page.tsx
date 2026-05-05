@@ -11,6 +11,7 @@ import {
   Hammer,
   Plus,
   Send,
+  Settings,
   Sparkles,
 } from "lucide-react";
 
@@ -119,6 +120,9 @@ export default function ArticlesPage() {
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, paddingBottom: 24, borderBottom: "1px solid rgba(18,26,46,0.12)" }}>
         <h1 style={{ margin: 0, fontSize: 34, lineHeight: "41px", fontWeight: 750, letterSpacing: "-0.04em" }}>Mes articles</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Link href="/admin/articles/parametres" style={{ minHeight: 54, padding: "0 18px", borderRadius: 10, border: "1px solid rgba(18,26,46,0.13)", background: "#fff", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 16, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
+            <Settings size={17} />Parametres
+          </Link>
           <Link href="/admin/articles/statistiques" style={{ minHeight: 54, padding: "0 25px", borderRadius: 10, border: "1px solid rgba(18,26,46,0.13)", background: "#fff", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
             Voir les statistiques
           </Link>
