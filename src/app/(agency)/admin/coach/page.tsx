@@ -7,9 +7,7 @@ import {
   ChevronDown,
   Clock3,
   History,
-  LayoutPanelLeft,
   Loader2,
-  MessageSquarePlus,
   PanelRightOpen,
   PencilLine,
   Plus,
@@ -203,20 +201,13 @@ export default function CoachPage() {
       ) : null}
 
       <aside style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", zIndex: 5, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 26 }}>
-        <button type="button" onClick={startNewConversation} title="Nouveau chat" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><LayoutPanelLeft size={20} /></button>
-        <button type="button" onClick={startNewConversation} title="Ecrire" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><PencilLine size={20} /></button>
-        <button type="button" onClick={() => setRightPanelOpen(true)} title="Rechercher" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><Search size={20} /></button>
+        <button type="button" onClick={() => setRightPanelOpen((value) => !value)} title="Chats recents" style={{ width: 32, height: 32, borderRadius: 9, border: 0, background: rightPanelOpen ? "#f0f3ff" : "transparent", color: rightPanelOpen ? "#0147ff" : "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><PanelRightOpen size={20} /></button>
+        <button type="button" onClick={startNewConversation} title="Nouveau chat" style={{ width: 32, height: 32, borderRadius: 9, border: 0, background: !conversationId && messages.length === 0 ? "#f0f3ff" : "transparent", color: !conversationId && messages.length === 0 ? "#0147ff" : "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><PencilLine size={20} /></button>
+        <button type="button" onClick={() => setRightPanelOpen(true)} title="Rechercher un chat" style={{ width: 32, height: 32, borderRadius: 9, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><Search size={20} /></button>
       </aside>
 
       <section style={{ position: "relative", zIndex: 3, height: "100%", paddingLeft: 60, display: "flex", flexDirection: "column" }}>
-        <div style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 32px", gap: 10 }}>
-          <button type="button" onClick={startNewConversation} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.11)", background: "#fff", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 14px rgba(18,26,46,0.04)" }}>
-            <MessageSquarePlus size={15} /> Nouveau
-          </button>
-          <button type="button" onClick={() => setRightPanelOpen((value) => !value)} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.11)", background: rightPanelOpen ? "#121a2e" : "#fff", color: rightPanelOpen ? "#fff" : "#121a2e", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 14px rgba(18,26,46,0.04)" }}>
-            <PanelRightOpen size={15} /> Recents
-          </button>
-        </div>
+        <div style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 32px", gap: 10 }} />
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "34px 72px 150px" }}>
           {messages.length === 0 ? (
