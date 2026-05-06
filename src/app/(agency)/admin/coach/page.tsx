@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
 import {
   BarChart3,
-  Bot,
   ChevronDown,
   Clock3,
   FileText,
@@ -18,13 +17,14 @@ import {
   Plus,
   Search,
   Send,
-  Sparkles,
   X,
 } from "lucide-react";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
 const composerShadow = "0px 23px 16px rgba(18,26,46,0.04), 0px 10px 11px rgba(18,26,46,0.04), 0px 2px 6px rgba(18,26,46,0.05)";
+const selectedBg = "#f4f4f4";
+const inactiveIconColor = "rgba(18,26,46,0.7)";
 
 type Message = {
   role: "user" | "assistant";
@@ -94,6 +94,7 @@ export default function CoachPage() {
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<CoachTool | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [plusHovered, setPlusHovered] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -102,18 +103,11 @@ export default function CoachPage() {
   const selectedModel = MODELS.find((entry) => entry.id === model) ?? MODELS[0];
   const selectedToolEntry = TOOL_ACTIONS.find((entry) => entry.tool === selectedTool);
   const contentLeft = chatPanelOpen ? 380 : 60;
-  const filteredConversations = useMemo(() => {
+  const filteredConversations = (() => {
     const query = search.trim().toLowerCase();
     if (!query) return conversations;
     return conversations.filter((conversation) => conversation.title.toLowerCase().includes(query));
-  }, [conversations, search]);
-
-  const infoCards = useMemo(() => [
-    { label: "Chats recents", value: conversations.length.toLocaleString("fr-FR"), icon: <History size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
-    { label: "Modele actif", value: selectedModel.label, icon: <Bot size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
-    { label: "Outil IA", value: selectedToolEntry?.label ?? "Libre", icon: <Sparkles size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
-    { label: "Dernier chat", value: conversations[0] ? formatDate(conversations[0].updated_at) : "Aucun", icon: <Clock3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
-  ], [conversations, selectedModel.label, selectedToolEntry?.label]);
+  })();
 
   useEffect(() => {
     void loadInitialData();
@@ -141,11 +135,16 @@ export default function CoachPage() {
   }
 
   function startNewConversation() {
-    setMessages([]);
-    setConversationId(null);
-    setError("");
     setChatPanelOpen(false);
     setToolMenuOpen(false);
+    setError("");
+    if (messages.length === 0 && !input.trim()) {
+      window.setTimeout(() => inputRef.current?.focus(), 40);
+      return;
+    }
+    setMessages([]);
+    setConversationId(null);
+    setInput("");
     window.setTimeout(() => inputRef.current?.focus(), 40);
   }
 
@@ -227,7 +226,7 @@ export default function CoachPage() {
 
   return (
     <main style={{ height: "100vh", minHeight: 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
-      <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -250, left: "8%", width: "84%", height: 850, objectFit: "fill", pointerEvents: "none", opacity: loading ? 1 : 0.46, animation: "coachLoaderPulse 2s ease-in-out infinite alternate", zIndex: 1 }} />
+      <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -390, left: "50%", width: "126%", height: 1275, transform: "translateX(-50%)", objectFit: "fill", pointerEvents: "none", opacity: loading ? 1 : 0.46, animation: "coachLoaderPulse 2s ease-in-out infinite alternate", zIndex: 1 }} />
 
       <aside style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 26 }}>
         {[
@@ -235,14 +234,14 @@ export default function CoachPage() {
           { id: "new", title: "Nouveau chat", active: !conversationId && messages.length === 0 && !chatPanelOpen, onClick: startNewConversation, icon: <PencilLine size={20} /> },
           { id: "search", title: "Rechercher un chat", active: false, onClick: () => setChatPanelOpen(true), icon: <Search size={20} /> },
         ].map((item) => (
-          <button key={item.id} type="button" onClick={item.onClick} title={item.title} style={{ width: 36, height: 36, borderRadius: 9, border: 0, background: item.active ? "#fbfbfb" : "transparent", color: item.active ? "#000" : "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}>{item.icon}</button>
+          <button key={item.id} type="button" onClick={item.onClick} title={item.title} style={{ width: 36, height: 36, borderRadius: 9, border: 0, background: item.active ? selectedBg : "transparent", color: item.active ? "#000" : inactiveIconColor, opacity: item.active ? 1 : 0.7, display: "grid", placeItems: "center", cursor: "pointer" }}>{item.icon}</button>
         ))}
       </aside>
 
       <aside style={{ position: "absolute", top: 0, left: chatPanelOpen ? 60 : -320, bottom: 0, width: 320, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", boxShadow: "20px 0 42px rgba(18,26,46,0.06)", zIndex: 8, transition: "left 0.22s ease", display: "flex", flexDirection: "column" }}>
         <div style={{ minHeight: 70, padding: "0 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 34, height: 34, borderRadius: 11, background: "#fbfbfb", color: "#000", display: "grid", placeItems: "center" }}><History size={17} /></span>
+            <span style={{ width: 34, height: 34, borderRadius: 11, background: selectedBg, color: "#000", display: "grid", placeItems: "center" }}><History size={17} /></span>
             <strong style={{ fontSize: 15 }}>Chats recents</strong>
           </div>
           <button type="button" onClick={() => setChatPanelOpen(false)} style={{ width: 32, height: 32, borderRadius: 999, border: 0, background: "transparent", cursor: "pointer", color: "rgba(18,26,46,0.58)", display: "grid", placeItems: "center" }}><X size={18} /></button>
@@ -263,18 +262,12 @@ export default function CoachPage() {
           ) : filteredConversations.map((conversation) => {
             const active = conversation.id === conversationId;
             return (
-              <button key={conversation.id} type="button" onClick={() => void openConversation(conversation.id)} style={{ width: "100%", border: 0, borderRadius: 13, background: active ? "#fbfbfb" : "transparent", padding: "12px 11px", display: "grid", gap: 6, textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
+              <button key={conversation.id} type="button" onClick={() => void openConversation(conversation.id)} style={{ width: "100%", border: 0, borderRadius: 13, background: active ? selectedBg : "transparent", padding: "12px 11px", display: "grid", gap: 6, textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
                 <span style={{ fontSize: 13, fontWeight: 760, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conversation.title}</span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(18,26,46,0.42)", fontWeight: 650 }}><Clock3 size={12} />{formatDate(conversation.updated_at)}</span>
               </button>
             );
           })}
-        </div>
-
-        <div style={{ padding: 14, borderTop: "1px solid rgba(18,26,46,0.08)" }}>
-          <button type="button" onClick={startNewConversation} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid #121a2e", background: "#121a2e", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 760, cursor: "pointer" }}>
-            <Bot size={15} /> Nouveau chat Coach IA
-          </button>
         </div>
       </aside>
 
@@ -291,25 +284,13 @@ export default function CoachPage() {
                   const Icon = suggestion.icon;
                   const active = selectedTool === suggestion.tool;
                   return (
-                    <button key={suggestion.label} type="button" onClick={() => void send(suggestion.prompt, suggestion.tool)} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: active ? "#fbfbfb" : "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
-                      <span style={{ width: 38, height: 38, borderRadius: 8, background: active ? "#fbfbfb" : "#ececec", color: active ? "#000" : "rgba(18,26,46,0.24)", display: "grid", placeItems: "center", marginBottom: 13 }}><Icon size={17} /></span>
+                    <button key={suggestion.label} type="button" onClick={() => void send(suggestion.prompt, suggestion.tool)} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: active ? selectedBg : "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
+                      <span style={{ width: 38, height: 38, borderRadius: 8, background: active ? selectedBg : "#ececec", color: active ? "#000" : inactiveIconColor, opacity: active ? 1 : 0.7, display: "grid", placeItems: "center", marginBottom: 13 }}><Icon size={17} /></span>
                       <strong style={{ fontSize: 14, lineHeight: "19px", fontWeight: 650, letterSpacing: 0 }}>{suggestion.label}</strong>
                     </button>
                   );
                 })}
               </div>
-
-              <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginTop: 18 }}>
-                {infoCards.map((card) => (
-                  <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box" }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13 }}>
-                      {card.icon}
-                    </div>
-                    <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
-                    <strong style={{ display: "block", marginTop: 8, fontSize: 18, fontWeight: 650, color: "#121a2e", lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.value}</strong>
-                  </article>
-                ))}
-              </section>
 
               <div style={{ maxWidth: 920, margin: "54px auto 0" }}>
                 <p style={{ margin: "0 0 20px", fontSize: 14, color: "rgba(18,26,46,0.58)", fontWeight: 650 }}>Recents :</p>
@@ -345,25 +326,38 @@ export default function CoachPage() {
         {error ? <div style={{ position: "absolute", left: "50%", bottom: 126, transform: "translateX(-50%)", maxWidth: 620, borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", fontSize: 13, fontWeight: 650, zIndex: 8 }}>{error}</div> : null}
 
         <div style={{ position: "absolute", left: contentLeft, right: 0, bottom: 0, zIndex: 7, padding: "0 48px 34px", transition: "left 0.22s ease" }}>
-          <div style={{ maxWidth: 860, minHeight: 70, margin: "0 auto", borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, display: "flex", alignItems: "center", gap: 16, padding: "9px 10px 9px 22px", backdropFilter: "blur(10px)", position: "relative" }}>
-            <button type="button" onClick={() => setToolMenuOpen((value) => !value)} title="Actions IA" style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: selectedTool ? "#fbfbfb" : "transparent", display: "grid", placeItems: "center", color: selectedTool ? "#000" : "#121a2e", cursor: "pointer", flexShrink: 0 }}><Plus size={22} /></button>
-            <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={selectedToolEntry ? `${selectedToolEntry.label}...` : "Demande au Coach IA..."} rows={1} style={{ flex: 1, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", paddingTop: 7 }} />
-            {selectedToolEntry ? <span style={{ minHeight: 28, borderRadius: 999, background: "#fbfbfb", color: "#000", display: "inline-flex", alignItems: "center", padding: "0 10px", fontSize: 12, fontWeight: 760 }}>{selectedToolEntry.label}</span> : null}
-            <button type="button" onClick={() => setModelPickerOpen((value) => !value)} style={{ minHeight: 36, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
-              {selectedModel.label} <ChevronDown size={15} />
-            </button>
-            <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} style={{ width: 48, height: 48, borderRadius: 999, border: 0, background: "#121a2e", color: "#fff", display: "grid", placeItems: "center", cursor: loading || !input.trim() ? "not-allowed" : "pointer", opacity: loading || !input.trim() ? 0.55 : 1, flexShrink: 0 }}>
-              {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={19} />}
-            </button>
+          <div style={{ maxWidth: 860, minHeight: selectedToolEntry ? 104 : 70, margin: "0 auto", borderRadius: selectedToolEntry ? 30 : 999, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, display: "flex", flexDirection: selectedToolEntry ? "column" : "row", alignItems: selectedToolEntry ? "stretch" : "center", gap: selectedToolEntry ? 8 : 16, padding: selectedToolEntry ? "13px 14px 12px 20px" : "9px 10px 9px 22px", backdropFilter: "blur(10px)", position: "relative" }}>
+            {selectedToolEntry ? (
+              <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={`${selectedToolEntry.label}...`} rows={1} style={{ width: "100%", minHeight: 28, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", padding: "3px 4px 0" }} />
+            ) : null}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
+              <button type="button" onClick={() => setToolMenuOpen((value) => !value)} onMouseEnter={() => setPlusHovered(true)} onMouseLeave={() => setPlusHovered(false)} title="Actions IA" style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: selectedTool || plusHovered ? selectedBg : "transparent", display: "grid", placeItems: "center", color: selectedTool ? "#000" : "#121a2e", cursor: "pointer", flexShrink: 0 }}><Plus size={22} /></button>
+              {selectedToolEntry ? (
+                <span style={{ minHeight: 34, borderRadius: 999, background: selectedBg, color: "#0147ff", display: "inline-flex", alignItems: "center", gap: 8, padding: "0 10px", fontSize: 14, fontWeight: 650, flexShrink: 0 }}>
+                  <selectedToolEntry.icon size={16} /> {selectedToolEntry.label}
+                  <button type="button" onClick={() => setSelectedTool(null)} title="Retirer l'action" style={{ width: 18, height: 18, borderRadius: 999, border: 0, background: "transparent", color: "#0147ff", display: "grid", placeItems: "center", cursor: "pointer", padding: 0 }}><X size={14} /></button>
+                </span>
+              ) : null}
+              {!selectedToolEntry ? (
+                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Demande au Coach IA..." rows={1} style={{ flex: 1, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", paddingTop: 7 }} />
+              ) : <div style={{ flex: 1 }} />}
+              <button type="button" onClick={() => setModelPickerOpen((value) => !value)} style={{ minHeight: 36, border: 0, background: selectedToolEntry ? selectedBg : "transparent", borderRadius: 999, color: "rgba(18,26,46,0.82)", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, padding: selectedToolEntry ? "0 12px" : 0 }}>
+                {selectedToolEntry ? "Automatique" : selectedModel.label} <ChevronDown size={15} />
+              </button>
+              <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} style={{ width: 48, height: 48, borderRadius: 999, border: 0, background: "#121a2e", color: "#fff", display: "grid", placeItems: "center", cursor: loading || !input.trim() ? "not-allowed" : "pointer", opacity: loading || !input.trim() ? 0.55 : 1, flexShrink: 0 }}>
+                {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={19} />}
+              </button>
+            </div>
 
             {toolMenuOpen ? (
-              <div style={{ position: "absolute", left: 16, bottom: 74, width: 324, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
+              <div style={{ position: "absolute", left: 16, bottom: selectedToolEntry ? 110 : 74, width: 324, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
                 {TOOL_ACTIONS.map((entry) => {
                   const Icon = entry.icon;
                   const active = selectedTool === entry.tool;
                   return (
-                    <button key={entry.tool} type="button" onClick={() => chooseTool(entry.tool, entry.prompt)} style={{ minHeight: 54, borderRadius: 12, border: 0, background: active ? "#fbfbfb" : "transparent", color: "#121a2e", padding: "0 12px", textAlign: "left", display: "grid", gridTemplateColumns: "32px 1fr", alignItems: "center", columnGap: 10, cursor: "pointer" }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 9, background: active ? "#fbfbfb" : "#ececec", color: active ? "#000" : "rgba(18,26,46,0.42)", display: "grid", placeItems: "center" }}><Icon size={16} /></span>
+                    <button key={entry.tool} type="button" onClick={() => chooseTool(entry.tool, entry.prompt)} style={{ minHeight: 54, borderRadius: 12, border: 0, background: active ? selectedBg : "transparent", color: "#121a2e", padding: "0 12px", textAlign: "left", display: "grid", gridTemplateColumns: "32px 1fr", alignItems: "center", columnGap: 10, cursor: "pointer" }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 9, background: active ? selectedBg : "#ececec", color: active ? "#000" : inactiveIconColor, opacity: active ? 1 : 0.7, display: "grid", placeItems: "center" }}><Icon size={16} /></span>
                       <span style={{ minWidth: 0 }}>
                         <strong style={{ display: "block", fontSize: 13, lineHeight: "17px" }}>{entry.label}</strong>
                         <span style={{ display: "block", marginTop: 2, fontSize: 11, color: "rgba(18,26,46,0.48)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.description}</span>
@@ -375,9 +369,9 @@ export default function CoachPage() {
             ) : null}
 
             {modelPickerOpen ? (
-              <div style={{ position: "absolute", right: 64, bottom: 66, width: 260, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
+              <div style={{ position: "absolute", right: 64, bottom: selectedToolEntry ? 104 : 66, width: 260, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
                 {MODELS.map((entry) => (
-                  <button key={entry.id} type="button" onClick={() => { setModel(entry.id); setModelPickerOpen(false); }} style={{ minHeight: 38, borderRadius: 11, border: 0, background: model === entry.id ? "#fbfbfb" : "transparent", color: model === entry.id ? "#000" : "#121a2e", padding: "0 12px", textAlign: "left", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{entry.label}</button>
+                  <button key={entry.id} type="button" onClick={() => { setModel(entry.id); setModelPickerOpen(false); }} style={{ minHeight: 38, borderRadius: 11, border: 0, background: model === entry.id ? selectedBg : "transparent", color: model === entry.id ? "#000" : "#121a2e", padding: "0 12px", textAlign: "left", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{entry.label}</button>
                 ))}
               </div>
             ) : null}
