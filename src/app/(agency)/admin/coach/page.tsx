@@ -226,7 +226,7 @@ export default function CoachPage() {
 
   return (
     <main style={{ height: "100vh", minHeight: 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
-      <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -390, left: "50%", width: "126%", height: 1275, transform: "translateX(-50%)", objectFit: "fill", pointerEvents: "none", opacity: loading ? 1 : 0.46, animation: "coachLoaderPulse 2s ease-in-out infinite alternate", zIndex: 1 }} />
+      <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -560, left: "50%", width: "154%", height: 1560, transform: "translateX(-50%)", objectFit: "fill", pointerEvents: "none", opacity: loading ? 1 : 0.46, animation: "coachLoaderPulse 2s ease-in-out infinite alternate", zIndex: 1 }} />
 
       <aside style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 26 }}>
         {[
