@@ -6,6 +6,10 @@ type CoachMessage = {
   content: string;
 };
 
+type CoachTool = "article" | "task" | "linkedin_post" | "carousel" | "schedule_post" | "statistics";
+
+const COACH_TOOLS = new Set<CoachTool>(["article", "task", "linkedin_post", "carousel", "schedule_post", "statistics"]);
+
 function normalizeMessages(value: unknown): CoachMessage[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -18,10 +22,36 @@ function normalizeMessages(value: unknown): CoachMessage[] {
     .slice(-20);
 }
 
+function normalizeTool(value: unknown): CoachTool | null {
+  if (typeof value !== "string") return null;
+  return COACH_TOOLS.has(value as CoachTool) ? (value as CoachTool) : null;
+}
+
 function buildTitle(messages: CoachMessage[]) {
   const firstUserMessage = messages.find((message) => message.role === "user")?.content.trim();
   if (!firstUserMessage) return "Nouvelle conversation";
   return firstUserMessage.length > 64 ? `${firstUserMessage.slice(0, 61)}...` : firstUserMessage;
+}
+
+function buildToolPrompt(tool: CoachTool | null) {
+  if (!tool) return "";
+
+  const prompts: Record<CoachTool, string> = {
+    article: `## Outil actif : creation d'article
+Tu dois produire un article exploitable. Structure la reponse avec : angle, titre SEO, plan H2/H3, brouillon, meta description, mots-cles et prochaines actions. Si l'utilisateur donne peu de contexte, propose une version prudente et liste les elements a confirmer.`,
+    task: `## Outil actif : creation de tache
+Tu dois transformer la demande en tache actionnable. Structure la reponse avec : titre, objectif, priorite, checklist, deadline conseillee, dependances et critere de validation.`,
+    linkedin_post: `## Outil actif : creation de post LinkedIn
+Tu dois produire un post pret a retravailler. Structure la reponse avec : hook, post complet, CTA, variantes de hook et conseil de publication. Garde un ton professionnel, direct et naturel.`,
+    carousel: `## Outil actif : creation de carrousel
+Tu dois produire un carrousel slide par slide. Structure la reponse avec : promesse, nombre de slides, contenu de chaque slide, design note courte, CTA final et texte de post associe.`,
+    schedule_post: `## Outil actif : programmation de post
+Tu dois aider a planifier une publication. Structure la reponse avec : objectif, meilleure fenetre de publication, checklist avant publication, texte a programmer et rappel des assets necessaires.`,
+    statistics: `## Outil actif : analyse des statistiques
+Tu dois analyser les donnees disponibles et en deduire des priorites. Structure la reponse avec : lecture des chiffres, signaux forts, risques, 3 actions prioritaires et prochaine mesure a suivre. Ne fabrique pas de chiffres absents.`,
+  };
+
+  return prompts[tool];
 }
 
 export async function POST(req: NextRequest) {
@@ -36,41 +66,54 @@ export async function POST(req: NextRequest) {
     const model = typeof body.model === "string" ? body.model : "openai/gpt-4o-mini";
     const businessContext = typeof body.business_context === "string" ? body.business_context : "";
     const conversationId = typeof body.conversation_id === "string" && body.conversation_id.trim() ? body.conversation_id.trim() : null;
+    const tool = normalizeTool(body.tool);
 
     if (messages.length === 0) {
       return NextResponse.json({ error: "Message manquant." }, { status: 400 });
     }
 
-    const [projectsRes, leadsRes, statsRes] = await Promise.all([
+    const [projectsRes, leadsRes, statsRes, articlesCountRes, tasksCountRes, postsCountRes, carouselsCountRes] = await Promise.all([
       supabase.from("projects").select("name, status, deadline, current_stage").limit(10),
       supabase.from("leads").select("name, company, sector, status").limit(20),
       supabase.from("agenda_points_log").select("points").eq("user_id", user.id),
+      supabase.from("articles").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabase.from("linkedin_posts").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabase.from("carousels").select("id", { count: "exact", head: true }).eq("user_id", user.id),
     ]);
 
     const projects = projectsRes.data ?? [];
     const leads = leadsRes.data ?? [];
     const totalPoints = (statsRes.data ?? []).reduce((sum: number, entry: { points: number | null }) => sum + (entry.points ?? 0), 0);
+    const activeProjects = projects.filter((project) => project.status === "active").length;
+    const activeLeads = leads.filter((lead) => lead.status === "active" || lead.status === "new").length;
 
     const businessData = `
 ## Donnees actuelles de l'agence
-- Projets actifs : ${projects.filter((project) => project.status === "active").length} / ${projects.length} total
-- Leads en cours : ${leads.filter((lead) => lead.status === "active" || lead.status === "new").length}
+- Projets actifs : ${activeProjects} / ${projects.length} total
+- Leads en cours : ${activeLeads}
 - Secteurs leads : ${[...new Set(leads.map((lead) => lead.sector).filter(Boolean))].join(", ") || "Non definis"}
 - Points Habits : ${totalPoints} points
+- Articles en base : ${articlesCountRes.count ?? "Non connecte"}
+- Taches en base : ${tasksCountRes.count ?? "Non connecte"}
+- Posts LinkedIn en base : ${postsCountRes.count ?? "Non connecte"}
+- Carrousels en base : ${carouselsCountRes.count ?? "Non connecte"}
 
 ${projects.length > 0 ? `### Projets\n${projects.map((project) => `- ${project.name} (${project.status}, etape: ${project.current_stage ?? "N/A"})`).join("\n")}` : ""}
     `.trim();
 
-    const systemPrompt = `Tu es le Coach IA business de Louis dans AgenceFlow. Tu aides a prendre de meilleures decisions sur l'agence, les projets, les leads, la prospection, l'organisation et les offres.
+    const systemPrompt = `Tu es le Coach IA business de Louis dans AgenceFlow. Tu aides a prendre de meilleures decisions sur l'agence, les projets, les leads, la prospection, l'organisation, le contenu et les offres.
 Tu reponds en francais, avec un ton direct, clair et actionnable.
 
 ${businessContext ? `## Contexte business\n${businessContext}\n` : ""}
 ${businessData}
+${buildToolPrompt(tool)}
 
 Regles :
 - Reponds avec des recommandations concretes et priorisees.
 - Si une information manque, propose une hypothese prudente et dis ce qu'il faudrait verifier.
-- Ne parle pas comme un assistant LinkedIn posts : tu es un coach business general.
+- Quand un outil est actif, respecte strictement sa structure.
+- Ne dis jamais que tu as cree un element en base si tu as seulement prepare le contenu.
 - Reste concis sauf si Louis demande un plan detaille.`;
 
     const apiKey = process.env.OPENROUTER_API_KEY;
@@ -92,8 +135,8 @@ Regles :
           { role: "system", content: systemPrompt },
           ...messages,
         ],
-        temperature: 0.7,
-        max_tokens: 1500,
+        temperature: tool ? 0.55 : 0.7,
+        max_tokens: tool ? 2200 : 1500,
       }),
     });
 
@@ -119,6 +162,7 @@ Regles :
       if (error) throw error;
       return NextResponse.json({
         reply,
+        tool,
         conversation_id: updatedConversation?.id ?? conversationId,
         conversation: updatedConversation,
       });
@@ -139,6 +183,7 @@ Regles :
 
     return NextResponse.json({
       reply,
+      tool,
       conversation_id: createdConversation.id,
       conversation: createdConversation,
     });
