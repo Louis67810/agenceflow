@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
-const cardShadow = "0px 22px 26px rgba(15,23,42,0.06), 0px 10px 14px rgba(15,23,42,0.05), 0px 2px 5px rgba(15,23,42,0.04)";
+const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
 const composerShadow = "0px 23px 16px rgba(18,26,46,0.04), 0px 10px 11px rgba(18,26,46,0.04), 0px 2px 6px rgba(18,26,46,0.05)";
 
 type Message = {
@@ -89,6 +89,13 @@ export default function CoachPage() {
     if (!query) return conversations;
     return conversations.filter((conversation) => conversation.title.toLowerCase().includes(query));
   }, [conversations, search]);
+
+  const infoCards = useMemo(() => [
+    { label: "Chats recents", value: conversations.length.toLocaleString("fr-FR"), icon: <History size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+    { label: "Modele actif", value: selectedModel.label, icon: <Bot size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+    { label: "Contexte business", value: businessContext.trim() ? "Configure" : "A completer", icon: <Sparkles size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+    { label: "Dernier chat", value: conversations[0] ? formatDate(conversations[0].updated_at) : "Aucun", icon: <Clock3 size={17} style={{ color: "rgba(18,26,46,0.24)" }} /> },
+  ], [businessContext, conversations, selectedModel.label]);
 
   useEffect(() => {
     void loadInitialData();
@@ -211,21 +218,33 @@ export default function CoachPage() {
           </button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "54px 72px 150px" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "34px 72px 150px" }}>
           {messages.length === 0 ? (
-            <div style={{ maxWidth: 1220, margin: "0 auto" }}>
-              <h1 style={{ margin: "130px 0 62px", textAlign: "center", fontSize: 86, lineHeight: "92px", fontWeight: 760, letterSpacing: 0, color: "#121a2e" }}>Bonjour Louis</h1>
+            <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+              <h1 style={{ margin: "74px 0 38px", textAlign: "center", fontSize: 48, lineHeight: "56px", fontWeight: 760, letterSpacing: 0, color: "#121a2e" }}>Bonjour Louis</h1>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 13 }}>
                 {SUGGESTIONS.map((suggestion) => (
-                  <button key={suggestion.label} type="button" onClick={() => void send(suggestion.prompt)} style={{ minHeight: 132, borderRadius: 18, border: "1px solid rgba(18,26,46,0.13)", background: "#fff", boxShadow: cardShadow, padding: 24, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
-                    <span style={{ width: 39, height: 39, borderRadius: 9, background: "#f0f0f1", color: "rgba(18,26,46,0.38)", display: "grid", placeItems: "center" }}><Sparkles size={18} /></span>
-                    <strong style={{ fontSize: 17, lineHeight: "23px", fontWeight: 740, letterSpacing: 0 }}>{suggestion.label}</strong>
+                  <button key={suggestion.label} type="button" onClick={() => void send(suggestion.prompt)} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
+                    <span style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", color: "rgba(18,26,46,0.24)", display: "grid", placeItems: "center", marginBottom: 13 }}><Sparkles size={17} /></span>
+                    <strong style={{ fontSize: 14, lineHeight: "19px", fontWeight: 650, letterSpacing: 0 }}>{suggestion.label}</strong>
                   </button>
                 ))}
               </div>
 
-              <div style={{ maxWidth: 920, margin: "72px auto 0" }}>
+              <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 13, marginTop: 18 }}>
+                {infoCards.map((card) => (
+                  <article key={card.label} style={{ minHeight: 106, borderRadius: 20, border: "1px solid rgba(18,26,46,0.16)", background: "#fff", boxShadow: cardShadow, padding: "20px 22px", boxSizing: "border-box" }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: "#ececec", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 13 }}>
+                      {card.icon}
+                    </div>
+                    <p style={{ margin: 0, fontFamily: '"Inter", sans-serif', fontSize: 13, fontWeight: 500, color: "rgba(18,26,46,0.7)" }}>{card.label}</p>
+                    <strong style={{ display: "block", marginTop: 8, fontSize: 18, fontWeight: 650, color: "#121a2e", lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.value}</strong>
+                  </article>
+                ))}
+              </section>
+
+              <div style={{ maxWidth: 920, margin: "54px auto 0" }}>
                 <p style={{ margin: "0 0 20px", fontSize: 14, color: "rgba(18,26,46,0.58)", fontWeight: 650 }}>Recents :</p>
                 {(conversations.length ? conversations.slice(0, 4) : [{ id: "empty-1", title: "Aucune conversation recente", updated_at: new Date().toISOString() }]).map((conversation) => (
                   <button key={conversation.id} type="button" disabled={conversation.id.startsWith("empty")} onClick={() => void openConversation(conversation.id)} style={{ width: "100%", minHeight: 58, border: 0, borderTop: "1px solid rgba(18,26,46,0.08)", background: "transparent", display: "flex", alignItems: "center", justifyContent: "space-between", textAlign: "left", padding: 0, cursor: conversation.id.startsWith("empty") ? "default" : "pointer", color: conversation.id.startsWith("empty") ? "rgba(18,26,46,0.34)" : "#121a2e" }}>
