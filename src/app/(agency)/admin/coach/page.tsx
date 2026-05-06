@@ -1,301 +1,325 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
-import { Send, Bot, User, Loader2, Plus, Trash2, ChevronDown } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Clock3,
+  History,
+  LayoutPanelLeft,
+  Loader2,
+  MessageSquarePlus,
+  PanelRightOpen,
+  PencilLine,
+  Plus,
+  Search,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
+const cardShadow = "0px 22px 26px rgba(15,23,42,0.06), 0px 10px 14px rgba(15,23,42,0.05), 0px 2px 5px rgba(15,23,42,0.04)";
+const composerShadow = "0px 23px 16px rgba(18,26,46,0.04), 0px 10px 11px rgba(18,26,46,0.04), 0px 2px 6px rgba(18,26,46,0.05)";
 
-interface Message {
+type Message = {
   role: "user" | "assistant";
   content: string;
-}
+};
 
-interface Conversation {
+type Conversation = {
   id: string;
   title: string;
+  created_at?: string;
   updated_at: string;
-}
+  messages?: Message[];
+};
 
 const MODELS = [
   { id: "openai/gpt-4o-mini", label: "GPT-4o Mini" },
   { id: "openai/gpt-4o", label: "GPT-4o" },
   { id: "anthropic/claude-opus-4", label: "Claude Opus 4" },
-  { id: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
-  { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { id: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
-  { id: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
+  { id: "anthropic/claude-sonnet-4-5", label: "Sonnet 4.6" },
+  { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku" },
+  { id: "google/gemini-2.0-flash-001", label: "Gemini Flash" },
   { id: "mistralai/mistral-large-2411", label: "Mistral Large" },
-  { id: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
 ];
 
 const SUGGESTIONS = [
-  "Analyse mes projets en cours et dis-moi quels risques tu vois.",
-  "Comment optimiser ma prospection LinkedIn basée sur mes leads actuels ?",
-  "Quelles habitudes devrais-je prendre pour scaler mon agence ?",
-  "Aide-moi à rédiger une offre de service pour attirer plus de clients.",
-  "Quelles sont les erreurs courantes des agences à mon stade ?",
+  { label: "Analyser mes priorites", prompt: "Analyse mes priorites actuelles et dis-moi quoi faire en premier cette semaine." },
+  { label: "Trouver les blocages", prompt: "Quels sont les blocages probables dans mon agence en ce moment, et comment les regler ?" },
+  { label: "Plan d'action clair", prompt: "Fais-moi un plan d'action simple pour avancer aujourd'hui sans me disperser." },
 ];
+
+function normalizeMessages(value: unknown): Message[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((message): message is Message => {
+    if (!message || typeof message !== "object") return false;
+    const candidate = message as Record<string, unknown>;
+    return (candidate.role === "user" || candidate.role === "assistant") && typeof candidate.content === "string";
+  });
+}
+
+function formatDate(value?: string) {
+  if (!value) return "Aujourd'hui";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Aujourd'hui";
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+}
 
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState("openai/gpt-4o-mini");
+  const [model, setModel] = useState("anthropic/claude-sonnet-4-5");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [businessContext, setBusinessContext] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const selectedModel = MODELS.find((entry) => entry.id === model) ?? MODELS[0];
+  const filteredConversations = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((conversation) => conversation.title.toLowerCase().includes(query));
+  }, [conversations, search]);
 
   useEffect(() => {
-    agendaFetch("/api/coach").then(r => r.json()).then(d => setConversations(d.conversations ?? []));
-    agendaFetch("/api/app-settings").then(r => r.json()).then(d => {
-      setBusinessContext(d.settings?.business_context ?? "");
-      const m = d.settings?.ai_models?.coach;
-      if (m) setModel(m);
-    });
+    void loadInitialData();
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, loading]);
 
-  const newConversation = () => {
+  async function loadInitialData() {
+    const [conversationsRes, settingsRes] = await Promise.allSettled([
+      agendaFetch("/api/coach").then((response) => response.json()),
+      agendaFetch("/api/app-settings").then((response) => response.json()),
+    ]);
+
+    if (conversationsRes.status === "fulfilled") {
+      setConversations(conversationsRes.value.conversations ?? []);
+    }
+
+    if (settingsRes.status === "fulfilled") {
+      setBusinessContext(settingsRes.value.settings?.business_context ?? "");
+      const savedModel = settingsRes.value.settings?.ai_models?.coach;
+      if (savedModel) setModel(savedModel);
+    }
+  }
+
+  function startNewConversation() {
     setMessages([]);
     setConversationId(null);
-  };
+    setError("");
+    setRightPanelOpen(false);
+    window.setTimeout(() => inputRef.current?.focus(), 40);
+  }
 
-  const send = async (text?: string) => {
+  async function openConversation(id: string) {
+    setError("");
+    const response = await agendaFetch(`/api/coach?id=${encodeURIComponent(id)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error ?? "Impossible d'ouvrir cette conversation.");
+      return;
+    }
+    setConversationId(data.conversation.id);
+    setMessages(normalizeMessages(data.conversation.messages));
+    setRightPanelOpen(false);
+  }
+
+  async function refreshConversations(nextConversation?: Conversation) {
+    if (nextConversation?.id) {
+      setConversations((current) => {
+        const rest = current.filter((conversation) => conversation.id !== nextConversation.id);
+        return [nextConversation, ...rest];
+      });
+      return;
+    }
+
+    const response = await agendaFetch("/api/coach");
+    const data = await response.json();
+    if (response.ok) setConversations(data.conversations ?? []);
+  }
+
+  async function send(text?: string) {
     const content = (text ?? input).trim();
     if (!content || loading) return;
-    setInput("");
 
-    const userMsg: Message = { role: "user", content };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    setInput("");
+    setError("");
+    const nextMessages: Message[] = [...messages, { role: "user", content }];
+    setMessages(nextMessages);
     setLoading(true);
 
-    const res = await agendaFetch("/api/coach", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: newMessages,
-        model,
-        business_context: businessContext,
-        conversation_id: conversationId,
-      }),
-    }).then(r => r.json());
-
-    setLoading(false);
-    if (res.reply) {
-      setMessages(prev => [...prev, { role: "assistant", content: res.reply }]);
-    }
-    if (res.conversation_id) {
-      setConversationId(res.conversation_id);
-      setConversations(prev => {
-        const exists = prev.find(c => c.id === res.conversation_id);
-        if (!exists && res.conversation_id) {
-          return [{ id: res.conversation_id, title: content.slice(0, 40) + "...", updated_at: new Date().toISOString() }, ...prev];
-        }
-        return prev;
+    try {
+      const response = await agendaFetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: nextMessages,
+          model,
+          business_context: businessContext,
+          conversation_id: conversationId,
+        }),
       });
+      const data = await response.json();
+
+      if (!response.ok || !data.reply) {
+        throw new Error(data.error ?? "Reponse impossible pour le moment.");
+      }
+
+      setMessages([...nextMessages, { role: "assistant", content: data.reply }]);
+      if (data.conversation_id) setConversationId(data.conversation_id);
+      await refreshConversations(data.conversation);
+    } catch (sendError) {
+      const message = sendError instanceof Error ? sendError.message : "Le Coach IA n'a pas pu repondre.";
+      setError(message);
+      setMessages([...nextMessages, { role: "assistant", content: "Je n'ai pas pu repondre correctement. Verifie la configuration IA, puis relance ta demande." }]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#fbfbfb", ...jakartaSans }}>
-      {/* Sidebar conversations */}
-      <div style={{ width: 240, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-        <div style={{ padding: 16, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: "#E1D1FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Bot size={15} style={{ color: "#6236AA" }} />
-              </div>
-              <span style={{ fontWeight: 700, color: "#121a2e", fontSize: 14, letterSpacing: "-0.3px" }}>Coach IA</span>
-            </div>
-            <button onClick={newConversation} style={{
-              width: 28, height: 28, borderRadius: 8,
-              background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-              border: "1px solid #2f4d9d", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }} title="Nouvelle conversation">
-              <Plus size={13} style={{ color: "#fff" }} />
-            </button>
-          </div>
-        </div>
+    <main style={{ height: "100vh", minHeight: 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
+      {loading ? (
+        <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -250, left: "8%", width: "84%", height: 850, objectFit: "fill", pointerEvents: "none", opacity: 0, animation: "coachLoaderIn 0.42s ease-in-out forwards, coachLoaderPulse 2s ease-in-out 0.42s infinite alternate", zIndex: 1 }} />
+      ) : null}
 
-        {/* Model selector */}
-        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
-          <label style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", display: "block", marginBottom: 4 }}>Modèle</label>
-          <div style={{ position: "relative" }}>
-            <select
-              value={model}
-              onChange={e => setModel(e.target.value)}
-              style={{
-                width: "100%", fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8,
-                padding: "6px 24px 6px 10px", background: "#f6f6f6", appearance: "none",
-                color: "#121a2e", outline: "none", cursor: "pointer",
-              }}
-            >
-              {MODELS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-            <ChevronDown size={11} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.4)", pointerEvents: "none" }} />
-          </div>
-        </div>
+      <aside style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", zIndex: 5, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 26 }}>
+        <button type="button" onClick={startNewConversation} title="Nouveau chat" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><LayoutPanelLeft size={20} /></button>
+        <button type="button" onClick={startNewConversation} title="Ecrire" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><PencilLine size={20} /></button>
+        <button type="button" onClick={() => setRightPanelOpen(true)} title="Rechercher" style={{ width: 32, height: 32, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}><Search size={20} /></button>
+      </aside>
 
-        {/* Conversations list */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-          {conversations.length === 0 ? (
-            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", textAlign: "center", padding: 16 }}>Aucune conversation</p>
-          ) : (
-            conversations.map(c => (
-              <div key={c.id} style={{
-                padding: "10px 12px", borderRadius: 9, marginBottom: 2, cursor: "pointer", fontSize: 12,
-                background: conversationId === c.id ? "#e8edff" : "transparent",
-                color: conversationId === c.id ? "#0147ff" : "rgba(18,26,46,0.6)",
-                fontWeight: conversationId === c.id ? 600 : 400,
-              }}>
-                <p style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</p>
-                <p style={{ margin: "2px 0 0", color: "rgba(18,26,46,0.35)", fontSize: 11 }}>{new Date(c.updated_at).toLocaleDateString("fr-FR")}</p>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Business context */}
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", padding: 12 }}>
-          <button
-            onClick={() => setShowSettings(s => !s)}
-            style={{ width: "100%", fontSize: 12, color: "rgba(18,26,46,0.5)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: "none", border: "none", cursor: "pointer" }}
-          >
-            Contexte business <ChevronDown size={11} style={{ transform: showSettings ? "rotate(180deg)" : "none" }} />
+      <section style={{ position: "relative", zIndex: 3, height: "100%", paddingLeft: 60, display: "flex", flexDirection: "column" }}>
+        <div style={{ height: 64, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 32px", gap: 10 }}>
+          <button type="button" onClick={startNewConversation} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.11)", background: "#fff", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, color: "#121a2e", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 14px rgba(18,26,46,0.04)" }}>
+            <MessageSquarePlus size={15} /> Nouveau
           </button>
-          {showSettings && (
-            <div style={{ marginTop: 8 }}>
-              <textarea
-                value={businessContext}
-                onChange={e => setBusinessContext(e.target.value)}
-                onBlur={() => agendaFetch("/api/app-settings", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ business_context: businessContext }),
-                })}
-                placeholder="Décrivez votre agence, vos services, vos objectifs..."
-                rows={5}
-                style={{
-                  width: "100%", fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9,
-                  padding: "8px 10px", resize: "none", background: "#f6f6f6", color: "#121a2e",
-                  outline: "none", boxSizing: "border-box",
-                }}
-              />
-              <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>Sauvegarde automatique</p>
-            </div>
-          )}
+          <button type="button" onClick={() => setRightPanelOpen((value) => !value)} style={{ minHeight: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.11)", background: rightPanelOpen ? "#121a2e" : "#fff", color: rightPanelOpen ? "#fff" : "#121a2e", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 14px rgba(18,26,46,0.04)" }}>
+            <PanelRightOpen size={15} /> Recents
+          </button>
         </div>
-      </div>
 
-      {/* Chat area */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* Messages */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-          {messages.length === 0 && (
-            <div style={{ maxWidth: 560, margin: "48px auto 0", textAlign: "center" }}>
-              <div style={{ width: 64, height: 64, background: "#E1D1FA", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                <Bot size={30} style={{ color: "#6236AA" }} />
-              </div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#121a2e", margin: "0 0 8px", letterSpacing: "-0.45px" }}>Coach Business IA</h2>
-              <p style={{ color: "rgba(18,26,46,0.5)", fontSize: 14, margin: "0 0 32px", lineHeight: "1.5" }}>Je connais vos projets, leads et données. Posez-moi n'importe quelle question sur votre agence.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, textAlign: "left" }}>
-                {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={() => send(s)} style={{
-                    padding: "12px 16px", background: "#fff",
-                    border: "1px solid rgba(0,0,0,0.1)", borderRadius: 11,
-                    fontSize: 13, color: "#121a2e", cursor: "pointer", textAlign: "left",
-                    letterSpacing: "-0.3px", lineHeight: "1.4",
-                  }}>
-                    {s}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "54px 72px 150px" }}>
+          {messages.length === 0 ? (
+            <div style={{ maxWidth: 1220, margin: "0 auto" }}>
+              <h1 style={{ margin: "130px 0 62px", textAlign: "center", fontSize: 86, lineHeight: "92px", fontWeight: 760, letterSpacing: 0, color: "#121a2e" }}>Bonjour Louis</h1>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 18 }}>
+                {SUGGESTIONS.map((suggestion) => (
+                  <button key={suggestion.label} type="button" onClick={() => void send(suggestion.prompt)} style={{ minHeight: 132, borderRadius: 18, border: "1px solid rgba(18,26,46,0.13)", background: "#fff", boxShadow: cardShadow, padding: 24, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "space-between", textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
+                    <span style={{ width: 39, height: 39, borderRadius: 9, background: "#f0f0f1", color: "rgba(18,26,46,0.38)", display: "grid", placeItems: "center" }}><Sparkles size={18} /></span>
+                    <strong style={{ fontSize: 17, lineHeight: "23px", fontWeight: 740, letterSpacing: 0 }}>{suggestion.label}</strong>
                   </button>
                 ))}
               </div>
+
+              <div style={{ maxWidth: 920, margin: "72px auto 0" }}>
+                <p style={{ margin: "0 0 20px", fontSize: 14, color: "rgba(18,26,46,0.58)", fontWeight: 650 }}>Recents :</p>
+                {(conversations.length ? conversations.slice(0, 4) : [{ id: "empty-1", title: "Aucune conversation recente", updated_at: new Date().toISOString() }]).map((conversation) => (
+                  <button key={conversation.id} type="button" disabled={conversation.id.startsWith("empty")} onClick={() => void openConversation(conversation.id)} style={{ width: "100%", minHeight: 58, border: 0, borderTop: "1px solid rgba(18,26,46,0.08)", background: "transparent", display: "flex", alignItems: "center", justifyContent: "space-between", textAlign: "left", padding: 0, cursor: conversation.id.startsWith("empty") ? "default" : "pointer", color: conversation.id.startsWith("empty") ? "rgba(18,26,46,0.34)" : "#121a2e" }}>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>{conversation.title}</span>
+                    {!conversation.id.startsWith("empty") ? <span style={{ fontSize: 12, color: "rgba(18,26,46,0.42)" }}>{formatDate(conversation.updated_at)}</span> : null}
+                  </button>
+                ))}
+                <div style={{ borderTop: "1px solid rgba(18,26,46,0.08)" }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+              {messages.map((message, index) => (
+                <div key={`${message.role}-${index}`} style={{ display: "flex", justifyContent: message.role === "user" ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth: "78%", borderRadius: message.role === "user" ? "22px 22px 6px 22px" : "22px 22px 22px 6px", background: message.role === "user" ? "#121a2e" : "#fff", color: message.role === "user" ? "#fff" : "#121a2e", border: message.role === "user" ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.1)", boxShadow: message.role === "user" ? "none" : "0 14px 34px rgba(18,26,46,0.06)", padding: "15px 18px", fontSize: 15, lineHeight: "25px", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}>
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+              {loading ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, color: "rgba(18,26,46,0.54)", fontSize: 13, fontWeight: 700 }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", display: "grid", placeItems: "center", boxShadow: "0 10px 22px rgba(18,26,46,0.06)" }}><Loader2 size={16} style={{ animation: "spin 1s linear infinite", color: "#0147ff" }} /></span>
+                  Coach IA travaille...
+                </div>
+              ) : null}
+              <div ref={bottomRef} />
             </div>
           )}
-
-          {messages.map((msg, i) => (
-            <div key={i} style={{ display: "flex", gap: 12, justifyContent: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%", alignSelf: msg.role === "user" ? "flex-end" : "flex-start" }}>
-              {msg.role === "assistant" && (
-                <div style={{ width: 32, height: 32, background: "#E1D1FA", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Bot size={15} style={{ color: "#6236AA" }} />
-                </div>
-              )}
-              <div style={{
-                borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                padding: "12px 16px", fontSize: 14, lineHeight: "1.6",
-                background: msg.role === "user"
-                  ? "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)"
-                  : "#fff",
-                color: msg.role === "user" ? "#fff" : "#121a2e",
-                border: msg.role === "user" ? "1px solid #2f4d9d" : "1px solid rgba(0,0,0,0.1)",
-                boxShadow: msg.role === "user" ? "0px 4px 12px rgba(1,71,255,0.2)" : "0px 2px 8px rgba(0,0,0,0.04)",
-                whiteSpace: "pre-wrap",
-              }}>
-                {msg.content}
-              </div>
-              {msg.role === "user" && (
-                <div style={{ width: 32, height: 32, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <User size={15} style={{ color: "#fff" }} />
-                </div>
-              )}
-            </div>
-          ))}
-
-          {loading && (
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-start", alignSelf: "flex-start" }}>
-              <div style={{ width: 32, height: 32, background: "#E1D1FA", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Bot size={15} style={{ color: "#6236AA" }} />
-              </div>
-              <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: "18px 18px 18px 4px", padding: "12px 16px" }}>
-                <Loader2 size={16} style={{ color: "#0147ff", animation: "spin 1s linear infinite" }} />
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", background: "#fff", padding: 16 }}>
-          <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "flex-end", gap: 12 }}>
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Posez votre question... (Entrée pour envoyer, Shift+Entrée pour nouvelle ligne)"
-              rows={2}
-              style={{
-                flex: 1, border: "1px solid rgba(0,0,0,0.09)", borderRadius: 11,
-                padding: "12px 16px", fontSize: 14, resize: "none", background: "#f6f6f6",
-                color: "#121a2e", outline: "none", lineHeight: "1.5", fontFamily: '"Plus Jakarta Sans", sans-serif',
-              }}
-            />
-            <button
-              onClick={() => send()}
-              disabled={loading || !input.trim()}
-              style={{
-                width: 44, height: 44, borderRadius: 11, flexShrink: 0,
-                background: loading || !input.trim()
-                  ? "rgba(18,26,46,0.08)"
-                  : "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
-                border: loading || !input.trim() ? "1px solid rgba(0,0,0,0.08)" : "1px solid #2f4d9d",
-                cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Send size={17} style={{ color: loading || !input.trim() ? "rgba(18,26,46,0.3)" : "#fff" }} />
+        {error ? <div style={{ position: "absolute", left: "50%", bottom: 126, transform: "translateX(-50%)", maxWidth: 620, borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", fontSize: 13, fontWeight: 650, zIndex: 8 }}>{error}</div> : null}
+
+        <div style={{ position: "absolute", left: 60, right: rightPanelOpen ? 360 : 0, bottom: 0, zIndex: 7, padding: "0 48px 34px", transition: "right 0.22s ease" }}>
+          <div style={{ maxWidth: 860, minHeight: 70, margin: "0 auto", borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, display: "flex", alignItems: "center", gap: 16, padding: "9px 10px 9px 22px", backdropFilter: "blur(10px)", position: "relative" }}>
+            <button type="button" onClick={startNewConversation} title="Nouveau chat" style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: "transparent", display: "grid", placeItems: "center", color: "#121a2e", cursor: "pointer", flexShrink: 0 }}><Plus size={22} /></button>
+            <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Demande au Coach IA..." rows={1} style={{ flex: 1, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", paddingTop: 7 }} />
+            <button type="button" onClick={() => setModelPickerOpen((value) => !value)} style={{ minHeight: 36, border: 0, background: "transparent", color: "rgba(18,26,46,0.62)", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+              {selectedModel.label} <ChevronDown size={15} />
             </button>
+            <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} style={{ width: 48, height: 48, borderRadius: 999, border: 0, background: "#121a2e", color: "#fff", display: "grid", placeItems: "center", cursor: loading || !input.trim() ? "not-allowed" : "pointer", opacity: loading || !input.trim() ? 0.55 : 1, flexShrink: 0 }}>
+              {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={19} />}
+            </button>
+
+            {modelPickerOpen ? (
+              <div style={{ position: "absolute", right: 64, bottom: 66, width: 260, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
+                {MODELS.map((entry) => (
+                  <button key={entry.id} type="button" onClick={() => { setModel(entry.id); setModelPickerOpen(false); }} style={{ minHeight: 38, borderRadius: 11, border: 0, background: model === entry.id ? "#f0f3ff" : "transparent", color: model === entry.id ? "#0147ff" : "#121a2e", padding: "0 12px", textAlign: "left", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{entry.label}</button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <aside style={{ position: "absolute", top: 0, right: rightPanelOpen ? 0 : -360, bottom: 0, width: 360, background: "#fff", borderLeft: "1px solid rgba(18,26,46,0.1)", boxShadow: "-20px 0 42px rgba(18,26,46,0.08)", zIndex: 9, transition: "right 0.22s ease", display: "flex", flexDirection: "column" }}>
+        <div style={{ minHeight: 70, padding: "0 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 11, background: "#f0f3ff", color: "#0147ff", display: "grid", placeItems: "center" }}><History size={17} /></span>
+            <strong style={{ fontSize: 15 }}>Chats recents</strong>
+          </div>
+          <button type="button" onClick={() => setRightPanelOpen(false)} style={{ width: 32, height: 32, borderRadius: 999, border: 0, background: "transparent", cursor: "pointer", color: "rgba(18,26,46,0.58)", display: "grid", placeItems: "center" }}><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: 14, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <div style={{ minHeight: 42, borderRadius: 13, background: "#f7f8fb", border: "1px solid rgba(18,26,46,0.08)", display: "flex", alignItems: "center", gap: 9, padding: "0 12px" }}>
+            <Search size={15} style={{ color: "rgba(18,26,46,0.42)" }} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un chat" style={{ flex: 1, border: 0, outline: "none", background: "transparent", color: "#121a2e", fontSize: 13 }} />
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 10 }}>
+          {filteredConversations.length === 0 ? (
+            <div style={{ height: "100%", display: "grid", placeItems: "center", textAlign: "center", color: "rgba(18,26,46,0.42)", fontSize: 13, lineHeight: "20px", padding: 24 }}>
+              Aucun chat recent pour le moment.
+            </div>
+          ) : filteredConversations.map((conversation) => {
+            const active = conversation.id === conversationId;
+            return (
+              <button key={conversation.id} type="button" onClick={() => void openConversation(conversation.id)} style={{ width: "100%", border: 0, borderRadius: 13, background: active ? "#f0f3ff" : "transparent", padding: "12px 11px", display: "grid", gap: 6, textAlign: "left", cursor: "pointer", color: "#121a2e" }}>
+                <span style={{ fontSize: 13, fontWeight: 760, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conversation.title}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(18,26,46,0.42)", fontWeight: 650 }}><Clock3 size={12} />{formatDate(conversation.updated_at)}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: 14, borderTop: "1px solid rgba(18,26,46,0.08)" }}>
+          <button type="button" onClick={startNewConversation} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid #121a2e", background: "#121a2e", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 760, cursor: "pointer" }}>
+            <Bot size={15} /> Nouveau chat Coach IA
+          </button>
+        </div>
+      </aside>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes coachLoaderIn { from { opacity: 0; } to { opacity: 1; } } @keyframes coachLoaderPulse { from { opacity: 1; } to { opacity: 0.76; } }`}</style>
+    </main>
   );
 }
