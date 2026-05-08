@@ -23,7 +23,7 @@
   var queue = [];
   var sentScrollDepths = {};
   var sentSections = {};
-  var maxScrollDepth = 0;
+  var maxScrollDepth = calculateScrollDepth();
   var isFlushing = false;
   var visitorId = getOrCreateId("af_visitor_id");
   var sessionId = getSessionId();
@@ -105,6 +105,13 @@
     if (queue.length >= config.batchSize) flush(false);
   }
 
+  function calculateScrollDepth() {
+    var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+    var height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
+    if (height <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round((scrollTop / height) * 100)));
+  }
+
   function flush(useBeacon) {
     if (isFlushing || queue.length === 0) return;
     isFlushing = true;
@@ -112,7 +119,7 @@
     var payload = JSON.stringify({ siteId: config.siteId, events: events });
 
     if (useBeacon && navigator.sendBeacon) {
-      var sent = navigator.sendBeacon(config.endpoint, new Blob([payload], { type: "application/json" }));
+      var sent = navigator.sendBeacon(config.endpoint, new Blob([payload], { type: "text/plain" }));
       isFlushing = false;
       if (!sent) queue = events.concat(queue);
       return;
@@ -167,10 +174,8 @@
   }
 
   function trackScroll() {
-    var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
-    var height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - window.innerHeight;
-    var depth = height > 0 ? Math.round((scrollTop / height) * 100) : 100;
-    maxScrollDepth = Math.max(maxScrollDepth, Math.min(100, depth));
+    var depth = calculateScrollDepth();
+    maxScrollDepth = Math.max(maxScrollDepth, depth);
     [25, 50, 75, 90, 100].forEach(function (threshold) {
       if (maxScrollDepth >= threshold && !sentScrollDepths[threshold]) {
         sentScrollDepths[threshold] = true;
@@ -231,6 +236,7 @@
   }
 
   track("page_view", { source: "script", consent: "not_configured" });
+  setTimeout(function () { flush(false); }, 600);
   installSectionTracking();
   installPerformanceTracking();
 
@@ -274,7 +280,17 @@
   }
 
   window.addEventListener("scroll", throttle(trackScroll, 700), { passive: true });
+  window.setInterval(function () {
+    maxScrollDepth = Math.max(maxScrollDepth, calculateScrollDepth());
+    track("engaged_time", {
+      durationMs: Date.now() - startedAt,
+      maxScrollDepth: maxScrollDepth,
+      visibility: document.visibilityState
+    });
+    flush(false);
+  }, 15000);
   window.addEventListener("pagehide", function () {
+    maxScrollDepth = Math.max(maxScrollDepth, calculateScrollDepth());
     track("page_leave", {
       durationMs: Date.now() - startedAt,
       maxScrollDepth: maxScrollDepth,
@@ -284,6 +300,7 @@
   });
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") {
+      maxScrollDepth = Math.max(maxScrollDepth, calculateScrollDepth());
       track("page_hidden", { durationMs: Date.now() - startedAt, maxScrollDepth: maxScrollDepth });
       flush(true);
     }

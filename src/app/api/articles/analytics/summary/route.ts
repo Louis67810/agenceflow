@@ -25,6 +25,17 @@ type PageSummary = {
   avgDurationMs: number;
   maxScrollDepth: number;
   lastSeenAt: string | null;
+  dailyStats: DailyStat[];
+};
+
+type DailyStat = {
+  date: string;
+  views: number;
+  visitors: number;
+  clicks: number;
+  formSubmits: number;
+  avgDurationMs: number;
+  maxScrollDepth: number;
 };
 
 function normalizePath(value: string) {
@@ -56,7 +67,20 @@ function emptySummary(url: string, path: string): PageSummary {
     avgDurationMs: 0,
     maxScrollDepth: 0,
     lastSeenAt: null,
+    dailyStats: [],
   };
+}
+
+function dateKey(value: string) {
+  return value.slice(0, 10);
+}
+
+function getLastSevenDays() {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    return date.toISOString().slice(0, 10);
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -102,6 +126,8 @@ export async function POST(req: NextRequest) {
   const visitors = new Map<string, Set<string>>();
   const sessions = new Map<string, Set<string>>();
   const durations = new Map<string, number[]>();
+  const dailyVisitors = new Map<string, Map<string, Set<string>>>();
+  const dailyDurations = new Map<string, Map<string, number[]>>();
 
   for (const url of urls) {
     const path = normalizePath(url);
@@ -109,6 +135,8 @@ export async function POST(req: NextRequest) {
     visitors.set(path, new Set());
     sessions.set(path, new Set());
     durations.set(path, []);
+    dailyVisitors.set(path, new Map());
+    dailyDurations.set(path, new Map());
   }
 
   for (const row of rows) {
@@ -120,30 +148,76 @@ export async function POST(req: NextRequest) {
       visitors.set(path, new Set());
       sessions.set(path, new Set());
       durations.set(path, []);
+      dailyVisitors.set(path, new Map());
+      dailyDurations.set(path, new Map());
     }
 
     const summary = summaries.get(path)!;
-    if (row.event_name === "page_view") summary.viewsLastWeek += 1;
+    const day = dateKey(row.event_time);
+    let daily = summary.dailyStats.find((entry) => entry.date === day);
+    if (!daily) {
+      daily = { date: day, views: 0, visitors: 0, clicks: 0, formSubmits: 0, avgDurationMs: 0, maxScrollDepth: 0 };
+      summary.dailyStats.push(daily);
+    }
+
+    if (row.event_name === "page_view") {
+      summary.viewsLastWeek += 1;
+      daily.views += 1;
+    }
     if (row.event_name === "click") summary.clicksLastWeek += 1;
-    if (row.event_name === "form_submit") summary.formSubmitsLastWeek += 1;
-    if (row.visitor_id) visitors.get(path)?.add(row.visitor_id);
+    if (row.event_name === "click") daily.clicks += 1;
+    if (row.event_name === "form_submit") {
+      summary.formSubmitsLastWeek += 1;
+      daily.formSubmits += 1;
+    }
+    if (row.visitor_id) {
+      visitors.get(path)?.add(row.visitor_id);
+      if (!dailyVisitors.get(path)?.has(day)) dailyVisitors.get(path)?.set(day, new Set());
+      dailyVisitors.get(path)?.get(day)?.add(row.visitor_id);
+    }
     if (row.session_id) sessions.get(path)?.add(row.session_id);
 
     const durationMs = numberFromMetadata(row.metadata, "durationMs");
-    if (durationMs > 0) durations.get(path)?.push(durationMs);
-    summary.maxScrollDepth = Math.max(summary.maxScrollDepth, numberFromMetadata(row.metadata, "maxScrollDepth"));
+    if (durationMs > 0) {
+      durations.get(path)?.push(durationMs);
+      if (!dailyDurations.get(path)?.has(day)) dailyDurations.get(path)?.set(day, []);
+      dailyDurations.get(path)?.get(day)?.push(durationMs);
+    }
+    const scrollDepth = numberFromMetadata(row.metadata, "maxScrollDepth") || numberFromMetadata(row.metadata, "depth");
+    summary.maxScrollDepth = Math.max(summary.maxScrollDepth, scrollDepth);
+    daily.maxScrollDepth = Math.max(daily.maxScrollDepth, scrollDepth);
     if (!summary.lastSeenAt || row.event_time > summary.lastSeenAt) summary.lastSeenAt = row.event_time;
   }
 
+  const lastSevenDays = getLastSevenDays();
   const result = Array.from(summaries.entries()).map(([path, summary]) => {
     const durationValues = durations.get(path) ?? [];
+    const visitorCount = visitors.get(path)?.size ?? 0;
+    const sessionCount = sessions.get(path)?.size ?? 0;
+    const fallbackViews = summary.viewsLastWeek > 0 ? summary.viewsLastWeek : Math.max(visitorCount, sessionCount);
     return {
       ...summary,
-      visitorsLastWeek: visitors.get(path)?.size ?? 0,
-      sessionsLastWeek: sessions.get(path)?.size ?? 0,
+      viewsLastWeek: fallbackViews,
+      visitorsLastWeek: visitorCount,
+      sessionsLastWeek: sessionCount,
       avgDurationMs: durationValues.length > 0
         ? Math.round(durationValues.reduce((total, value) => total + value, 0) / durationValues.length)
         : 0,
+      dailyStats: lastSevenDays.map((day) => {
+        const existing = summary.dailyStats.find((entry) => entry.date === day);
+        const dayDurations = dailyDurations.get(path)?.get(day) ?? [];
+        const views = existing?.views ?? 0;
+        const visitorsForDay = dailyVisitors.get(path)?.get(day)?.size ?? 0;
+        return {
+          date: day,
+          views: views > 0 ? views : visitorsForDay,
+          visitors: visitorsForDay,
+          clicks: existing?.clicks ?? 0,
+          formSubmits: existing?.formSubmits ?? 0,
+          avgDurationMs: dayDurations.length > 0 ? Math.round(dayDurations.reduce((total, value) => total + value, 0) / dayDurations.length) : 0,
+          maxScrollDepth: existing?.maxScrollDepth ?? 0,
+        };
+      }),
     };
   });
 

@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, Clock3, Eye, MousePointerClick, Users } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, TrendingUp, Users, X } from "lucide-react";
+
+type DailyStat = {
+  date: string;
+  views: number;
+  visitors: number;
+  clicks: number;
+  formSubmits: number;
+  avgDurationMs: number;
+  maxScrollDepth: number;
+};
 
 type PageSummary = {
   url: string;
@@ -16,6 +26,7 @@ type PageSummary = {
   avgDurationMs: number;
   maxScrollDepth: number;
   lastSeenAt: string | null;
+  dailyStats: DailyStat[];
 };
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
@@ -34,6 +45,99 @@ function titleFromPath(path: string) {
   return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("fr-FR").format(value);
+}
+
+function dedupeSummaries(pages: PageSummary[]) {
+  const map = new Map<string, PageSummary>();
+  for (const page of pages) {
+    const key = page.path || page.url;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, page);
+      continue;
+    }
+    map.set(key, {
+      ...existing,
+      url: existing.url || page.url,
+      viewsLastWeek: existing.viewsLastWeek + page.viewsLastWeek,
+      visitorsLastWeek: Math.max(existing.visitorsLastWeek, page.visitorsLastWeek),
+      sessionsLastWeek: Math.max(existing.sessionsLastWeek, page.sessionsLastWeek),
+      clicksLastWeek: existing.clicksLastWeek + page.clicksLastWeek,
+      formSubmitsLastWeek: existing.formSubmitsLastWeek + page.formSubmitsLastWeek,
+      avgDurationMs: Math.max(existing.avgDurationMs, page.avgDurationMs),
+      maxScrollDepth: Math.max(existing.maxScrollDepth, page.maxScrollDepth),
+      lastSeenAt: existing.lastSeenAt && page.lastSeenAt ? (existing.lastSeenAt > page.lastSeenAt ? existing.lastSeenAt : page.lastSeenAt) : existing.lastSeenAt || page.lastSeenAt,
+      dailyStats: mergeDailyStats(existing.dailyStats, page.dailyStats),
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => b.viewsLastWeek - a.viewsLastWeek);
+}
+
+function mergeDailyStats(left: DailyStat[], right: DailyStat[]) {
+  const map = new Map<string, DailyStat>();
+  for (const stat of [...left, ...right]) {
+    const existing = map.get(stat.date);
+    map.set(stat.date, existing ? {
+      date: stat.date,
+      views: existing.views + stat.views,
+      visitors: Math.max(existing.visitors, stat.visitors),
+      clicks: existing.clicks + stat.clicks,
+      formSubmits: existing.formSubmits + stat.formSubmits,
+      avgDurationMs: Math.max(existing.avgDurationMs, stat.avgDurationMs),
+      maxScrollDepth: Math.max(existing.maxScrollDepth, stat.maxScrollDepth),
+    } : stat);
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function MiniLineChart({
+  data,
+  metric,
+  color,
+}: {
+  data: DailyStat[];
+  metric: keyof Pick<DailyStat, "views" | "visitors" | "clicks" | "avgDurationMs" | "maxScrollDepth">;
+  color: string;
+}) {
+  const max = Math.max(...data.map((item) => Number(item[metric]) || 0), 1);
+  const points = data.map((item, index) => {
+    const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
+    const y = 220 - ((Number(item[metric]) || 0) / max) * 170;
+    return `${x},${y}`;
+  }).join(" ");
+
+  return (
+    <svg viewBox="0 0 920 285" preserveAspectRatio="none" style={{ width: "100%", height: 260, display: "block", overflow: "visible" }}>
+      {[0, 1, 2, 3, 4].map((line) => (
+        <line key={line} x1="46" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
+      ))}
+      {[0, 1, 2, 3, 4].map((line) => {
+        const value = Math.round(max - (max / 4) * line);
+        return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{metric === "avgDurationMs" ? formatDuration(value) : formatNumber(value)}</text>;
+      })}
+      <defs>
+        <linearGradient id={`articleChartFill-${metric}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {points ? (
+        <>
+          <polyline points={`58,230 ${points} 878,230`} fill={`url(#articleChartFill-${metric})`} stroke="none" />
+          <polyline points={points} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : null}
+      {data.map((item, index) => {
+        const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
+        if (index % Math.max(Math.ceil(data.length / 6), 1) !== 0) return null;
+        return <text key={item.date} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
+      })}
+    </svg>
+  );
+}
+
 function MetricCard({ label, value, icon }: { label: string; value: string | number; icon: ReactNode }) {
   return (
     <div style={{ borderRadius: 13, border: "1px solid rgba(0,0,0,0.1)", background: "#fff", boxShadow: cardShadow, padding: 20 }}>
@@ -46,6 +150,7 @@ function MetricCard({ label, value, icon }: { label: string; value: string | num
 
 export default function ArticleStatsPage() {
   const [summaries, setSummaries] = useState<PageSummary[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [message, setMessage] = useState("Chargement des statistiques...");
   const [loading, setLoading] = useState(true);
 
@@ -76,8 +181,11 @@ export default function ArticleStatsPage() {
     void loadStats();
   }, []);
 
+  const uniqueSummaries = useMemo(() => dedupeSummaries(summaries), [summaries]);
+  const selectedPage = uniqueSummaries.find((page) => page.path === selectedPath) ?? uniqueSummaries[0] ?? null;
+
   const totals = useMemo(() => {
-    return summaries.reduce(
+    return uniqueSummaries.reduce(
       (acc, page) => ({
         views: acc.views + page.viewsLastWeek,
         visitors: acc.visitors + page.visitorsLastWeek,
@@ -86,9 +194,9 @@ export default function ArticleStatsPage() {
       }),
       { views: 0, visitors: 0, clicks: 0, duration: 0 }
     );
-  }, [summaries]);
+  }, [uniqueSummaries]);
 
-  const avgDuration = summaries.length > 0 ? Math.round(totals.duration / summaries.length) : 0;
+  const avgDuration = uniqueSummaries.length > 0 ? Math.round(totals.duration / uniqueSummaries.length) : 0;
 
   return (
     <main style={{ minHeight: "100vh", background: "#fbfbfb", padding: "52px 64px", color: "#121a2e", ...jk }}>
@@ -108,6 +216,77 @@ export default function ArticleStatsPage() {
         <MetricCard label="Temps moyen" value={formatDuration(avgDuration)} icon={<Clock3 size={18} />} />
       </section>
 
+      {!loading && selectedPage ? (
+        <section style={{ marginTop: 18, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }}>
+          <div style={{ minHeight: 72, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 21, lineHeight: "27px", fontWeight: 750, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(selectedPage.path)}</h2>
+              <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.48)", fontSize: 12, fontFamily: "Inter, sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPage.url || selectedPage.path}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {selectedPage.url ? (
+                <a href={selectedPage.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 14px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, fontFamily: "Inter, sans-serif" }}>
+                  <ExternalLink size={14} /> Ouvrir
+                </a>
+              ) : null}
+              {selectedPath ? (
+                <button type="button" onClick={() => setSelectedPath(null)} style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}>
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div style={{ padding: 24, display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+              {[
+                { label: "Vues", value: formatNumber(selectedPage.viewsLastWeek) },
+                { label: "Visiteurs", value: formatNumber(selectedPage.visitorsLastWeek) },
+                { label: "Clics", value: formatNumber(selectedPage.clicksLastWeek) },
+                { label: "Temps moyen", value: formatDuration(selectedPage.avgDurationMs) },
+                { label: "Scroll max", value: `${selectedPage.maxScrollDepth}%` },
+              ].map((metric) => (
+                <div key={metric.label} style={{ borderRadius: 12, border: "1px solid rgba(18,26,46,0.08)", background: "#fbfbfb", padding: 14 }}>
+                  <span style={{ display: "block", fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>{metric.label}</span>
+                  <strong style={{ display: "block", marginTop: 6, fontSize: 20, color: "#121a2e" }}>{metric.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 18 }}>
+              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e", display: "flex", alignItems: "center", gap: 8 }}><TrendingUp size={17} /> Evolution des vues</h3>
+                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="views" color="#6D96FE" />
+              </article>
+              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Visiteurs et clics</h3>
+                <div style={{ display: "grid", gap: 16 }}>
+                  <div>
+                    <span style={{ fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>Visiteurs</span>
+                    <MiniLineChart data={selectedPage.dailyStats ?? []} metric="visitors" color="#168b64" />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>Clics</span>
+                    <MiniLineChart data={selectedPage.dailyStats ?? []} metric="clicks" color="#f97316" />
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Temps sur page</h3>
+                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="avgDurationMs" color="#7c3aed" />
+              </article>
+              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Profondeur de scroll</h3>
+                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="maxScrollDepth" color="#0147ff" />
+              </article>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section style={{ marginTop: 18, minHeight: 520, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }}>
         <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
           <h2 style={{ margin: 0, fontSize: 20, lineHeight: "26px", fontWeight: 750 }}>Performance par page</h2>
@@ -116,7 +295,7 @@ export default function ArticleStatsPage() {
 
         {loading ? (
           <div style={{ minHeight: 420, display: "grid", placeItems: "center", color: "rgba(18,26,46,0.42)", fontSize: 14 }}>Chargement...</div>
-        ) : summaries.length === 0 ? (
+        ) : uniqueSummaries.length === 0 ? (
           <div style={{ minHeight: 420, display: "grid", placeItems: "center", textAlign: "center", padding: 32 }}>
             <div style={{ maxWidth: 480 }}>
               <span style={{ width: 54, height: 54, borderRadius: 16, background: "#f3f3f3", color: "#6d82c7", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
@@ -130,8 +309,8 @@ export default function ArticleStatsPage() {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            {summaries.map((page) => (
-              <div key={page.path} style={{ minHeight: 76, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif" }}>
+            {uniqueSummaries.map((page) => (
+              <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: selectedPage?.path === page.path ? "rgba(1,71,255,0.035)" : "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", color: "#121a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(page.path)}</strong>
                   <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.46)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.url || page.path}</span>
@@ -141,7 +320,7 @@ export default function ArticleStatsPage() {
                 <span>{page.clicksLastWeek} clics</span>
                 <span>{formatDuration(page.avgDurationMs)}</span>
                 <span>{page.maxScrollDepth}% scroll</span>
-              </div>
+              </button>
             ))}
           </div>
         )}

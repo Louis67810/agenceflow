@@ -55,6 +55,28 @@ function formatDuration(ms?: number) {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
+function dedupePages(pages: ArticlePage[]) {
+  const map = new Map<string, ArticlePage>();
+  for (const page of pages) {
+    const key = page.url || page.id;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, page);
+      continue;
+    }
+    map.set(key, {
+      ...existing,
+      viewsLastWeek: Math.max(existing.viewsLastWeek ?? 0, page.viewsLastWeek ?? 0),
+      visitorsLastWeek: Math.max(existing.visitorsLastWeek ?? 0, page.visitorsLastWeek ?? 0),
+      sessionsLastWeek: Math.max(existing.sessionsLastWeek ?? 0, page.sessionsLastWeek ?? 0),
+      clicksLastWeek: Math.max(existing.clicksLastWeek ?? 0, page.clicksLastWeek ?? 0),
+      avgDurationMs: Math.max(existing.avgDurationMs ?? 0, page.avgDurationMs ?? 0),
+      maxScrollDepth: Math.max(existing.maxScrollDepth ?? 0, page.maxScrollDepth ?? 0),
+    });
+  }
+  return Array.from(map.values());
+}
+
 function BlueCta({ children, onClick }: { children: string; onClick?: () => void }) {
   return (
     <div
@@ -119,7 +141,7 @@ export default function ArticlesPage() {
   const [pagesMessage, setPagesMessage] = useState("Verification de la connexion Cloudflare...");
 
   const sortedPages = useMemo(() => {
-    return [...articlePages, ...detectedPages].sort((a, b) => (b.viewsLastWeek ?? 0) - (a.viewsLastWeek ?? 0));
+    return dedupePages([...articlePages, ...detectedPages]).sort((a, b) => (b.viewsLastWeek ?? 0) - (a.viewsLastWeek ?? 0));
   }, [detectedPages]);
 
   useEffect(() => {
