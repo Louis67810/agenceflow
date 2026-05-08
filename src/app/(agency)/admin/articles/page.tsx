@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUp,
@@ -19,6 +19,7 @@ type ArticleTab = "actions" | "ai";
 type ArticlePage = {
   id: string;
   title: string;
+  url?: string;
   viewsLastWeek?: number;
   createdAt: string;
 };
@@ -39,6 +40,8 @@ const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,
 
 const articlePages: ArticlePage[] = [];
 const actionEntries: ActionEntry[] = [];
+const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
+const CONNECTION_STORAGE_KEY = "agenceflow.articlePublishingConnection.v1";
 
 function BlueCta({ children, onClick }: { children: string; onClick?: () => void }) {
   return (
@@ -99,9 +102,60 @@ export default function ArticlesPage() {
   const [activeTab, setActiveTab] = useState<ArticleTab>("actions");
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [detectedPages, setDetectedPages] = useState<ArticlePage[]>([]);
+  const [pagesLoading, setPagesLoading] = useState(true);
+  const [pagesMessage, setPagesMessage] = useState("Verification de la connexion Cloudflare...");
 
   const sortedPages = useMemo(() => {
-    return [...articlePages].sort((a, b) => (b.viewsLastWeek ?? 0) - (a.viewsLastWeek ?? 0));
+    return [...articlePages, ...detectedPages].sort((a, b) => (b.viewsLastWeek ?? 0) - (a.viewsLastWeek ?? 0));
+  }, [detectedPages]);
+
+  useEffect(() => {
+    async function loadCloudflarePages() {
+      const rawConnection = window.localStorage.getItem(CONNECTION_STORAGE_KEY);
+      const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+
+      if (!rawConnection || !rawSettings) {
+        setPagesLoading(false);
+        setPagesMessage("Connecte Cloudflare dans Parametres pour afficher automatiquement les pages articles.");
+        return;
+      }
+
+      try {
+        const connection = JSON.parse(rawConnection) as { cloudflareConnected?: boolean };
+        const settings = JSON.parse(rawSettings) as { articleDomain?: string; cloudflareDestination?: string };
+        if (!connection.cloudflareConnected || !settings.articleDomain) {
+          setPagesLoading(false);
+          setPagesMessage("Cloudflare n'est pas encore connecte pour les articles.");
+          return;
+        }
+
+        const response = await fetch("/api/articles/cloudflare/pages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            articleDomain: settings.articleDomain,
+            destinationPattern: settings.cloudflareDestination,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          setPagesMessage(data.message || "Impossible de charger les pages articles Cloudflare.");
+          setDetectedPages([]);
+          return;
+        }
+
+        setDetectedPages((data.pages ?? []) as ArticlePage[]);
+        setPagesMessage(data.message || `${data.pages?.length ?? 0} page(s) article detectee(s).`);
+      } catch {
+        setPagesMessage("Impossible de lire la connexion Cloudflare locale.");
+      } finally {
+        setPagesLoading(false);
+      }
+    }
+
+    void loadCloudflarePages();
   }, []);
 
   function sendMessage() {
@@ -196,17 +250,28 @@ export default function ArticlesPage() {
             </button>
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-            {sortedPages.length === 0 ? (
-              <EmptyState label="Aucune page créée pour le moment." />
+            {pagesLoading ? (
+              <EmptyState label="Chargement des pages articles..." />
+            ) : sortedPages.length === 0 ? (
+              <EmptyState label={pagesMessage} />
             ) : sortedPages.map((page) => (
-              <div key={page.id} style={{ minHeight: 86, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 24 }}>
-                <strong style={{ fontSize: 15, color: "#121a2e" }}>{page.title}</strong>
+              <div key={page.id} style={{ minHeight: 86, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 24 }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ fontSize: 15, color: "#121a2e", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.title}</strong>
+                  {page.url ? <a href={page.url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 4, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(18,26,46,0.48)", fontSize: 12, textDecoration: "none", fontFamily: "Inter, sans-serif" }}>{page.url}</a> : null}
+                </div>
                 <span style={{ minHeight: 40, borderRadius: 999, border: "1px solid rgba(1,71,255,0.1)", color: "#0147ff", padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "Inter, sans-serif" }}>
                   {page.viewsLastWeek ?? 0} vues la semaine dernière <ArrowUp size={14} />
                 </span>
-                <Link href={`/admin/articles/statistiques?page=${page.id}`} style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 17px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>
-                  Voir les statistiques en détail
-                </Link>
+                {page.url ? (
+                  <a href={page.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 17px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>
+                    Ouvrir
+                  </a>
+                ) : (
+                  <Link href={`/admin/articles/statistiques?page=${page.id}`} style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 17px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>
+                    Voir les statistiques en détail
+                  </Link>
+                )}
               </div>
             ))}
           </div>

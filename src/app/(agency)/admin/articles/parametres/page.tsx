@@ -10,6 +10,7 @@ import {
   Cloud,
   Code2,
   ExternalLink,
+  FileBarChart,
   KeyRound,
   Lock,
   RefreshCw,
@@ -32,9 +33,14 @@ type ArticleFramerSettings = {
   cloudflareZoneId: string;
   cloudflareToken: string;
   articleDomain: string;
+  googleAnalyticsPropertyId: string;
+  googleAnalyticsMeasurementId: string;
+  googleAnalyticsApiSecret: string;
+  googleAnalyticsServiceAccountJson: string;
 };
 
 const STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
+const CONNECTION_STORAGE_KEY = "agenceflow.articlePublishingConnection.v1";
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
 const emptySettings: ArticleFramerSettings = {
@@ -48,6 +54,10 @@ const emptySettings: ArticleFramerSettings = {
   cloudflareZoneId: "",
   cloudflareToken: "",
   articleDomain: "",
+  googleAnalyticsPropertyId: "",
+  googleAnalyticsMeasurementId: "",
+  googleAnalyticsApiSecret: "",
+  googleAnalyticsServiceAccountJson: "",
 };
 
 const inputStyle = {
@@ -62,6 +72,15 @@ const inputStyle = {
   outline: "none",
   fontFamily: '"Inter", sans-serif',
   boxSizing: "border-box",
+} as const;
+
+const textareaStyle = {
+  ...inputStyle,
+  minHeight: 116,
+  padding: 14,
+  lineHeight: "19px",
+  resize: "vertical",
+  fontFamily: "monospace",
 } as const;
 
 const pipelineSteps = [
@@ -152,10 +171,34 @@ function Field({
   );
 }
 
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  help,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  help?: string;
+}) {
+  return (
+    <label style={{ display: "grid", gap: 7 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.62)", fontFamily: "Inter, sans-serif" }}>{label}</span>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} style={textareaStyle} />
+      {help ? <span style={{ fontSize: 11, lineHeight: "16px", color: "rgba(18,26,46,0.42)", fontFamily: "Inter, sans-serif" }}>{help}</span> : null}
+    </label>
+  );
+}
+
 export default function ArticleSettingsPage() {
   const [settings, setSettings] = useState<ArticleFramerSettings>(emptySettings);
-  const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
-  const [message, setMessage] = useState("Renseigne les champs Framer, puis teste la connexion.");
+  const [framerState, setFramerState] = useState<ConnectionState>("idle");
+  const [cloudflareState, setCloudflareState] = useState<ConnectionState>("idle");
+  const [googleAnalyticsState, setGoogleAnalyticsState] = useState<ConnectionState>("idle");
+  const [message, setMessage] = useState("Renseigne les champs Framer, Cloudflare et Google Analytics, puis teste les connexions.");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -173,13 +216,26 @@ export default function ArticleSettingsPage() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-    setConnectionState("idle");
-    setMessage("Parametres modifies. Relance le test pour confirmer l'etat de connexion.");
+    if (key.toString().startsWith("googleAnalytics")) {
+      setGoogleAnalyticsState("idle");
+    } else if (key.toString().startsWith("cloudflare") || key === "articleDomain") {
+      setCloudflareState("idle");
+    } else {
+      setFramerState("idle");
+    }
+    setMessage("Parametres modifies. Relance le test pour confirmer l'etat des connexions.");
   }
 
-  async function testFramerConnection() {
-    setConnectionState("testing");
-    setMessage("Test de la configuration Framer en cours...");
+  async function testConnections() {
+    setFramerState("testing");
+    setCloudflareState("testing");
+    setGoogleAnalyticsState("testing");
+    setMessage("Test des connexions Framer, Cloudflare et Google Analytics en cours...");
+
+    let framerMessage = "";
+    let cloudflareMessage = "";
+    let googleAnalyticsMessage = "";
+
     try {
       const res = await fetch("/api/articles/framer/test-connection", {
         method: "POST",
@@ -193,16 +249,100 @@ export default function ArticleSettingsPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.connected) {
-        setConnectionState("error");
-        setMessage(data.message || "Configuration Framer non valide.");
-        return;
+        setFramerState("error");
+        framerMessage = data.message || "Framer non valide.";
+      } else {
+        setFramerState("connected");
+        framerMessage = data.message || "Framer pret cote app.";
       }
-      setConnectionState("connected");
-      setMessage(data.message || "Configuration Framer prete cote app.");
     } catch {
-      setConnectionState("error");
-      setMessage("Impossible de tester la connexion depuis l'application.");
+      setFramerState("error");
+      framerMessage = "Impossible de tester Framer depuis l'application.";
     }
+
+    try {
+      const res = await fetch("/api/articles/cloudflare/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: settings.cloudflareAccountId,
+          zoneId: settings.cloudflareZoneId,
+          apiToken: settings.cloudflareToken,
+          uploadUrl: settings.cloudflareUploadUrl,
+          articleDomain: settings.articleDomain,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.connected) {
+        setCloudflareState("error");
+        cloudflareMessage = data.message || "Cloudflare non valide.";
+        window.localStorage.setItem(
+          CONNECTION_STORAGE_KEY,
+          JSON.stringify({
+            cloudflareConnected: false,
+            cloudflareMessage,
+            testedAt: new Date().toISOString(),
+          })
+        );
+      } else {
+        setCloudflareState("connected");
+        cloudflareMessage = data.message || "Cloudflare connecte.";
+        window.localStorage.setItem(
+          CONNECTION_STORAGE_KEY,
+          JSON.stringify({
+            cloudflareConnected: true,
+            cloudflareMessage,
+            testedAt: new Date().toISOString(),
+          })
+        );
+      }
+    } catch {
+      setCloudflareState("error");
+      cloudflareMessage = "Impossible de tester Cloudflare depuis l'application.";
+      window.localStorage.setItem(
+        CONNECTION_STORAGE_KEY,
+        JSON.stringify({
+          cloudflareConnected: false,
+          cloudflareMessage,
+          testedAt: new Date().toISOString(),
+        })
+      );
+    }
+
+    try {
+      const res = await fetch("/api/articles/google-analytics/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: settings.googleAnalyticsPropertyId,
+          measurementId: settings.googleAnalyticsMeasurementId,
+          apiSecret: settings.googleAnalyticsApiSecret,
+          serviceAccountJson: settings.googleAnalyticsServiceAccountJson,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.connected) {
+        setGoogleAnalyticsState("error");
+        googleAnalyticsMessage = data.message || "Google Analytics non valide.";
+      } else {
+        setGoogleAnalyticsState("connected");
+        googleAnalyticsMessage = data.message || "Google Analytics connecte.";
+      }
+      window.localStorage.setItem(
+        CONNECTION_STORAGE_KEY,
+        JSON.stringify({
+          ...(JSON.parse(window.localStorage.getItem(CONNECTION_STORAGE_KEY) || "{}") as Record<string, unknown>),
+          googleAnalyticsConnected: Boolean(res.ok && data.connected),
+          googleAnalyticsMessage,
+          testedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      setGoogleAnalyticsState("error");
+      googleAnalyticsMessage = "Impossible de tester Google Analytics depuis l'application.";
+    }
+
+    setMessage(`Framer : ${framerMessage} Cloudflare : ${cloudflareMessage} Google Analytics : ${googleAnalyticsMessage}`);
   }
 
   return (
@@ -214,8 +354,8 @@ export default function ArticleSettingsPage() {
           </Link>
           <h1 style={{ margin: 0, fontSize: 34, lineHeight: "41px", fontWeight: 750, letterSpacing: "-0.04em" }}>Parametres articles</h1>
         </div>
-        <button onClick={testFramerConnection} disabled={connectionState === "testing"} type="button" style={{ minHeight: 46, borderRadius: 10, border: "1px solid rgba(1,71,255,0.18)", background: "#e8edff", color: "#0147ff", padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 750, fontFamily: "Inter, sans-serif", opacity: connectionState === "testing" ? 0.65 : 1, cursor: connectionState === "testing" ? "wait" : "pointer" }}>
-          <RefreshCw size={15} /> {connectionState === "testing" ? "Test en cours" : "Tester Framer"}
+        <button onClick={testConnections} disabled={framerState === "testing" || cloudflareState === "testing" || googleAnalyticsState === "testing"} type="button" style={{ minHeight: 46, borderRadius: 10, border: "1px solid rgba(1,71,255,0.18)", background: "#e8edff", color: "#0147ff", padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 750, fontFamily: "Inter, sans-serif", opacity: framerState === "testing" || cloudflareState === "testing" || googleAnalyticsState === "testing" ? 0.65 : 1, cursor: framerState === "testing" || cloudflareState === "testing" || googleAnalyticsState === "testing" ? "wait" : "pointer" }}>
+          <RefreshCw size={15} /> {framerState === "testing" || cloudflareState === "testing" || googleAnalyticsState === "testing" ? "Test en cours" : "Tester les connexions"}
         </button>
       </header>
 
@@ -225,7 +365,7 @@ export default function ArticleSettingsPage() {
             title="Connexion Framer"
             description="Framer ne fournit pas un simple lien de creation de page a coller ici. La creation/synchronisation d'articles passe par un plugin Framer connecte a la collection CMS ; ce test verifie que l'app est prete a lui parler."
             icon={<KeyRound size={21} />}
-            badge={<StatusBadge state={connectionState} />}
+            badge={<StatusBadge state={framerState} />}
           >
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="Project ID" value={settings.projectId} onChange={(value) => updateSetting("projectId", value)} placeholder="framer_project_..." />
@@ -249,9 +389,9 @@ export default function ArticleSettingsPage() {
 
           <SettingCard
             title="Cloudflare upload HTML"
-            description="Configuration pour publier le fichier HTML genere sur Cloudflare, puis purger le cache du domaine articles."
+            description="Le test verifie le token Cloudflare, l'Account ID, la Zone ID et la coherence du domaine articles avant de brancher l'upload HTML."
             icon={<Cloud size={22} />}
-            badge={<StatusBadge state="idle" />}
+            badge={<StatusBadge state={cloudflareState} />}
           >
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <Field label="Lien API upload Cloudflare" value={settings.cloudflareUploadUrl} onChange={(value) => updateSetting("cloudflareUploadUrl", value)} placeholder="https://api.cloudflare.com/client/v4/..." type="url" />
@@ -262,12 +402,28 @@ export default function ArticleSettingsPage() {
               <Field label="Domaine articles" value={settings.articleDomain} onChange={(value) => updateSetting("articleDomain", value)} placeholder="https://blog.votredomaine.com" type="url" />
             </div>
           </SettingCard>
+
+          <SettingCard
+            title="Google Analytics"
+            description="Connecte GA4 pour lire les statistiques des articles. Le Property ID + service account sert a recuperer les donnees ; Measurement ID + API Secret servira ensuite au script de tracking."
+            icon={<FileBarChart size={22} />}
+            badge={<StatusBadge state={googleAnalyticsState} />}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <Field label="GA4 Property ID" value={settings.googleAnalyticsPropertyId} onChange={(value) => updateSetting("googleAnalyticsPropertyId", value)} placeholder="123456789" help="ID numerique de la propriete GA4, utilise pour lire les rapports." />
+                <Field label="Measurement ID" value={settings.googleAnalyticsMeasurementId} onChange={(value) => updateSetting("googleAnalyticsMeasurementId", value)} placeholder="G-XXXXXXXXXX" help="ID du flux web, utile pour le futur script de tracking." />
+                <Field label="API Secret Measurement Protocol" value={settings.googleAnalyticsApiSecret} onChange={(value) => updateSetting("googleAnalyticsApiSecret", value)} placeholder="api_secret..." type="password" help="Optionnel maintenant ; utile quand on enverra les events du script." />
+              </div>
+              <TextAreaField label="Service Account JSON" value={settings.googleAnalyticsServiceAccountJson} onChange={(value) => updateSetting("googleAnalyticsServiceAccountJson", value)} placeholder='{"client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n..."}' help="Pour lire les stats, colle ici le JSON du service account Google qui a acces en lecture a la propriete GA4." />
+            </div>
+          </SettingCard>
         </div>
 
         <aside style={{ display: "grid", gap: 18 }}>
           <section style={{ borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, padding: 22, display: "grid", gap: 18 }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 18, lineHeight: "24px", fontWeight: 750, display: "flex", alignItems: "center", gap: 8 }}><Workflow size={18} /> Etat Framer</h2>
+              <h2 style={{ margin: 0, fontSize: 18, lineHeight: "24px", fontWeight: 750, display: "flex", alignItems: "center", gap: 8 }}><Workflow size={18} /> Etat connexions</h2>
               <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.54)", fontFamily: "Inter, sans-serif" }}>{message}</p>
             </div>
 
@@ -287,6 +443,7 @@ export default function ArticleSettingsPage() {
               { icon: <KeyRound size={15} />, label: "Stockage securise des tokens" },
               { icon: <Rocket size={15} />, label: "Plugin Framer de synchronisation CMS" },
               { icon: <UploadCloud size={15} />, label: "Upload HTML vers Cloudflare" },
+              { icon: <FileBarChart size={15} />, label: "Lecture des rapports Google Analytics" },
               { icon: <ShieldCheck size={15} />, label: "Validation domaine et purge cache" },
             ].map((item) => (
               <div key={item.label} style={{ minHeight: 38, borderRadius: 10, background: "#f7f8fb", border: "1px solid rgba(18,26,46,0.06)", padding: "0 12px", display: "flex", alignItems: "center", gap: 10, color: "rgba(18,26,46,0.7)", fontSize: 13, fontWeight: 650, fontFamily: "Inter, sans-serif" }}>
