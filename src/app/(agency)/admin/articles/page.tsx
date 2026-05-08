@@ -21,6 +21,11 @@ type ArticlePage = {
   title: string;
   url?: string;
   viewsLastWeek?: number;
+  visitorsLastWeek?: number;
+  sessionsLastWeek?: number;
+  clicksLastWeek?: number;
+  avgDurationMs?: number;
+  maxScrollDepth?: number;
   createdAt: string;
 };
 type ActionEntry = {
@@ -42,6 +47,13 @@ const articlePages: ArticlePage[] = [];
 const actionEntries: ActionEntry[] = [];
 const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
 const CONNECTION_STORAGE_KEY = "agenceflow.articlePublishingConnection.v1";
+
+function formatDuration(ms?: number) {
+  if (!ms) return "0s";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
 
 function BlueCta({ children, onClick }: { children: string; onClick?: () => void }) {
   return (
@@ -158,6 +170,38 @@ export default function ArticlesPage() {
     void loadCloudflarePages();
   }, []);
 
+  useEffect(() => {
+    async function loadAnalytics() {
+      if (detectedPages.length === 0) return;
+
+      try {
+        const response = await fetch("/api/articles/analytics/summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls: detectedPages.map((page) => page.url).filter(Boolean) }),
+        });
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data.summaries)) {
+          setPagesMessage(data.message || "Pages detectees, mais statistiques analytics indisponibles.");
+          return;
+        }
+
+        const summaries = new Map<string, Partial<ArticlePage>>(
+          data.summaries.map((summary: ArticlePage & { path?: string }) => [summary.url || summary.path || "", summary])
+        );
+
+        setDetectedPages((current) => current.map((page) => {
+          const summary = page.url ? summaries.get(page.url) : null;
+          return summary ? { ...page, ...summary } : page;
+        }));
+      } catch {
+        setPagesMessage("Pages detectees, mais impossible de charger les statistiques analytics.");
+      }
+    }
+
+    void loadAnalytics();
+  }, [detectedPages.length]);
+
   function sendMessage() {
     const content = chatInput.trim();
     if (!content) return;
@@ -255,13 +299,16 @@ export default function ArticlesPage() {
             ) : sortedPages.length === 0 ? (
               <EmptyState label={pagesMessage} />
             ) : sortedPages.map((page) => (
-              <div key={page.id} style={{ minHeight: 86, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 24 }}>
+              <div key={page.id} style={{ minHeight: 86, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto auto", alignItems: "center", gap: 14 }}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ fontSize: 15, color: "#121a2e", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.title}</strong>
                   {page.url ? <a href={page.url} target="_blank" rel="noopener noreferrer" style={{ marginTop: 4, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "rgba(18,26,46,0.48)", fontSize: 12, textDecoration: "none", fontFamily: "Inter, sans-serif" }}>{page.url}</a> : null}
                 </div>
                 <span style={{ minHeight: 40, borderRadius: 999, border: "1px solid rgba(1,71,255,0.1)", color: "#0147ff", padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "Inter, sans-serif" }}>
                   {page.viewsLastWeek ?? 0} vues la semaine dernière <ArrowUp size={14} />
+                </span>
+                <span style={{ minHeight: 40, borderRadius: 999, border: "1px solid rgba(18,26,46,0.08)", color: "rgba(18,26,46,0.62)", padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "Inter, sans-serif", whiteSpace: "nowrap" }}>
+                  {page.visitorsLastWeek ?? 0} visiteurs · {formatDuration(page.avgDurationMs)}
                 </span>
                 {page.url ? (
                   <a href={page.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 17px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500 }}>

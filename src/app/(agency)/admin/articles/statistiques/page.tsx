@@ -1,12 +1,95 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3 } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock3, Eye, MousePointerClick, Users } from "lucide-react";
+
+type PageSummary = {
+  url: string;
+  path: string;
+  viewsLastWeek: number;
+  visitorsLastWeek: number;
+  sessionsLastWeek: number;
+  clicksLastWeek: number;
+  formSubmitsLastWeek: number;
+  avgDurationMs: number;
+  maxScrollDepth: number;
+  lastSeenAt: string | null;
+};
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
+const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
+
+function formatDuration(ms: number) {
+  if (!ms) return "0s";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function titleFromPath(path: string) {
+  const slug = path.split("/").filter(Boolean).pop() || path;
+  return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function MetricCard({ label, value, icon }: { label: string; value: string | number; icon: ReactNode }) {
+  return (
+    <div style={{ borderRadius: 13, border: "1px solid rgba(0,0,0,0.1)", background: "#fff", boxShadow: cardShadow, padding: 20 }}>
+      <span style={{ width: 38, height: 38, borderRadius: 11, background: "#e8edff", color: "#0147ff", display: "grid", placeItems: "center", marginBottom: 14 }}>{icon}</span>
+      <strong style={{ display: "block", fontSize: 26, color: "#121a2e", letterSpacing: "-0.03em" }}>{value}</strong>
+      <span style={{ display: "block", marginTop: 4, fontSize: 13, color: "rgba(18,26,46,0.52)", fontFamily: "Inter, sans-serif" }}>{label}</span>
+    </div>
+  );
+}
 
 export default function ArticleStatsPage() {
+  const [summaries, setSummaries] = useState<PageSummary[]>([]);
+  const [message, setMessage] = useState("Chargement des statistiques...");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+        const settings = rawSettings ? JSON.parse(rawSettings) as { analyticsSiteId?: string } : {};
+        const response = await fetch("/api/articles/analytics/summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siteId: settings.analyticsSiteId || "" }),
+        });
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data.summaries)) {
+          setMessage(data.message || "Impossible de charger les statistiques articles.");
+          return;
+        }
+        setSummaries(data.summaries as PageSummary[]);
+        setMessage(data.message || "Statistiques chargees.");
+      } catch {
+        setMessage("Impossible de charger les statistiques articles.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadStats();
+  }, []);
+
+  const totals = useMemo(() => {
+    return summaries.reduce(
+      (acc, page) => ({
+        views: acc.views + page.viewsLastWeek,
+        visitors: acc.visitors + page.visitorsLastWeek,
+        clicks: acc.clicks + page.clicksLastWeek,
+        duration: acc.duration + page.avgDurationMs,
+      }),
+      { views: 0, visitors: 0, clicks: 0, duration: 0 }
+    );
+  }, [summaries]);
+
+  const avgDuration = summaries.length > 0 ? Math.round(totals.duration / summaries.length) : 0;
+
   return (
     <main style={{ minHeight: "100vh", background: "#fbfbfb", padding: "52px 64px", color: "#121a2e", ...jk }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, paddingBottom: 24, borderBottom: "1px solid rgba(18,26,46,0.12)" }}>
@@ -17,16 +100,51 @@ export default function ArticleStatsPage() {
           <h1 style={{ margin: 0, fontSize: 34, lineHeight: "41px", fontWeight: 750, letterSpacing: "-0.04em" }}>Statistiques articles</h1>
         </div>
       </header>
-      <section style={{ marginTop: 38, minHeight: 520, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, display: "grid", placeItems: "center", textAlign: "center", padding: 32 }}>
-        <div style={{ maxWidth: 460 }}>
-          <span style={{ width: 54, height: 54, borderRadius: 16, background: "#f3f3f3", color: "#6d82c7", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
-            <BarChart3 size={24} />
-          </span>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 750 }}>Aucune donnée SEO connectée</h2>
-          <p style={{ margin: "10px 0 0", fontSize: 14, lineHeight: 1.7, color: "rgba(18,26,46,0.52)" }}>
-            Les vues, performances et analyses automatiques apparaîtront ici quand le tracking des articles sera branché.
-          </p>
+
+      <section style={{ marginTop: 34, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
+        <MetricCard label="Vues sur 7 jours" value={totals.views} icon={<Eye size={18} />} />
+        <MetricCard label="Visiteurs uniques" value={totals.visitors} icon={<Users size={18} />} />
+        <MetricCard label="Clics suivis" value={totals.clicks} icon={<MousePointerClick size={18} />} />
+        <MetricCard label="Temps moyen" value={formatDuration(avgDuration)} icon={<Clock3 size={18} />} />
+      </section>
+
+      <section style={{ marginTop: 18, minHeight: 520, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }}>
+        <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <h2 style={{ margin: 0, fontSize: 20, lineHeight: "26px", fontWeight: 750 }}>Performance par page</h2>
+          <span style={{ color: "rgba(18,26,46,0.48)", fontSize: 13, fontFamily: "Inter, sans-serif" }}>{message}</span>
         </div>
+
+        {loading ? (
+          <div style={{ minHeight: 420, display: "grid", placeItems: "center", color: "rgba(18,26,46,0.42)", fontSize: 14 }}>Chargement...</div>
+        ) : summaries.length === 0 ? (
+          <div style={{ minHeight: 420, display: "grid", placeItems: "center", textAlign: "center", padding: 32 }}>
+            <div style={{ maxWidth: 480 }}>
+              <span style={{ width: 54, height: 54, borderRadius: 16, background: "#f3f3f3", color: "#6d82c7", display: "grid", placeItems: "center", margin: "0 auto 18px" }}>
+                <BarChart3 size={24} />
+              </span>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 750 }}>Aucune donnee tracking disponible</h2>
+              <p style={{ margin: "10px 0 0", fontSize: 14, lineHeight: 1.7, color: "rgba(18,26,46,0.52)" }}>
+                Verifie que le script pointe vers le domaine AgenceFlow deploye et que `SUPABASE_SERVICE_ROLE_KEY` est configure sur Vercel.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            {summaries.map((page) => (
+              <div key={page.path} style={{ minHeight: 76, padding: "0 28px", borderBottom: "1px solid rgba(18,26,46,0.08)", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif" }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: "block", color: "#121a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(page.path)}</strong>
+                  <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.46)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.url || page.path}</span>
+                </div>
+                <strong>{page.viewsLastWeek} vues</strong>
+                <span>{page.visitorsLastWeek} visiteurs</span>
+                <span>{page.clicksLastWeek} clics</span>
+                <span>{formatDuration(page.avgDurationMs)}</span>
+                <span>{page.maxScrollDepth}% scroll</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
