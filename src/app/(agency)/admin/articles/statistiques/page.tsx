@@ -106,51 +106,66 @@ function MiniLineChart({
   metric: keyof Pick<DailyStat, "views" | "visitors" | "clicks" | "avgDurationMs" | "maxScrollDepth">;
   color: string;
 }) {
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; label: string; value: string } | null>(null);
   const max = Math.max(...data.map((item) => Number(item[metric]) || 0), 1);
-  const points = data.map((item, index) => {
+  const coordinates = data.map((item, index) => {
+    const value = Number(item[metric]) || 0;
     const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
-    const y = 220 - ((Number(item[metric]) || 0) / max) * 170;
-    return `${x},${y}`;
-  }).join(" ");
+    const y = 220 - (value / max) * 170;
+    const formattedValue = metric === "avgDurationMs" ? formatDuration(value) : metric === "maxScrollDepth" ? `${value}%` : formatNumber(value);
+    return {
+      x,
+      y,
+      date: new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
+      value: formattedValue,
+    };
+  });
+  const points = coordinates.map((point) => `${point.x},${point.y}`).join(" ");
 
   return (
-    <svg viewBox="0 0 920 285" preserveAspectRatio="none" style={{ width: "100%", height: 260, display: "block", overflow: "visible" }}>
-      {[0, 1, 2, 3, 4].map((line) => (
-        <line key={line} x1="46" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
-      ))}
-      {[0, 1, 2, 3, 4].map((line) => {
-        const value = Math.round(max - (max / 4) * line);
-        return <text key={line} x="4" y={52 + line * 43} fill="rgba(18,26,46,0.45)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{metric === "avgDurationMs" ? formatDuration(value) : formatNumber(value)}</text>;
-      })}
-      <defs>
-        <linearGradient id={`articleChartFill-${metric}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {points ? (
-        <>
-          <polyline points={`58,230 ${points} 878,230`} fill={`url(#articleChartFill-${metric})`} stroke="none" />
-          <polyline points={points} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-        </>
+    <div onMouseLeave={() => setHoveredPoint(null)} style={{ position: "relative", minHeight: 238, padding: "6px 0 28px" }}>
+      {hoveredPoint ? (
+        <div style={{ position: "absolute", left: `${(hoveredPoint.x / 920) * 100}%`, top: `${(hoveredPoint.y / 285) * 100}%`, transform: "translate(-50%, -118%)", zIndex: 3, borderRadius: 10, background: "#121a2e", color: "#fff", padding: "8px 10px", boxShadow: "0 12px 28px rgba(18,26,46,0.2)", pointerEvents: "none", minWidth: 92, textAlign: "center" }}>
+          <strong style={{ display: "block", fontSize: 13, lineHeight: "16px", fontFamily: "Inter, sans-serif" }}>{hoveredPoint.value}</strong>
+          <span style={{ display: "block", marginTop: 2, fontSize: 11, lineHeight: "14px", color: "rgba(255,255,255,0.72)", fontFamily: "Inter, sans-serif" }}>{hoveredPoint.label}</span>
+        </div>
       ) : null}
-      {data.map((item, index) => {
-        const rawValue = Number(item[metric]) || 0;
-        const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
-        const y = 220 - (rawValue / max) * 170;
-        const formattedValue = metric === "avgDurationMs" ? formatDuration(rawValue) : metric === "maxScrollDepth" ? `${rawValue}%` : formatNumber(rawValue);
-        return (
-          <circle key={`point-${item.date}-${metric}`} cx={x} cy={y} r="7" fill="#fff" stroke={color} strokeWidth="4">
-            <title>{`${new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR")} : ${formattedValue}`}</title>
-          </circle>
-        );
-      })}
-      {data.map((item, index) => {
-        const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
-        if (index % Math.max(Math.ceil(data.length / 6), 1) !== 0) return null;
-        return <text key={item.date} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
-      })}
-    </svg>
+      <svg viewBox="0 0 920 250" preserveAspectRatio="none" style={{ width: "100%", height: 210, display: "block", overflow: "visible" }}>
+        {[0, 1, 2, 3, 4].map((line) => (
+          <line key={line} x1="46" x2="890" y1={48 + line * 43} y2={48 + line * 43} stroke="rgba(18,26,46,0.055)" strokeWidth="1" />
+        ))}
+        <defs>
+          <linearGradient id={`articleChartFill-${metric}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {points ? (
+          <>
+            <polyline points={`58,230 ${points} 878,230`} fill={`url(#articleChartFill-${metric})`} stroke="none" />
+            <polyline points={points} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          </>
+        ) : null}
+        {coordinates.map((point) => (
+          <circle
+            key={`point-${point.date}-${metric}`}
+            cx={point.x}
+            cy={point.y}
+            r="9"
+            fill="#fff"
+            stroke={color}
+            strokeWidth="4"
+            style={{ cursor: "pointer" }}
+            onMouseEnter={() => setHoveredPoint({ x: point.x, y: point.y, label: point.date, value: point.value })}
+          />
+        ))}
+      </svg>
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, display: "flex", justifyContent: "space-between", color: "rgba(18,26,46,0.48)", fontSize: 12, lineHeight: "16px", fontFamily: "Inter, sans-serif" }}>
+        {coordinates.filter((_, index) => index % Math.max(Math.ceil(coordinates.length / 5), 1) === 0 || index === coordinates.length - 1).map((point, index) => (
+          <span key={`${point.date}-${index}`}>{point.date}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -279,17 +294,12 @@ export default function ArticleStatsPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
               <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
-                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Visiteurs et clics</h3>
-                <div style={{ display: "grid", gap: 16 }}>
-                  <div>
-                    <span style={{ fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>Visiteurs</span>
-                    <MiniLineChart data={selectedPage.dailyStats ?? []} metric="visitors" color="#168b64" />
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>Clics</span>
-                    <MiniLineChart data={selectedPage.dailyStats ?? []} metric="clicks" color="#f97316" />
-                  </div>
-                </div>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Visiteurs</h3>
+                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="visitors" color="#168b64" />
+              </article>
+              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Clics</h3>
+                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="clicks" color="#f97316" />
               </article>
             </div>
 

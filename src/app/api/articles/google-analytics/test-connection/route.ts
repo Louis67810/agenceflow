@@ -34,6 +34,16 @@ function parseServiceAccount(value: string) {
   }
 }
 
+function friendlyGoogleError(message: string) {
+  if (message.includes("analyticsdata.googleapis.com") && message.includes("disabled")) {
+    return `${message} Concretement : active Google Analytics Data API dans le projet Google Cloud du service account, attends 2 a 5 minutes, puis relance le test.`;
+  }
+  if (message.includes("User does not have sufficient permissions")) {
+    return `${message} Concretement : ajoute le client_email du Service Account dans GA4 > Admin > Acces a la propriete avec le role Lecteur.`;
+  }
+  return message;
+}
+
 async function getAccessToken(serviceAccount: ServiceAccount) {
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
@@ -95,7 +105,7 @@ async function testMeasurementProtocol(measurementId: string, apiSecret: string)
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_id: "agenceflow.connection-test",
+      client_id: "1234567890.1234567890",
       validation_behavior: "ENFORCE_RECOMMENDATIONS",
       events: [{ name: "agenceflow_connection_test", params: { engagement_time_msec: 1 } }],
     }),
@@ -139,7 +149,7 @@ export async function POST(req: NextRequest) {
         analyticsDataConnected = true;
         results.push("Lecture GA4 OK via Service Account.");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Impossible de lire Google Analytics.";
+        const message = friendlyGoogleError(error instanceof Error ? error.message : "Impossible de lire Google Analytics.");
         errors.push(`Lecture GA4 bloquee : ${message}`);
       }
     }
