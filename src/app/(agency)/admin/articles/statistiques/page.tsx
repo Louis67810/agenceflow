@@ -29,6 +29,21 @@ type PageSummary = {
   dailyStats: DailyStat[];
 };
 
+type GoogleAnalyticsPageStats = {
+  path: string;
+  activeUsers: number;
+  sessions: number;
+  views: number;
+  engagedSessions: number;
+  avgSessionDuration: number;
+  engagementRate: number;
+  bounceRate: number;
+  organicUsers: number;
+  organicSessions: number;
+  organicViews: number;
+  organicEngagedSessions: number;
+};
+
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
 const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
@@ -146,20 +161,29 @@ function MiniLineChart({
             <polyline points={points} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
           </>
         ) : null}
-        {coordinates.map((point) => (
-          <circle
-            key={`point-${point.date}-${metric}`}
-            cx={point.x}
-            cy={point.y}
-            r="9"
-            fill="#fff"
-            stroke={color}
-            strokeWidth="4"
-            style={{ cursor: "pointer" }}
-            onMouseEnter={() => setHoveredPoint({ x: point.x, y: point.y, label: point.date, value: point.value })}
-          />
-        ))}
       </svg>
+      {coordinates.map((point) => (
+        <button
+          key={`point-${point.date}-${metric}`}
+          type="button"
+          onMouseEnter={() => setHoveredPoint({ x: point.x, y: point.y, label: point.date, value: point.value })}
+          style={{
+            position: "absolute",
+            left: `${(point.x / 920) * 100}%`,
+            top: `${(point.y / 250) * 210 + 6}px`,
+            width: 16,
+            height: 16,
+            transform: "translate(-50%, -50%)",
+            borderRadius: 999,
+            border: `4px solid ${color}`,
+            background: "#fff",
+            padding: 0,
+            cursor: "pointer",
+            boxSizing: "border-box",
+          }}
+          aria-label={`${point.date} : ${point.value}`}
+        />
+      ))}
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, display: "flex", justifyContent: "space-between", color: "rgba(18,26,46,0.48)", fontSize: 12, lineHeight: "16px", fontFamily: "Inter, sans-serif" }}>
         {coordinates.filter((_, index) => index % Math.max(Math.ceil(coordinates.length / 5), 1) === 0 || index === coordinates.length - 1).map((point, index) => (
           <span key={`${point.date}-${index}`}>{point.date}</span>
@@ -179,11 +203,17 @@ function MetricCard({ label, value, icon }: { label: string; value: string | num
   );
 }
 
+function percent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
 export default function ArticleStatsPage() {
   const [summaries, setSummaries] = useState<PageSummary[]>([]);
+  const [googleAnalyticsPages, setGoogleAnalyticsPages] = useState<GoogleAnalyticsPageStats[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState(7);
   const [message, setMessage] = useState("Chargement des statistiques...");
+  const [googleAnalyticsMessage, setGoogleAnalyticsMessage] = useState("Google Analytics non charge.");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -191,7 +221,11 @@ export default function ArticleStatsPage() {
       setLoading(true);
       try {
         const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-        const settings = rawSettings ? JSON.parse(rawSettings) as { analyticsSiteId?: string } : {};
+        const settings = rawSettings ? JSON.parse(rawSettings) as {
+          analyticsSiteId?: string;
+          googleAnalyticsPropertyId?: string;
+          googleAnalyticsServiceAccountJson?: string;
+        } : {};
         const response = await fetch("/api/articles/analytics/summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -202,10 +236,36 @@ export default function ArticleStatsPage() {
           setMessage(data.message || "Impossible de charger les statistiques articles.");
           return;
         }
-        setSummaries(data.summaries as PageSummary[]);
+        const nextSummaries = data.summaries as PageSummary[];
+        setSummaries(nextSummaries);
         setMessage(data.message || "Statistiques chargees.");
+
+        if (settings.googleAnalyticsPropertyId && settings.googleAnalyticsServiceAccountJson) {
+          const gaResponse = await fetch("/api/articles/google-analytics/page-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              propertyId: settings.googleAnalyticsPropertyId,
+              serviceAccountJson: settings.googleAnalyticsServiceAccountJson,
+              days: dateRange,
+              paths: nextSummaries.map((summary) => summary.path).filter(Boolean),
+            }),
+          });
+          const gaData = await gaResponse.json();
+          if (gaResponse.ok && Array.isArray(gaData.pages)) {
+            setGoogleAnalyticsPages(gaData.pages as GoogleAnalyticsPageStats[]);
+            setGoogleAnalyticsMessage(gaData.message || "Google Analytics charge.");
+          } else {
+            setGoogleAnalyticsPages([]);
+            setGoogleAnalyticsMessage(gaData.message || "Google Analytics indisponible.");
+          }
+        } else {
+          setGoogleAnalyticsPages([]);
+          setGoogleAnalyticsMessage("Ajoute Property ID + Service Account JSON pour enrichir avec GA4.");
+        }
       } catch {
         setMessage("Impossible de charger les statistiques articles.");
+        setGoogleAnalyticsMessage("Impossible de charger Google Analytics.");
       } finally {
         setLoading(false);
       }
@@ -216,6 +276,8 @@ export default function ArticleStatsPage() {
 
   const uniqueSummaries = useMemo(() => dedupeSummaries(summaries), [summaries]);
   const selectedPage = uniqueSummaries.find((page) => page.path === selectedPath) ?? null;
+  const googleAnalyticsByPath = useMemo(() => new Map(googleAnalyticsPages.map((page) => [page.path, page])), [googleAnalyticsPages]);
+  const selectedGaPage = selectedPage ? googleAnalyticsByPath.get(selectedPage.path) ?? null : null;
 
   const totals = useMemo(() => {
     return uniqueSummaries.reduce(
@@ -292,6 +354,40 @@ export default function ArticleStatsPage() {
               ))}
             </div>
 
+            <section style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Signaux SEO Google Analytics</h3>
+                  <p style={{ margin: "6px 0 0", color: "rgba(18,26,46,0.48)", fontSize: 12, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                    {googleAnalyticsMessage}
+                  </p>
+                </div>
+                <span style={{ borderRadius: 999, background: selectedGaPage && selectedGaPage.organicSessions > 0 ? "#d1fae5" : "#f4f4f5", color: selectedGaPage && selectedGaPage.organicSessions > 0 ? "#168b64" : "rgba(18,26,46,0.52)", padding: "7px 10px", fontSize: 12, fontWeight: 800, fontFamily: "Inter, sans-serif", whiteSpace: "nowrap" }}>
+                  {selectedGaPage && selectedGaPage.organicSessions > 0 ? "Trafic SEO detecte" : "SEO a confirmer"}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                {[
+                  { label: "Sessions organiques", value: formatNumber(selectedGaPage?.organicSessions ?? 0) },
+                  { label: "Vues organiques", value: formatNumber(selectedGaPage?.organicViews ?? 0) },
+                  { label: "Engagement GA4", value: percent(selectedGaPage?.engagementRate ?? 0) },
+                  { label: "Rebond GA4", value: percent(selectedGaPage?.bounceRate ?? 0) },
+                  { label: "Utilisateurs GA4", value: formatNumber(selectedGaPage?.activeUsers ?? 0) },
+                  { label: "Sessions GA4", value: formatNumber(selectedGaPage?.sessions ?? 0) },
+                  { label: "Vues GA4", value: formatNumber(selectedGaPage?.views ?? 0) },
+                  { label: "Duree session GA4", value: formatDuration(Math.round((selectedGaPage?.avgSessionDuration ?? 0) * 1000)) },
+                ].map((metric) => (
+                  <div key={metric.label} style={{ borderRadius: 12, border: "1px solid rgba(18,26,46,0.08)", background: "#fbfbfb", padding: 14 }}>
+                    <span style={{ display: "block", fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>{metric.label}</span>
+                    <strong style={{ display: "block", marginTop: 6, fontSize: 20, color: "#121a2e" }}>{metric.value}</strong>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: "14px 0 0", color: "rgba(18,26,46,0.46)", fontSize: 12, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                Pour les positions Google, requetes exactes, impressions SEO et CTR de recherche, il faudra brancher Google Search Console en plus de GA4.
+              </p>
+            </section>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
               <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
                 <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Visiteurs</h3>
@@ -329,7 +425,7 @@ export default function ArticleStatsPage() {
                 </button>
               ))}
             </div>
-            <span style={{ color: "rgba(18,26,46,0.48)", fontSize: 13, fontFamily: "Inter, sans-serif" }}>{message}</span>
+            <span style={{ color: "rgba(18,26,46,0.48)", fontSize: 13, fontFamily: "Inter, sans-serif" }}>{message} {googleAnalyticsPages.length > 0 ? "GA4 enrichi." : ""}</span>
           </div>
         </div>
 
@@ -350,7 +446,7 @@ export default function ArticleStatsPage() {
         ) : (
           <div style={{ overflowX: "auto" }}>
             {uniqueSummaries.map((page) => (
-              <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
+              <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(6, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", color: "#121a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(page.path)}</strong>
                   <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.46)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.url || page.path}</span>
@@ -360,6 +456,7 @@ export default function ArticleStatsPage() {
                 <span>{page.clicksLastWeek} clics</span>
                 <span>{formatDuration(page.avgDurationMs)}</span>
                 <span>{page.maxScrollDepth}% scroll</span>
+                <span>{googleAnalyticsByPath.get(page.path)?.organicSessions ?? 0} SEO</span>
               </button>
             ))}
           </div>
