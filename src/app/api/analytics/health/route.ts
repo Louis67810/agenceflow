@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
   const allowedOrigins = getAllowedOrigins();
   const db = await inspectDatabase(siteId);
   const appOrigin = req.nextUrl.origin;
-  const scriptUrl = new URL("/agenceflow-track.js", appOrigin).toString();
+  const scriptUrl = new URL("/agenceflow-track.js?v=2", appOrigin).toString();
   const collectUrl = new URL("/api/analytics/collect", appOrigin).toString();
   const scriptTag = `<script async src="${scriptUrl}" data-site-id="${siteId || "ruff-agency"}" data-endpoint="${collectUrl}" data-debug="true"></script>`;
   const recommendations: string[] = [];

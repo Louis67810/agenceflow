@@ -272,7 +272,7 @@ export default function ArticleSettingsPage() {
     setMessage("Parametres modifies. Relance le test pour confirmer l'etat des connexions.");
   }
 
-  const trackingScriptTag = `<script async src="${appOrigin}/agenceflow-track.js" data-site-id="${settings.analyticsSiteId || "ruff-agency"}" data-endpoint="${appOrigin}/api/analytics/collect" data-debug="true"></script>`;
+  const trackingScriptTag = `<script async src="${appOrigin}/agenceflow-track.js?v=2" data-site-id="${settings.analyticsSiteId || "ruff-agency"}" data-endpoint="${appOrigin}/api/analytics/collect" data-debug="true"></script>`;
 
   async function runTrackingDiagnostic() {
     setTrackingState("testing");
