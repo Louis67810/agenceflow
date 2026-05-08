@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, TrendingUp, Users, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, Users, X } from "lucide-react";
 
 type DailyStat = {
   date: string;
@@ -32,6 +32,11 @@ type PageSummary = {
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
 const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
+const DATE_RANGES = [
+  { label: "7 jours", value: 7 },
+  { label: "30 jours", value: 30 },
+  { label: "90 jours", value: 90 },
+];
 
 function formatDuration(ms: number) {
   if (!ms) return "0s";
@@ -130,6 +135,17 @@ function MiniLineChart({
         </>
       ) : null}
       {data.map((item, index) => {
+        const rawValue = Number(item[metric]) || 0;
+        const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
+        const y = 220 - (rawValue / max) * 170;
+        const formattedValue = metric === "avgDurationMs" ? formatDuration(rawValue) : metric === "maxScrollDepth" ? `${rawValue}%` : formatNumber(rawValue);
+        return (
+          <circle key={`point-${item.date}-${metric}`} cx={x} cy={y} r="7" fill="#fff" stroke={color} strokeWidth="4">
+            <title>{`${new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR")} : ${formattedValue}`}</title>
+          </circle>
+        );
+      })}
+      {data.map((item, index) => {
         const x = data.length <= 1 ? 58 : 58 + (index / Math.max(data.length - 1, 1)) * 820;
         if (index % Math.max(Math.ceil(data.length / 6), 1) !== 0) return null;
         return <text key={item.date} x={x - 28} y="270" fill="rgba(18,26,46,0.54)" fontSize="12" fontWeight="500" fontFamily="Inter, sans-serif">{new Date(`${item.date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</text>;
@@ -151,18 +167,20 @@ function MetricCard({ label, value, icon }: { label: string; value: string | num
 export default function ArticleStatsPage() {
   const [summaries, setSummaries] = useState<PageSummary[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState(7);
   const [message, setMessage] = useState("Chargement des statistiques...");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadStats() {
+      setLoading(true);
       try {
         const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
         const settings = rawSettings ? JSON.parse(rawSettings) as { analyticsSiteId?: string } : {};
         const response = await fetch("/api/articles/analytics/summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteId: settings.analyticsSiteId || "" }),
+          body: JSON.stringify({ siteId: settings.analyticsSiteId || "", days: dateRange }),
         });
         const data = await response.json();
         if (!response.ok || !Array.isArray(data.summaries)) {
@@ -179,10 +197,10 @@ export default function ArticleStatsPage() {
     }
 
     void loadStats();
-  }, []);
+  }, [dateRange]);
 
   const uniqueSummaries = useMemo(() => dedupeSummaries(summaries), [summaries]);
-  const selectedPage = uniqueSummaries.find((page) => page.path === selectedPath) ?? uniqueSummaries[0] ?? null;
+  const selectedPage = uniqueSummaries.find((page) => page.path === selectedPath) ?? null;
 
   const totals = useMemo(() => {
     return uniqueSummaries.reduce(
@@ -210,34 +228,40 @@ export default function ArticleStatsPage() {
       </header>
 
       <section style={{ marginTop: 34, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16 }}>
-        <MetricCard label="Vues sur 7 jours" value={totals.views} icon={<Eye size={18} />} />
+        <MetricCard label={`Vues sur ${dateRange} jours`} value={totals.views} icon={<Eye size={18} />} />
         <MetricCard label="Visiteurs uniques" value={totals.visitors} icon={<Users size={18} />} />
         <MetricCard label="Clics suivis" value={totals.clicks} icon={<MousePointerClick size={18} />} />
         <MetricCard label="Temps moyen" value={formatDuration(avgDuration)} icon={<Clock3 size={18} />} />
       </section>
 
-      {!loading && selectedPage ? (
-        <section style={{ marginTop: 18, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }}>
-          <div style={{ minHeight: 72, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+      {selectedPage ? (
+        <div role="dialog" aria-modal="true" onClick={() => setSelectedPath(null)} style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(18,26,46,0.32)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 28 }}>
+          <section onClick={(event) => event.stopPropagation()} style={{ width: "min(1180px, 96vw)", maxHeight: "90vh", borderRadius: 16, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: "0 28px 80px rgba(18,26,46,0.24)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ minHeight: 72, padding: "0 24px 0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ margin: 0, fontSize: 21, lineHeight: "27px", fontWeight: 750, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(selectedPage.path)}</h2>
               <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.48)", fontSize: 12, fontFamily: "Inter, sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPage.url || selectedPage.path}</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
+                {DATE_RANGES.map((range) => (
+                  <button key={range.value} type="button" onClick={() => setDateRange(range.value)} style={{ minHeight: 32, borderRadius: 999, border: dateRange === range.value ? "1px solid rgba(0,0,0,0.12)" : 0, background: dateRange === range.value ? "#fff" : "transparent", padding: "0 13px", color: dateRange === range.value ? "#121a2e" : "rgba(18,26,46,0.52)", fontSize: 12, fontWeight: 700, fontFamily: "Inter, sans-serif", cursor: "pointer" }}>
+                    {range.label}
+                  </button>
+                ))}
+              </div>
               {selectedPage.url ? (
                 <a href={selectedPage.url} target="_blank" rel="noopener noreferrer" style={{ minHeight: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", padding: "0 14px", color: "#121a2e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, fontFamily: "Inter, sans-serif" }}>
                   <ExternalLink size={14} /> Ouvrir
                 </a>
               ) : null}
-              {selectedPath ? (
-                <button type="button" onClick={() => setSelectedPath(null)} style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}>
-                  <X size={16} />
-                </button>
-              ) : null}
+              <button type="button" onClick={() => setSelectedPath(null)} style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "rgba(18,26,46,0.62)", display: "grid", placeItems: "center", cursor: "pointer" }}>
+                <X size={16} />
+              </button>
             </div>
           </div>
 
-          <div style={{ padding: 24, display: "grid", gap: 18 }}>
+          <div style={{ padding: 24, display: "grid", gap: 18, overflowY: "auto" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
               {[
                 { label: "Vues", value: formatNumber(selectedPage.viewsLastWeek) },
@@ -253,11 +277,7 @@ export default function ArticleStatsPage() {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 18 }}>
-              <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
-                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e", display: "flex", alignItems: "center", gap: 8 }}><TrendingUp size={17} /> Evolution des vues</h3>
-                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="views" color="#6D96FE" />
-              </article>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
               <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
                 <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Visiteurs et clics</h3>
                 <div style={{ display: "grid", gap: 16 }}>
@@ -284,13 +304,23 @@ export default function ArticleStatsPage() {
               </article>
             </div>
           </div>
-        </section>
+          </section>
+        </div>
       ) : null}
 
       <section style={{ marginTop: 18, minHeight: 520, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }}>
         <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
           <h2 style={{ margin: 0, fontSize: 20, lineHeight: "26px", fontWeight: 750 }}>Performance par page</h2>
-          <span style={{ color: "rgba(18,26,46,0.48)", fontSize: 13, fontFamily: "Inter, sans-serif" }}>{message}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
+              {DATE_RANGES.map((range) => (
+                <button key={range.value} type="button" onClick={() => setDateRange(range.value)} style={{ minHeight: 32, borderRadius: 999, border: dateRange === range.value ? "1px solid rgba(0,0,0,0.12)" : 0, background: dateRange === range.value ? "#fff" : "transparent", padding: "0 13px", color: dateRange === range.value ? "#121a2e" : "rgba(18,26,46,0.52)", fontSize: 12, fontWeight: 700, fontFamily: "Inter, sans-serif", cursor: "pointer" }}>
+                  {range.label}
+                </button>
+              ))}
+            </div>
+            <span style={{ color: "rgba(18,26,46,0.48)", fontSize: 13, fontFamily: "Inter, sans-serif" }}>{message}</span>
+          </div>
         </div>
 
         {loading ? (
@@ -310,7 +340,7 @@ export default function ArticleStatsPage() {
         ) : (
           <div style={{ overflowX: "auto" }}>
             {uniqueSummaries.map((page) => (
-              <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: selectedPage?.path === page.path ? "rgba(1,71,255,0.035)" : "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
+              <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(5, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", color: "#121a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(page.path)}</strong>
                   <span style={{ display: "block", marginTop: 4, color: "rgba(18,26,46,0.46)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{page.url || page.path}</span>

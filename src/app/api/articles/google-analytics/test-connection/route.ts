@@ -123,46 +123,60 @@ export async function POST(req: NextRequest) {
   const measurementId = body.measurementId?.trim();
   const apiSecret = body.apiSecret?.trim();
   const serviceAccountJson = body.serviceAccountJson?.trim();
+  const results: string[] = [];
+  const errors: string[] = [];
+  let analyticsDataConnected = false;
+  let measurementProtocolConnected = false;
 
   if (propertyId && serviceAccountJson) {
     const serviceAccount = parseServiceAccount(serviceAccountJson);
     if (!serviceAccount) {
-      return NextResponse.json({ connected: false, message: "Service Account JSON invalide." }, { status: 400 });
+      errors.push("Lecture GA4 : Service Account JSON invalide.");
+    } else {
+      try {
+        const accessToken = await getAccessToken(serviceAccount);
+        await testAnalyticsData(propertyId, accessToken);
+        analyticsDataConnected = true;
+        results.push("Lecture GA4 OK via Service Account.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Impossible de lire Google Analytics.";
+        errors.push(`Lecture GA4 bloquee : ${message}`);
+      }
     }
-
-    try {
-      const accessToken = await getAccessToken(serviceAccount);
-      await testAnalyticsData(propertyId, accessToken);
-      return NextResponse.json({
-        connected: true,
-        mode: "analytics-data",
-        message: "Google Analytics connecte : la propriete GA4 est lisible via le service account.",
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible de lire Google Analytics.";
-      return NextResponse.json({ connected: false, message: `Google Analytics non connecte : ${message}` }, { status: 502 });
-    }
+  } else {
+    errors.push("Lecture GA4 non testee : ajoute Property ID + Service Account JSON.");
   }
 
   if (measurementId && apiSecret) {
     try {
       await testMeasurementProtocol(measurementId, apiSecret);
-      return NextResponse.json({
-        connected: true,
-        mode: "measurement-protocol",
-        message: "Google Analytics pret pour le futur script de tracking. Ajoute aussi le Property ID + service account pour lire les stats.",
-      });
+      measurementProtocolConnected = true;
+      results.push("Measurement Protocol OK.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Impossible de valider Measurement Protocol.";
-      return NextResponse.json({ connected: false, message: `Google Analytics non connecte : ${message}` }, { status: 502 });
+      errors.push(`Measurement Protocol bloque : ${message}`);
     }
+  } else {
+    errors.push("Measurement Protocol non teste : ajoute Measurement ID + API Secret.");
+  }
+
+  if (analyticsDataConnected || measurementProtocolConnected) {
+    return NextResponse.json({
+      connected: true,
+      mode: analyticsDataConnected && measurementProtocolConnected ? "complete" : "partial",
+      analyticsDataConnected,
+      measurementProtocolConnected,
+      message: [...results, ...errors].join(" "),
+    });
   }
 
   return NextResponse.json(
     {
       connected: false,
-      message: "Configuration Google Analytics incomplete : ajoute soit Property ID + Service Account JSON, soit Measurement ID + API Secret.",
+      analyticsDataConnected,
+      measurementProtocolConnected,
+      message: `Google Analytics non connecte. ${errors.join(" ")}`,
     },
-    { status: 400 }
+    { status: 502 }
   );
 }

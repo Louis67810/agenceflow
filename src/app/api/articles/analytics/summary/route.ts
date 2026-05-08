@@ -75,16 +75,16 @@ function dateKey(value: string) {
   return value.slice(0, 10);
 }
 
-function getLastSevenDays() {
-  return Array.from({ length: 7 }, (_, index) => {
+function getLastDays(days: number) {
+  return Array.from({ length: days }, (_, index) => {
     const date = new Date();
-    date.setDate(date.getDate() - (6 - index));
+    date.setDate(date.getDate() - (days - 1 - index));
     return date.toISOString().slice(0, 10);
   });
 }
 
 export async function POST(req: NextRequest) {
-  let body: { urls?: string[]; siteId?: string };
+  let body: { urls?: string[]; siteId?: string; days?: number };
 
   try {
     body = await req.json();
@@ -94,7 +94,8 @@ export async function POST(req: NextRequest) {
 
   const urls = Array.isArray(body.urls) ? body.urls.filter((url): url is string => typeof url === "string" && url.length > 0) : [];
   const paths = Array.from(new Set(urls.map(normalizePath)));
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const days = typeof body.days === "number" && Number.isFinite(body.days) ? Math.min(Math.max(Math.round(body.days), 7), 90) : 7;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   const supabase = createServiceClient();
 
   if (!supabase) {
@@ -189,7 +190,7 @@ export async function POST(req: NextRequest) {
     if (!summary.lastSeenAt || row.event_time > summary.lastSeenAt) summary.lastSeenAt = row.event_time;
   }
 
-  const lastSevenDays = getLastSevenDays();
+  const lastDays = getLastDays(days);
   const result = Array.from(summaries.entries()).map(([path, summary]) => {
     const durationValues = durations.get(path) ?? [];
     const visitorCount = visitors.get(path)?.size ?? 0;
@@ -203,7 +204,7 @@ export async function POST(req: NextRequest) {
       avgDurationMs: durationValues.length > 0
         ? Math.round(durationValues.reduce((total, value) => total + value, 0) / durationValues.length)
         : 0,
-      dailyStats: lastSevenDays.map((day) => {
+      dailyStats: lastDays.map((day) => {
         const existing = summary.dailyStats.find((entry) => entry.date === day);
         const dayDurations = dailyDurations.get(path)?.get(day) ?? [];
         const views = existing?.views ?? 0;
