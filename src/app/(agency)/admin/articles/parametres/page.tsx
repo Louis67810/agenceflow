@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
+  Bug,
   CheckCircle2,
   Cloud,
   Code2,
@@ -37,6 +38,43 @@ type ArticleFramerSettings = {
   googleAnalyticsMeasurementId: string;
   googleAnalyticsApiSecret: string;
   googleAnalyticsServiceAccountJson: string;
+  analyticsSiteId: string;
+};
+
+type TrackingDiagnostic = {
+  ok: boolean;
+  appOrigin: string;
+  scriptUrl: string;
+  collectUrl: string;
+  scriptTag: string;
+  checkedAt: string;
+  cors: {
+    articleOrigin: string;
+    allowedOrigins: string[];
+    allowed: boolean;
+    mode: "open" | "restricted";
+  };
+  env: {
+    supabaseUrlConfigured: boolean;
+    serviceRoleConfigured: boolean;
+    allowedOriginsConfigured: boolean;
+  };
+  db: {
+    serviceRoleConfigured: boolean;
+    tableReadable: boolean;
+    totalEvents: number;
+    recentEvents24h: number;
+    recentEvents7d: number;
+    latestEvents: Array<{
+      site_id: string | null;
+      event_name: string | null;
+      event_time: string | null;
+      url: string | null;
+      path: string | null;
+    }>;
+    error: string;
+  };
+  recommendations: string[];
 };
 
 const STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
@@ -58,6 +96,7 @@ const emptySettings: ArticleFramerSettings = {
   googleAnalyticsMeasurementId: "",
   googleAnalyticsApiSecret: "",
   googleAnalyticsServiceAccountJson: "",
+  analyticsSiteId: "ruff-agency",
 };
 
 const inputStyle = {
@@ -198,9 +237,13 @@ export default function ArticleSettingsPage() {
   const [framerState, setFramerState] = useState<ConnectionState>("idle");
   const [cloudflareState, setCloudflareState] = useState<ConnectionState>("idle");
   const [googleAnalyticsState, setGoogleAnalyticsState] = useState<ConnectionState>("idle");
+  const [trackingState, setTrackingState] = useState<ConnectionState>("idle");
+  const [trackingDiagnostic, setTrackingDiagnostic] = useState<TrackingDiagnostic | null>(null);
+  const [appOrigin, setAppOrigin] = useState("https://votre-domaine-agenceflow.com");
   const [message, setMessage] = useState("Renseigne les champs Framer, Cloudflare et Google Analytics, puis teste les connexions.");
 
   useEffect(() => {
+    setAppOrigin(window.location.origin);
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (!stored) return;
     try {
@@ -218,12 +261,45 @@ export default function ArticleSettingsPage() {
     });
     if (key.toString().startsWith("googleAnalytics")) {
       setGoogleAnalyticsState("idle");
+    } else if (key === "analyticsSiteId") {
+      setTrackingState("idle");
     } else if (key.toString().startsWith("cloudflare") || key === "articleDomain") {
       setCloudflareState("idle");
+      setTrackingState("idle");
     } else {
       setFramerState("idle");
     }
     setMessage("Parametres modifies. Relance le test pour confirmer l'etat des connexions.");
+  }
+
+  const trackingScriptTag = `<script async src="${appOrigin}/agenceflow-track.js" data-site-id="${settings.analyticsSiteId || "ruff-agency"}" data-endpoint="${appOrigin}/api/analytics/collect" data-debug="true"></script>`;
+
+  async function runTrackingDiagnostic() {
+    setTrackingState("testing");
+    setTrackingDiagnostic(null);
+    setMessage("Diagnostic tracking AgenceFlow en cours...");
+
+    try {
+      const res = await fetch("/api/analytics/health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          articleDomain: settings.articleDomain,
+          siteId: settings.analyticsSiteId,
+        }),
+      });
+      const data = await res.json() as TrackingDiagnostic;
+      setTrackingDiagnostic(data);
+      setTrackingState(res.ok && data.ok ? "connected" : "error");
+      setMessage(
+        res.ok && data.ok
+          ? `Tracking pret. ${data.db.recentEvents7d} evenement(s) recu(s) sur 7 jours.`
+          : data.recommendations[0] || data.db.error || "Tracking non connecte."
+      );
+    } catch {
+      setTrackingState("error");
+      setMessage("Impossible de lancer le diagnostic tracking depuis l'application.");
+    }
   }
 
   async function testConnections() {
@@ -416,6 +492,78 @@ export default function ArticleSettingsPage() {
                 <Field label="API Secret Measurement Protocol" value={settings.googleAnalyticsApiSecret} onChange={(value) => updateSetting("googleAnalyticsApiSecret", value)} placeholder="api_secret..." type="password" help="Optionnel maintenant ; utile quand on enverra les events du script." />
               </div>
               <TextAreaField label="Service Account JSON" value={settings.googleAnalyticsServiceAccountJson} onChange={(value) => updateSetting("googleAnalyticsServiceAccountJson", value)} placeholder='{"client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n..."}' help="Pour lire les stats, colle ici le JSON du service account Google qui a acces en lecture a la propriete GA4." />
+            </div>
+          </SettingCard>
+
+          <SettingCard
+            title="Tracking AgenceFlow"
+            description="Ce bloc verifie le script, l'endpoint de collecte, la configuration Vercel/Supabase, les droits CORS et les derniers evenements recus."
+            icon={<Bug size={22} />}
+            badge={<StatusBadge state={trackingState} />}
+          >
+            <div style={{ display: "grid", gap: 14 }}>
+              <Field
+                label="Site ID tracking"
+                value={settings.analyticsSiteId}
+                onChange={(value) => updateSetting("analyticsSiteId", value)}
+                placeholder="ruff-agency"
+                help="Doit etre identique au data-site-id du script pose dans le head du site article."
+              />
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.62)", fontFamily: "Inter, sans-serif" }}>Script a poser dans le head du site article</span>
+                <pre style={{ margin: 0, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#f7f8fb", color: "#121a2e", padding: 14, overflowX: "auto", fontSize: 12, lineHeight: "18px", fontFamily: "monospace" }}>{trackingScriptTag}</pre>
+                <span style={{ fontSize: 11, lineHeight: "16px", color: "rgba(18,26,46,0.42)", fontFamily: "Inter, sans-serif" }}>Le `src` et `data-endpoint` doivent pointer vers ton app AgenceFlow deployee, pas vers le domaine de l'article.</span>
+              </div>
+
+              <button onClick={runTrackingDiagnostic} disabled={trackingState === "testing"} type="button" style={{ minHeight: 44, borderRadius: 10, border: "1px solid rgba(1,71,255,0.18)", background: "#e8edff", color: "#0147ff", padding: "0 16px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 750, fontFamily: "Inter, sans-serif", cursor: trackingState === "testing" ? "wait" : "pointer", opacity: trackingState === "testing" ? 0.65 : 1 }}>
+                <RefreshCw size={15} /> {trackingState === "testing" ? "Diagnostic en cours" : "Diagnostiquer le tracking"}
+              </button>
+
+              {trackingDiagnostic ? (
+                <div style={{ borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fbfbfb", padding: 16, display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                    {[
+                      { label: "Service role", value: trackingDiagnostic.env.serviceRoleConfigured ? "OK" : "Manquant" },
+                      { label: "Table Supabase", value: trackingDiagnostic.db.tableReadable ? "Lisible" : "Erreur" },
+                      { label: "CORS domaine", value: trackingDiagnostic.cors.allowed ? "Autorise" : "Bloque" },
+                    ].map((item) => (
+                      <div key={item.label} style={{ borderRadius: 10, background: "#fff", border: "1px solid rgba(18,26,46,0.07)", padding: 12 }}>
+                        <span style={{ display: "block", fontSize: 11, color: "rgba(18,26,46,0.46)", fontFamily: "Inter, sans-serif" }}>{item.label}</span>
+                        <strong style={{ display: "block", marginTop: 4, fontSize: 14, color: "#121a2e", fontFamily: "Inter, sans-serif" }}>{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 6, color: "rgba(18,26,46,0.68)", fontSize: 12, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                    <span>Endpoint collecte : {trackingDiagnostic.collectUrl}</span>
+                    <span>Domaine article detecte : {trackingDiagnostic.cors.articleOrigin || "non renseigne"}</span>
+                    <span>Evenements 24h : {trackingDiagnostic.db.recentEvents24h} · 7 jours : {trackingDiagnostic.db.recentEvents7d} · total : {trackingDiagnostic.db.totalEvents}</span>
+                    {trackingDiagnostic.db.error ? <span style={{ color: "#dc2626" }}>Erreur Supabase : {trackingDiagnostic.db.error}</span> : null}
+                  </div>
+
+                  {trackingDiagnostic.db.latestEvents.length > 0 ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <strong style={{ fontSize: 12, color: "rgba(18,26,46,0.64)", fontFamily: "Inter, sans-serif" }}>Derniers evenements recus</strong>
+                      {trackingDiagnostic.db.latestEvents.map((event, index) => (
+                        <div key={`${event.event_time}-${index}`} style={{ borderRadius: 9, background: "#fff", border: "1px solid rgba(18,26,46,0.06)", padding: "8px 10px", fontSize: 12, lineHeight: "17px", color: "rgba(18,26,46,0.68)", fontFamily: "Inter, sans-serif" }}>
+                          <strong style={{ color: "#121a2e" }}>{event.event_name}</strong> · {event.site_id || "sans site"} · {event.path || event.url || "URL inconnue"}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {trackingDiagnostic.recommendations.length > 0 ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {trackingDiagnostic.recommendations.map((recommendation) => (
+                        <div key={recommendation} style={{ borderRadius: 9, background: "#fff7ed", border: "1px solid rgba(249,115,22,0.18)", padding: "8px 10px", color: "#9a3412", fontSize: 12, lineHeight: "17px", fontFamily: "Inter, sans-serif" }}>
+                          {recommendation}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </SettingCard>
         </div>

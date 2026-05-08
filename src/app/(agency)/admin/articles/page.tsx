@@ -175,10 +175,15 @@ export default function ArticlesPage() {
       if (detectedPages.length === 0) return;
 
       try {
+        const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+        const settings = rawSettings ? JSON.parse(rawSettings) as { analyticsSiteId?: string } : {};
         const response = await fetch("/api/articles/analytics/summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls: detectedPages.map((page) => page.url).filter(Boolean) }),
+          body: JSON.stringify({
+            urls: detectedPages.map((page) => page.url).filter(Boolean),
+            siteId: settings.analyticsSiteId || "",
+          }),
         });
         const data = await response.json();
         if (!response.ok || !Array.isArray(data.summaries)) {
