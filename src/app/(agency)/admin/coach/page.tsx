@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { agendaFetch } from "@/lib/agenda/fetchWithAuth";
+import { loadLinkedInSettings, OPENROUTER_MODELS } from "@/lib/linkedin/settings";
 import {
   BarChart3,
   ChevronDown,
@@ -50,6 +51,9 @@ const MODELS = [
   { id: "google/gemini-2.0-flash-001", label: "Gemini Flash" },
   { id: "mistralai/mistral-large-2411", label: "Mistral Large" },
 ];
+const MODEL_OPTIONS = Array.from(
+  new Map([...OPENROUTER_MODELS, ...MODELS].map((model) => [model.id, model])).values()
+);
 
 const SUGGESTIONS = [
   { label: "Creer un article", prompt: "Aide-moi a creer un article clair et actionnable pour mon audience.", tool: "article" as CoachTool, icon: FileText },
@@ -94,14 +98,18 @@ export default function CoachPage() {
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<CoachTool | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
   const [plusHovered, setPlusHovered] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const selectedModel = MODELS.find((entry) => entry.id === model) ?? MODELS[0];
+  const selectedModel = MODEL_OPTIONS.find((entry) => entry.id === model) ?? MODEL_OPTIONS[0];
+  const filteredModels = MODEL_OPTIONS.filter((entry) => `${entry.label} ${entry.id}`.toLowerCase().includes(modelSearch.toLowerCase()));
   const selectedToolEntry = TOOL_ACTIONS.find((entry) => entry.tool === selectedTool);
+  const coachComposerRows = Math.min(7, Math.max(1, input.split("\n").length));
+  const coachComposerExpanded = coachComposerRows > 1 || input.length > 96;
   const contentLeft = chatPanelOpen ? 380 : 60;
   const filteredConversations = (() => {
     const query = search.trim().toLowerCase();
@@ -131,6 +139,11 @@ export default function CoachPage() {
       setBusinessContext(settingsRes.value.settings?.business_context ?? "");
       const savedModel = settingsRes.value.settings?.ai_models?.coach;
       if (savedModel) setModel(savedModel);
+    }
+
+    const linkedInSettings = loadLinkedInSettings();
+    if (!settingsRes || settingsRes.status !== "fulfilled" || !settingsRes.value.settings?.ai_models?.coach) {
+      setModel(linkedInSettings.model);
     }
   }
 
@@ -175,10 +188,9 @@ export default function CoachPage() {
     if (response.ok) setConversations(data.conversations ?? []);
   }
 
-  function chooseTool(tool: CoachTool, prompt: string) {
+  function chooseTool(tool: CoachTool, _prompt: string) {
     setSelectedTool(tool);
     setToolMenuOpen(false);
-    setInput(prompt);
     window.setTimeout(() => inputRef.current?.focus(), 40);
   }
 
@@ -204,6 +216,7 @@ export default function CoachPage() {
           business_context: businessContext,
           conversation_id: conversationId,
           tool,
+          openrouter_api_key: loadLinkedInSettings().openrouterApiKey || undefined,
         }),
       });
       const data = await response.json();
@@ -226,7 +239,7 @@ export default function CoachPage() {
 
   return (
     <main style={{ height: "100vh", minHeight: 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
-      <img src="/linkedin-chat-loader.svg" alt="" aria-hidden="true" style={{ position: "absolute", top: -1080, left: "50%", width: "231%", height: 2340, transform: "translateX(-50%)", objectFit: "fill", pointerEvents: "none", opacity: loading ? 1 : 0.46, animation: "coachLoaderPulse 2s ease-in-out infinite alternate", zIndex: 1 }} />
+      <div aria-hidden="true" style={{ position: "absolute", inset: "-28%", background: "linear-gradient(180deg, rgba(225,238,255,0.98) 0%, rgba(241,248,255,0.9) 34%, rgba(251,251,251,0.86) 62%, rgba(251,251,251,0.98) 100%), radial-gradient(ellipse at 50% 0%, rgba(1,71,255,0.26) 0%, rgba(84,200,255,0.18) 34%, rgba(255,255,255,0.46) 68%, rgba(255,255,255,0) 94%), radial-gradient(circle at 8% 4%, rgba(1,71,255,0.18), rgba(255,255,255,0) 34%), radial-gradient(circle at 96% 6%, rgba(1,71,255,0.2), rgba(255,255,255,0) 38%)", filter: "blur(8px)", pointerEvents: "none", opacity: loading ? 1 : 0.96, animation: "coachLoaderPulse 2.4s ease-in-out infinite alternate", zIndex: 1 }} />
 
       <aside style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 60, background: "#fff", borderRight: "1px solid rgba(18,26,46,0.1)", zIndex: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 26 }}>
         {[
@@ -271,10 +284,10 @@ export default function CoachPage() {
         </div>
       </aside>
 
-      <section style={{ position: "relative", zIndex: 3, height: "100%", paddingLeft: contentLeft, display: "flex", flexDirection: "column", transition: "padding-left 0.22s ease" }}>
+      <section style={{ position: "relative", zIndex: 3, height: "100%", minHeight: 0, paddingLeft: contentLeft, display: "flex", flexDirection: "column", transition: "padding-left 0.22s ease", overflow: "hidden" }}>
         <div style={{ height: 64 }} />
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "34px 72px 150px" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "34px 72px 164px", scrollBehavior: "smooth" }}>
           {messages.length === 0 ? (
             <div style={{ maxWidth: 1120, margin: "0 auto" }}>
               <h1 style={{ margin: "74px 0 38px", textAlign: "center", fontSize: 48, lineHeight: "56px", fontWeight: 760, letterSpacing: 0, color: "#121a2e" }}>Bonjour Louis</h1>
@@ -304,10 +317,20 @@ export default function CoachPage() {
               </div>
             </div>
           ) : (
-            <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+            <div style={{ maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 21 }}>
               {messages.map((message, index) => (
-                <div key={`${message.role}-${index}`} style={{ display: "flex", justifyContent: message.role === "user" ? "flex-end" : "flex-start" }}>
-                  <div style={{ maxWidth: "78%", borderRadius: message.role === "user" ? "22px 22px 6px 22px" : "22px 22px 22px 6px", background: message.role === "user" ? "#121a2e" : "#fff", color: message.role === "user" ? "#fff" : "#121a2e", border: message.role === "user" ? "1px solid #121a2e" : "1px solid rgba(18,26,46,0.1)", boxShadow: message.role === "user" ? "none" : "0 14px 34px rgba(18,26,46,0.06)", padding: "15px 18px", fontSize: 15, lineHeight: "25px", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}>
+                <div
+                  key={`${message.role}-${index}`}
+                  style={{
+                    width: "fit-content",
+                    maxWidth: "75%",
+                    alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                    borderRadius: 20,
+                    background: message.role === "user" ? "#F4F4F4" : "transparent",
+                    padding: message.role === "user" ? "14px 16px" : 0,
+                  }}
+                >
+                  <div style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.82)", whiteSpace: "pre-wrap", fontFamily: "Inter, sans-serif" }}>
                     {message.content}
                   </div>
                 </div>
@@ -326,40 +349,37 @@ export default function CoachPage() {
         {error ? <div style={{ position: "absolute", left: "50%", bottom: 126, transform: "translateX(-50%)", maxWidth: 620, borderRadius: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", padding: "10px 14px", fontSize: 13, fontWeight: 650, zIndex: 8 }}>{error}</div> : null}
 
         <div style={{ position: "absolute", left: contentLeft, right: 0, bottom: 0, zIndex: 7, padding: "0 48px 34px", transition: "left 0.22s ease" }}>
-          <div style={{ maxWidth: 860, minHeight: selectedToolEntry ? 104 : 70, margin: "0 auto", borderRadius: selectedToolEntry ? 30 : 999, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, display: "flex", flexDirection: selectedToolEntry ? "column" : "row", alignItems: selectedToolEntry ? "stretch" : "center", gap: selectedToolEntry ? 8 : 16, padding: selectedToolEntry ? "13px 14px 12px 20px" : "9px 10px 9px 22px", backdropFilter: "blur(10px)", position: "relative" }}>
-            {selectedToolEntry ? (
-              <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={`${selectedToolEntry.label}...`} rows={1} style={{ width: "100%", minHeight: 28, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", padding: "3px 4px 0" }} />
-            ) : null}
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
-              <button type="button" onClick={() => setToolMenuOpen((value) => !value)} onMouseEnter={() => setPlusHovered(true)} onMouseLeave={() => setPlusHovered(false)} title="Actions IA" style={{ width: 34, height: 34, borderRadius: 999, border: 0, background: selectedTool || plusHovered ? selectedBg : "transparent", display: "grid", placeItems: "center", color: selectedTool ? "#000" : "#121a2e", cursor: "pointer", flexShrink: 0 }}><Plus size={22} /></button>
+          <div style={{ maxWidth: 860, minHeight: 66, margin: "0 auto", borderRadius: 34, border: "1px solid rgba(18,26,46,0.18)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, display: "flex", flexDirection: "column", gap: 10, padding: 12, backdropFilter: "blur(10px)", position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: coachComposerExpanded ? "wrap" : "nowrap", gap: coachComposerExpanded ? "10px 12px" : 12, width: "100%", minWidth: 0 }}>
+              <button type="button" onClick={() => setToolMenuOpen((value) => !value)} onMouseEnter={() => setPlusHovered(true)} onMouseLeave={() => setPlusHovered(false)} title="Actions IA" style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: plusHovered || toolMenuOpen ? "#F6F6F6" : "transparent", display: "grid", placeItems: "center", color: "#121a2e", cursor: "pointer", flexShrink: 0 }}><Plus size={18} /></button>
               {selectedToolEntry ? (
-                <span style={{ minHeight: 34, borderRadius: 999, background: selectedBg, color: "#0147ff", display: "inline-flex", alignItems: "center", gap: 8, padding: "0 10px", fontSize: 14, fontWeight: 650, flexShrink: 0 }}>
-                  <selectedToolEntry.icon size={16} /> {selectedToolEntry.label}
-                  <button type="button" onClick={() => setSelectedTool(null)} title="Retirer l'action" style={{ width: 18, height: 18, borderRadius: 999, border: 0, background: "transparent", color: "#0147ff", display: "grid", placeItems: "center", cursor: "pointer", padding: 0 }}><X size={14} /></button>
-                </span>
+                <button type="button" onClick={() => setSelectedTool(null)} style={{ border: 0, borderRadius: 999, background: "#0147ff14", color: "#0147ff", minHeight: 24, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800, fontFamily: '"Plus Jakarta Sans", sans-serif', flexShrink: 0 }}>
+                  <selectedToolEntry.icon size={12} />
+                  {selectedToolEntry.label}
+                </button>
               ) : null}
-              {!selectedToolEntry ? (
-                <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Demande au Coach IA..." rows={1} style={{ flex: 1, maxHeight: 96, border: 0, outline: "none", resize: "none", background: "transparent", color: "#121a2e", fontSize: 16, lineHeight: "24px", fontFamily: "Inter, sans-serif", paddingTop: 7 }} />
-              ) : <div style={{ flex: 1 }} />}
-              <button type="button" onClick={() => setModelPickerOpen((value) => !value)} style={{ minHeight: 36, border: 0, background: selectedToolEntry ? selectedBg : "transparent", borderRadius: 999, color: "rgba(18,26,46,0.82)", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0, padding: selectedToolEntry ? "0 12px" : 0 }}>
-                {selectedToolEntry ? "Automatique" : selectedModel.label} <ChevronDown size={15} />
-              </button>
-              <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} style={{ width: 48, height: 48, borderRadius: 999, border: 0, background: "#121a2e", color: "#fff", display: "grid", placeItems: "center", cursor: loading || !input.trim() ? "not-allowed" : "pointer", opacity: loading || !input.trim() ? 0.55 : 1, flexShrink: 0 }}>
-                {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={19} />}
-              </button>
+              <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Taper un texte ici" rows={coachComposerRows} style={{ order: coachComposerExpanded ? -1 : 0, flex: coachComposerExpanded ? "0 0 100%" : 1, width: coachComposerExpanded ? "100%" : "auto", minWidth: 0, minHeight: 24, maxHeight: 168, border: 0, outline: "none", resize: "none", background: "transparent", color: "rgba(18,26,46,0.7)", fontSize: 16, fontWeight: 500, lineHeight: coachComposerExpanded ? "22px" : "24px", letterSpacing: "-0.2px", fontFamily: "Inter, sans-serif", padding: 0, overflowY: input.split("\n").length > 7 || input.length > 238 ? "auto" : "hidden", opacity: loading ? 0.55 : 1, whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: "break-word" }} />
+              <div style={{ position: "relative", display: "flex", alignItems: "center", gap: selectedToolEntry ? 10 : 16, flexShrink: 0, marginLeft: "auto" }}>
+                <button type="button" onClick={() => setModelPickerOpen((value) => !value)} style={{ border: 0, background: "transparent", padding: 0, display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(18,26,46,0.7)", fontSize: 14, fontWeight: 500, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                  <span>{selectedModel.label}</span>
+                  <ChevronDown size={14} style={{ color: "rgba(18,26,46,0.52)" }} />
+                </button>
+                <button type="button" onClick={() => void send()} disabled={loading || !input.trim()} style={{ width: 46, height: 46, borderRadius: 34, background: "#121a2e", color: "#fff", border: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: loading || !input.trim() ? "not-allowed" : "pointer", flexShrink: 0, opacity: loading || !input.trim() ? 0.72 : 1 }}>
+                  {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={18} />}
+                </button>
+              </div>
             </div>
 
             {toolMenuOpen ? (
-              <div style={{ position: "absolute", left: 16, bottom: selectedToolEntry ? 110 : 74, width: 324, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
+              <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(100% + 10px)", borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: composerShadow, padding: 10, display: "grid", gap: 6, maxHeight: 280, overflowY: "auto", zIndex: 12 }}>
                 {TOOL_ACTIONS.map((entry) => {
                   const Icon = entry.icon;
                   const active = selectedTool === entry.tool;
                   return (
-                    <button key={entry.tool} type="button" onClick={() => chooseTool(entry.tool, entry.prompt)} style={{ minHeight: 54, borderRadius: 12, border: 0, background: active ? selectedBg : "transparent", color: "#121a2e", padding: "0 12px", textAlign: "left", display: "grid", gridTemplateColumns: "32px 1fr", alignItems: "center", columnGap: 10, cursor: "pointer" }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 9, background: active ? selectedBg : "#ececec", color: active ? "#000" : inactiveIconColor, opacity: active ? 1 : 0.7, display: "grid", placeItems: "center" }}><Icon size={16} /></span>
+                    <button key={entry.tool} type="button" onClick={() => chooseTool(entry.tool, entry.prompt)} style={{ border: 0, borderRadius: 12, background: active ? "#FBFBFB" : "transparent", padding: "9px 10px", display: "flex", alignItems: "center", gap: 9, textAlign: "left", cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 999, background: "#0147ff18", color: "#0147ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={13} /></span>
                       <span style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", fontSize: 13, lineHeight: "17px" }}>{entry.label}</strong>
+                        <strong style={{ display: "block", fontSize: 12, lineHeight: "17px" }}>{entry.label}</strong>
                         <span style={{ display: "block", marginTop: 2, fontSize: 11, color: "rgba(18,26,46,0.48)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.description}</span>
                       </span>
                     </button>
@@ -369,10 +389,18 @@ export default function CoachPage() {
             ) : null}
 
             {modelPickerOpen ? (
-              <div style={{ position: "absolute", right: 64, bottom: selectedToolEntry ? 104 : 66, width: 260, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", boxShadow: "0 26px 58px rgba(18,26,46,0.16)", padding: 8, display: "grid", gap: 4 }}>
-                {MODELS.map((entry) => (
-                  <button key={entry.id} type="button" onClick={() => { setModel(entry.id); setModelPickerOpen(false); }} style={{ minHeight: 38, borderRadius: 11, border: 0, background: model === entry.id ? selectedBg : "transparent", color: model === entry.id ? "#000" : "#121a2e", padding: "0 12px", textAlign: "left", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{entry.label}</button>
-                ))}
+              <div style={{ position: "absolute", right: 58, bottom: 66, width: 300, borderRadius: 18, border: "1px solid rgba(18,26,46,0.12)", background: "rgba(255,255,255,0.96)", boxShadow: composerShadow, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px" }}>
+                  <Search size={14} style={{ color: "#6f7887" }} />
+                  <input value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="Rechercher un modele..." style={{ flex: 1, border: 0, outline: "none", background: "transparent", fontSize: 13, fontFamily: "Inter, sans-serif", color: "#121a2e" }} autoFocus />
+                </div>
+                <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {filteredModels.map((entry) => (
+                    <button key={entry.id} type="button" onClick={() => { setModel(entry.id); setModelPickerOpen(false); setModelSearch(""); }} style={{ width: "100%", border: 0, borderRadius: 10, background: model === entry.id ? "rgba(0,0,0,0.04)" : "transparent", padding: "10px 11px", textAlign: "left", fontSize: 13, fontWeight: 500, color: "#121a2e", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

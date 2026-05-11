@@ -83,9 +83,12 @@ const STYLE_TONES: Record<LinkedInStyle["category"] | "fallback", { bg: string; 
   storytelling: { bg: "#f1eaff", border: "#d8c3ff", color: "#6236AA", dot: "#8b5cf6" },
   valeur: { bg: "#e8f6ff", border: "#bfe2fa", color: "#073e63", dot: "#0ea5e9" },
   educatif: { bg: "#dcfaf5", border: "#99f6e4", color: "#0f766e", dot: "#14b8a6" },
+  educatif_carrousel: { bg: "#e6faff", border: "#bae6fd", color: "#036782", dot: "#06b6d4" },
+  presentation_projet: { bg: "#f1f5f9", border: "#cbd5e1", color: "#334155", dot: "#64748b" },
   viral: { bg: "#ffecec", border: "#fecaca", color: "#c53030", dot: "#ef4444" },
   engagement: { bg: "#fff0df", border: "#fed7aa", color: "#663b12", dot: "#f97316" },
   data: { bg: "#eef2ff", border: "#c7d2fe", color: "#3730a3", dot: "#6366f1" },
+  lead_magnet: { bg: "#e4fff1", border: "#a7f3d0", color: "#047857", dot: "#10b981" },
   custom: { bg: "#f6f6f6", border: "rgba(18,26,46,0.12)", color: "rgba(18,26,46,0.65)", dot: "rgba(18,26,46,0.38)" },
   fallback: { bg: "#f6f6f6", border: "rgba(18,26,46,0.12)", color: "rgba(18,26,46,0.65)", dot: "rgba(18,26,46,0.38)" },
 };

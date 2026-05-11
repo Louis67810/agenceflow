@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT } from "@/lib/linkedin/post-style-prompts";
 
 interface TopPost {
   content: string;
@@ -30,6 +31,8 @@ interface GeneratePostRequest {
   // Settings from client
   openrouterApiKey?: string;
   model?: string;
+  businessContext?: string;
+  postSystemPrompt?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -48,6 +51,8 @@ export async function POST(req: NextRequest) {
       language = "fr",
       openrouterApiKey,
       model = "openai/gpt-4o-mini",
+      businessContext,
+      postSystemPrompt,
     } = body;
 
     // Prefer client-provided key, fallback to server env
@@ -112,6 +117,13 @@ Key rules:
 - Always end with a question or call to action
 - Never use clichés like "Dans un monde où..." or "La résilience..."`;
 
+    void systemPrompt;
+
+    const linkedInSystemPrompt = `${postSystemPrompt?.trim() || DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT}
+
+Langue de generation : ${langLabel}.
+${businessContext?.trim() ? `\n## Contexte business par defaut\n${businessContext.trim()}` : ""}`;
+
     let userPrompt: string;
 
     if (type === "carousel") {
@@ -148,6 +160,8 @@ Génère les ${carouselSlides} slides en ${langLabel}, prêts à utiliser dans F
 ${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
 
 ## Instructions:
+- Treat the source as a brief/instruction, not as the final post.
+- Never copy the source verbatim as the post, especially when the source is "Texte libre".
 - Length: 150-300 words ideal
 - Hook first line: must make people stop scrolling
 - Body: develop the idea with concrete examples or personal experience
@@ -167,7 +181,7 @@ ${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: linkedInSystemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.85,

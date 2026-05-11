@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgenceFlow LinkedIn Sync</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">AgenceFlow</p>
+          <h1>LinkedIn DM Sync</h1>
+        </div>
+        <span id="connectionDot" class="dot"></span>
+      </header>
+
+      <section class="settings">
+        <label>
+          URL AgenceFlow
+          <input id="agencyUrl" type="url" placeholder="http://localhost:3000" />
+        </label>
+        <label>
+          Clé d'extension
+          <input id="extensionKey" type="password" autocomplete="off" placeholder="af_ext_..." />
+        </label>
+        <button id="saveSettings" class="secondary" type="button">Enregistrer</button>
+      </section>
+
+      <section class="status">
+        <div><span>Connexion</span><strong id="connectionStatus">Non configuré</strong></div>
+        <div><span>Prospect</span><strong id="selectedProspectStatus">Non selectionne</strong></div>
+        <div><span>Conversation</span><strong id="conversationStatus">Non détectée</strong></div>
+        <div><span>Import</span><strong id="importStatus">En attente</strong></div>
+      </section>
+
+      <section class="prospects">
+        <div class="prospects-header">
+          <div>
+            <p>Prospects</p>
+            <span id="prospectsStatus">Non charges</span>
+          </div>
+          <button id="loadProspects" class="icon-button" type="button" title="Charger les prospects">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.2 6.5M3 12A9 9 0 0 1 18.2 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+              <path d="M6 19H3v-3M18 5h3v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+        </div>
+        <input id="prospectSearch" type="search" autocomplete="off" placeholder="Rechercher un prospect..." />
+        <div id="prospectsList" class="prospects-list"></div>
+      </section>
+
+      <button id="importConversation" class="primary" type="button">
+        Importer la conversation
+      </button>
+
+      <section id="pendingBox" class="pending hidden" aria-live="polite">
+        <div>
+          <p>Message prêt</p>
+          <textarea id="pendingMessage" readonly></textarea>
+        </div>
+        <button id="copyPending" class="copy" type="button" title="Copier le message">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2"></rect>
+            <rect x="4" y="4" width="11" height="11" rx="2" stroke="currentColor" stroke-width="2"></rect>
+          </svg>
+        </button>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -21,11 +21,27 @@ const CATEGORIES = [
   { value: "storytelling", label: "Storytelling" },
   { value: "valeur",       label: "Valeur / Liste" },
   { value: "educatif",     label: "Éducatif" },
-  { value: "viral",        label: "Opinion forte" },
+  { value: "educatif_carrousel", label: "Educatif carrousel" },
+  { value: "presentation_projet", label: "Presentation de projet" },
   { value: "engagement",   label: "Engagement" },
-  { value: "data",         label: "Data / Chiffres" },
+  { value: "data",         label: "Data chiffres" },
+  { value: "lead_magnet",  label: "Lead magnet" },
+  { value: "viral",        label: "Opinion forte" },
   { value: "custom",       label: "Personnalisé" },
 ];
+
+const CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
+  storytelling: "Storytelling",
+  valeur: "Valeur / Liste",
+  educatif: "Educatif",
+  educatif_carrousel: "Educatif carrousel",
+  presentation_projet: "Presentation de projet",
+  engagement: "Engagement",
+  data: "Data chiffres",
+  lead_magnet: "Lead magnet",
+  viral: "Opinion forte",
+  custom: "Personnalise",
+};
 
 interface StyleExample {
   id: string;
@@ -206,7 +222,7 @@ export default function LinkedInStylePage() {
                     : { background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)" }),
                 }}
               >
-                {cat.label} ({count})
+                {CATEGORY_LABEL_OVERRIDES[cat.value] ?? cat.label} ({count})
               </button>
             );
           })}
@@ -269,7 +285,7 @@ export default function LinkedInStylePage() {
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Catégorie</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as LinkedInStyle["category"] })} style={inputStyle}>
-                  {CATEGORIES.map((cat) => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
+                  {CATEGORIES.map((cat) => <option key={cat.value} value={cat.value}>{CATEGORY_LABEL_OVERRIDES[cat.value] ?? cat.label}</option>)}
                 </select>
               </div>
 
@@ -354,7 +370,7 @@ function StyleCard({
 }) {
   const colorClass = STYLE_CATEGORY_COLORS[style.category] || "bg-gray-100 text-gray-700";
   const exampleCount = examples?.length ?? 0;
-  const catLabel = CATEGORIES.find((c) => c.value === style.category)?.label || style.category;
+  const catLabel = CATEGORY_LABEL_OVERRIDES[style.category] ?? CATEGORIES.find((c) => c.value === style.category)?.label ?? style.category;
 
   return (
     <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.1)", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0px 2px 8px rgba(0,0,0,0.04)", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>

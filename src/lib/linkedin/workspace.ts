@@ -1,5 +1,6 @@
 import {
   DEFAULT_STYLES,
+  type LinkedInConcept,
   type LinkedInIdea,
   type LinkedInProspect,
   type LinkedInStyle,
@@ -13,6 +14,7 @@ const WORKSPACE_CACHE_KEY = "linkedin_workspace_cache";
 const PENDING_LINKEDIN_WORKSPACE_SYNC_KEY = "linkedin_workspace_pending_remote_sync";
 const STYLES_KEY = "linkedin_styles";
 const IDEAS_KEY = "linkedin_ideas";
+const CONCEPTS_KEY = "linkedin_concepts";
 const PROSPECTS_KEY = "linkedin_prospects";
 const SKELETONS_KEY = "linkedin_prospection_skeletons";
 const IDEAS_LANGUAGE_KEY = "linkedin_ideas_language";
@@ -32,6 +34,7 @@ export const DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES: LinkedInWorkspacePreference
 export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
   styles: DEFAULT_STYLES,
   ideas: [],
+  concepts: [],
   carouselPageTemplates: [],
   carouselTemplates: [],
   prospects: [],
@@ -91,6 +94,7 @@ function cloneDefaults(): LinkedInWorkspaceData {
   return {
     styles: [...DEFAULT_STYLES],
     ideas: [],
+    concepts: [],
     carouselPageTemplates: [],
     carouselTemplates: [],
     prospects: [],
@@ -99,14 +103,58 @@ function cloneDefaults(): LinkedInWorkspaceData {
   };
 }
 
+function mergeDefaultStyles(styles?: LinkedInStyle[] | null): LinkedInStyle[] {
+  const current = Array.isArray(styles) ? styles : [];
+  const defaultStyles = [...DEFAULT_STYLES];
+  const defaultById = new Map(defaultStyles.map((style) => [style.id, style]));
+  const legacyStyleIds = new Set(["engagement", "viral"]);
+  const legacyStyleNames = new Set([
+    "question / engagement",
+    "opinion forte",
+    "data / chiffres",
+    "educatif",
+    "éducatif",
+    "récit personnel",
+  ]);
+  const pushed = new Set<string>();
+  const mergedCurrent = current.reduce<LinkedInStyle[]>((acc, style) => {
+    const freshDefault = defaultById.get(style.id);
+    if (freshDefault) {
+      if (!pushed.has(freshDefault.id)) {
+        acc.push({ ...freshDefault, createdAt: style.createdAt || freshDefault.createdAt });
+        pushed.add(freshDefault.id);
+      }
+      return acc;
+    }
+
+    const normalizedName = style.name.trim().toLowerCase();
+    const isLegacyDefault =
+      style.isDefault ||
+      legacyStyleIds.has(style.id) ||
+      legacyStyleNames.has(normalizedName) ||
+      style.category === "viral";
+
+    const isExplicitCustomStyle = style.id.startsWith("custom_") && style.category === "custom";
+    if (!isLegacyDefault && isExplicitCustomStyle && !pushed.has(style.id)) {
+      acc.push(style);
+      pushed.add(style.id);
+    }
+    return acc;
+  }, []);
+
+  const seen = new Set(mergedCurrent.map((style) => style.id));
+  return [...mergedCurrent, ...defaultStyles.filter((style) => !seen.has(style.id))];
+}
+
 export function normalizeLinkedInWorkspaceData(
   data?: Partial<LinkedInWorkspaceData> | null
 ): LinkedInWorkspaceData {
   const defaults = cloneDefaults();
 
   return {
-    styles: Array.isArray(data?.styles) && data.styles.length > 0 ? data.styles : defaults.styles,
+    styles: Array.isArray(data?.styles) && data.styles.length > 0 ? mergeDefaultStyles(data.styles) : defaults.styles,
     ideas: Array.isArray(data?.ideas) ? data.ideas : defaults.ideas,
+    concepts: Array.isArray(data?.concepts) ? data.concepts : defaults.concepts,
     carouselPageTemplates: Array.isArray(data?.carouselPageTemplates) ? data.carouselPageTemplates : defaults.carouselPageTemplates,
     carouselTemplates: Array.isArray(data?.carouselTemplates) ? data.carouselTemplates : defaults.carouselTemplates,
     prospects: Array.isArray(data?.prospects) ? data.prospects : defaults.prospects,
@@ -123,6 +171,7 @@ function readLegacyWorkspace(): Partial<LinkedInWorkspaceData> {
 
   const legacyStyles = parseJson<LinkedInStyle[] | null>(localStorage.getItem(STYLES_KEY), null);
   const legacyIdeas = parseJson<LinkedInIdea[] | null>(localStorage.getItem(IDEAS_KEY), null);
+  const legacyConcepts = parseJson<LinkedInConcept[] | null>(localStorage.getItem(CONCEPTS_KEY), null);
   const legacyProspects = parseJson<LinkedInProspect[] | null>(localStorage.getItem(PROSPECTS_KEY), null);
   const legacySkeletons = parseJson<ProspectionSkeleton[] | null>(localStorage.getItem(SKELETONS_KEY), null);
   const ideasLanguage = localStorage.getItem(IDEAS_LANGUAGE_KEY);
@@ -132,6 +181,7 @@ function readLegacyWorkspace(): Partial<LinkedInWorkspaceData> {
   return {
     styles: legacyStyles ?? undefined,
     ideas: legacyIdeas ?? undefined,
+    concepts: legacyConcepts ?? undefined,
     prospects: legacyProspects ?? undefined,
     skeletons: legacySkeletons ?? undefined,
     preferences: {
@@ -151,6 +201,7 @@ export function syncLinkedInWorkspaceToLegacyStorage(data: LinkedInWorkspaceData
 
   localStorage.setItem(STYLES_KEY, JSON.stringify(data.styles));
   localStorage.setItem(IDEAS_KEY, JSON.stringify(data.ideas));
+  localStorage.setItem(CONCEPTS_KEY, JSON.stringify(data.concepts));
   localStorage.setItem(PROSPECTS_KEY, JSON.stringify(data.prospects));
   localStorage.setItem(SKELETONS_KEY, JSON.stringify(data.skeletons));
   localStorage.setItem(IDEAS_LANGUAGE_KEY, data.preferences.ideasLanguage);
@@ -211,6 +262,7 @@ export function patchLinkedInWorkspaceCache(
 export function hasMeaningfulLinkedInWorkspaceData(data: LinkedInWorkspaceData): boolean {
   return (
     data.ideas.length > 0 ||
+    data.concepts.length > 0 ||
     data.carouselPageTemplates.length > 0 ||
     data.carouselTemplates.length > 0 ||
     data.prospects.length > 0 ||
@@ -304,6 +356,7 @@ export function clearLinkedInWorkspaceLocal(): void {
   localStorage.removeItem(PENDING_LINKEDIN_WORKSPACE_SYNC_KEY);
   localStorage.removeItem(STYLES_KEY);
   localStorage.removeItem(IDEAS_KEY);
+  localStorage.removeItem(CONCEPTS_KEY);
   localStorage.removeItem(PROSPECTS_KEY);
   localStorage.removeItem(SKELETONS_KEY);
   localStorage.removeItem(IDEAS_LANGUAGE_KEY);

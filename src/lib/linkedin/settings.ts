@@ -1,10 +1,21 @@
 "use client";
 
 import { linkedinFetch } from "@/lib/linkedin/fetchWithAuth";
+import { DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT } from "@/lib/linkedin/post-style-prompts";
+import {
+  DEFAULT_LINKEDIN_EDIT_ACTION_GENERAL_PROMPT,
+  DEFAULT_LINKEDIN_EDIT_ACTIONS,
+  normalizeLinkedInEditActions,
+  type LinkedInEditAction,
+} from "@/lib/linkedin/edit-ai-actions";
 
 export interface LinkedInSettings {
   openrouterApiKey: string;
   model: string;
+  businessContext: string;
+  postSystemPrompt: string;
+  editActionGeneralPrompt: string;
+  editActions: LinkedInEditAction[];
   carouselTemplate: string;
   carouselContentModel: string;
   carouselImageModel: string;
@@ -20,6 +31,10 @@ export interface LinkedInSettings {
   airtableBaseId: string;
   airtableTableName: string;
   airtableAutoSync: boolean;
+  viralityOpenAiApiKey: string;
+  viralityAnalyzerModel: string;
+  viralityImageModel: string;
+  viralitySystemPrompt: string;
 }
 
 export const OPENROUTER_MODELS = [
@@ -120,9 +135,27 @@ Regles absolues :
 - Sonne comme un humain, pas un template
 - Si un squelette est fourni, respecte sa structure tout en personnalisant chaque element`;
 
+export const DEFAULT_VIRALITY_PROMPT = `Tu es une IA fine-tunee pour predire les performances de posts LinkedIn.
+Analyse le texte, le format, le hook, le rythme, la clarte, le niveau de debat potentiel et l'image decrite.
+Retourne uniquement un JSON valide avec:
+{
+  "likes": nombre_estime,
+  "comments": nombre_estime,
+  "shares": nombre_estime,
+  "ratio": "x%",
+  "viralityLevel": "faible|moyen|fort|tres fort",
+  "viralityScore": nombre_de_0_a_100,
+  "boostingFactors": ["facteur 1", "facteur 2"],
+  "limitingFactors": ["facteur 1", "facteur 2"]
+}`;
+
 export const DEFAULT_SETTINGS: LinkedInSettings = {
   openrouterApiKey: "",
   model: "anthropic/claude-sonnet-4-6",
+  businessContext: "",
+  postSystemPrompt: DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT,
+  editActionGeneralPrompt: DEFAULT_LINKEDIN_EDIT_ACTION_GENERAL_PROMPT,
+  editActions: DEFAULT_LINKEDIN_EDIT_ACTIONS,
   carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE,
   carouselContentModel: "anthropic/claude-sonnet-4-6",
   carouselImageModel: "openai/gpt-image-1",
@@ -138,6 +171,10 @@ export const DEFAULT_SETTINGS: LinkedInSettings = {
   airtableBaseId: "",
   airtableTableName: "Prospects LinkedIn",
   airtableAutoSync: false,
+  viralityOpenAiApiKey: "",
+  viralityAnalyzerModel: "",
+  viralityImageModel: "qwen/qwen2.5-vl-72b-instruct",
+  viralitySystemPrompt: DEFAULT_VIRALITY_PROMPT,
 };
 
 export const SETTINGS_KEY = "linkedin_settings";
@@ -150,9 +187,30 @@ function canUseStorage() {
 export function normalizeLinkedInSettings(
   settings?: Partial<LinkedInSettings> | null
 ): LinkedInSettings {
+  const airtableKey = typeof settings?.airtableKey === "string"
+    ? settings.airtableKey
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .trim()
+        .replace(/^authorization:\s*/i, "")
+        .replace(/^Bearer\s+/i, "")
+        .replace(/^["'`]+|["'`]+$/g, "")
+        .trim()
+    : undefined;
+
   return {
     ...DEFAULT_SETTINGS,
     ...(settings ?? {}),
+    editActionGeneralPrompt: typeof settings?.editActionGeneralPrompt === "string"
+      ? settings.editActionGeneralPrompt
+      : DEFAULT_SETTINGS.editActionGeneralPrompt,
+    editActions: normalizeLinkedInEditActions(settings?.editActions),
+    airtableKey: airtableKey ?? DEFAULT_SETTINGS.airtableKey,
+    airtableBaseId: typeof settings?.airtableBaseId === "string"
+      ? settings.airtableBaseId.trim()
+      : settings?.airtableBaseId ?? DEFAULT_SETTINGS.airtableBaseId,
+    airtableTableName: typeof settings?.airtableTableName === "string"
+      ? settings.airtableTableName.trim()
+      : settings?.airtableTableName ?? DEFAULT_SETTINGS.airtableTableName,
   };
 }
 

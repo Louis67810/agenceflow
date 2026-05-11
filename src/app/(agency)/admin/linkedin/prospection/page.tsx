@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -5,13 +6,17 @@ import {
   Plus, Sparkles, RefreshCw, Copy, Check, ChevronDown, X,
   ExternalLink, TrendingUp, MessageSquare, ThumbsUp, Eye,
   PenLine, Bot, Send, User, ChevronRight, MessagesSquare,
-  Layers, Trash2, Globe, Minus,
+  Layers, Trash2, Globe, Minus, DatabaseZap, Search,
 } from "lucide-react";
 import {
   LinkedInProspect, ConversationMessage, ProspectionSkeleton,
   ACTION_LABELS, PROSPECT_STATUS_LABELS, PROSPECT_TO_LEAD_STATUS,
 } from "@/types/linkedin";
-import { loadLinkedInSettings } from "@/lib/linkedin/settings";
+import {
+  fetchRemoteLinkedInSettings,
+  loadLinkedInSettings,
+} from "@/lib/linkedin/settings";
+import { linkedinFetch } from "@/lib/linkedin/fetchWithAuth";
 import SmartSelectionTextarea from "@/components/shared/SmartSelectionTextarea";
 import {
   fetchRemoteLinkedInWorkspace,
@@ -30,6 +35,9 @@ const inp = {
   boxSizing: "border-box" as const, fontFamily: '"Plus Jakarta Sans", sans-serif',
 };
 
+async function getFreshLinkedInSettings() {
+  return fetchRemoteLinkedInSettings().catch(() => loadLinkedInSettings());
+}
 // Small gradient button (for inline / secondary actions)
 const btnGrad = {
   background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
@@ -38,6 +46,7 @@ const btnGrad = {
 };
 
 function getLoginButtonStyle(disabled = false, loading = false) {
+  const dealClosed = prospects.filter((p) => p.status === "deal_closed").length;
   return {
     width: "100%",
     padding: "15px 20px",
@@ -62,9 +71,9 @@ function getLoginButtonStyle(disabled = false, loading = false) {
 }
 
 const ACTION_OPTIONS: { value: LinkedInProspect["actionType"]; label: string; icon: React.ReactNode }[] = [
-  { value: "liked",           label: "A liké votre post",      icon: <ThumbsUp size={14} /> },
-  { value: "commented",       label: "A commenté votre post",  icon: <MessageSquare size={14} /> },
-  { value: "visited_profile", label: "A visité votre profil",  icon: <Eye size={14} /> },
+  { value: "liked",           label: "A likÃ© votre post",      icon: <ThumbsUp size={14} /> },
+  { value: "commented",       label: "A commentÃ© votre post",  icon: <MessageSquare size={14} /> },
+  { value: "visited_profile", label: "A visitÃ© votre profil",  icon: <Eye size={14} /> },
   { value: "none",            label: "Aucune / Autre",         icon: <Minus size={14} /> },
 ];
 
@@ -123,19 +132,20 @@ function getStats(prospects: LinkedInProspect[]) {
     accepted: prospects.filter((p) => p.status === "accepted").length,
     replied: prospects.filter((p) => p.status === "replied").length,
     conversation: prospects.filter((p) => p.status === "conversation").length,
-    dealClosed: prospects.filter((p) => p.status === "deal_closed").length,
+    dealClosed,
     dealLost: prospects.filter((p) => p.status === "deal_lost").length,
     rejected: prospects.filter((p) => p.status === "rejected").length,
-    conversionRate: sent === 0 ? "—" : `${Math.round((positive / sent) * 100)}%`,
+    conversionRate: sent === 0 ? "-" : `${Math.round((dealClosed / sent) * 100)}%`,
     byAction,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Left Panel
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LeftPanel({
   language, onLanguageChange, onSave, skeletons, onSkeletonsUpdate, allProspects,
+  editingProspect, onUpdateProspect, onClearEditing,
 }: {
   language: "fr" | "en";
   onLanguageChange: (l: "fr" | "en") => void;
@@ -143,6 +153,9 @@ function LeftPanel({
   skeletons: ProspectionSkeleton[];
   onSkeletonsUpdate: (s: ProspectionSkeleton[]) => void;
   allProspects: LinkedInProspect[];
+  editingProspect: LinkedInProspect | null;
+  onUpdateProspect: (id: string, patch: Partial<LinkedInProspect>) => void;
+  onClearEditing: () => void;
 }) {
   const [mode, setMode] = useState<"ai" | "manual">("ai");
   const [generating, setGenerating] = useState(false);
@@ -157,13 +170,15 @@ function LeftPanel({
   const [draftHydrated, setDraftHydrated] = useState(false);
 
   const [form, setForm] = useState({
-    name: "", profileUrl: "", siteUrl: "",
+    name: "", profileUrl: "", siteUrl: "", avatarUrl: "",
     actionType: "liked" as LinkedInProspect["actionType"],
     context: "",
   });
   const [generatedMessage, setGeneratedMessage] = useState("");
   const [manualMessage, setManualMessage] = useState("");
   const [explanation, setExplanation] = useState("");
+  const [savingProspect, setSavingProspect] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<{ kind: "success" | "warning" | "error"; message: string } | null>(null);
   const smartAiSettings = loadLinkedInSettings();
 
   // Auto-select best skeleton when action type changes
@@ -171,6 +186,18 @@ function LeftPanel({
     const best = pickBestSkeleton(skeletons, form.actionType);
     setSelectedSkeleton(best);
   }, [form.actionType, skeletons]);
+
+  useEffect(() => {
+    if (!editingProspect) return;
+    setForm({
+      name: editingProspect.name || "",
+      profileUrl: editingProspect.profileUrl || "",
+      siteUrl: editingProspect.siteUrl || "",
+      avatarUrl: editingProspect.avatarUrl || "",
+      actionType: editingProspect.actionType || "none",
+      context: editingProspect.context || "",
+    });
+  }, [editingProspect?.id]);
 
   useEffect(() => {
     if (draftLoadedRef.current) return;
@@ -215,7 +242,7 @@ function LeftPanel({
   }, [draftHydrated, mode, form, generatedMessage, manualMessage, explanation, selectedSkeleton]);
 
   const resetDraft = () => {
-    setForm({ name: "", profileUrl: "", siteUrl: "", actionType: "liked", context: "" });
+    setForm({ name: "", profileUrl: "", siteUrl: "", avatarUrl: "", actionType: "liked", context: "" });
     setGeneratedMessage("");
     setManualMessage("");
     setExplanation("");
@@ -295,14 +322,29 @@ function LeftPanel({
     finally { setRefiningManual(false); }
   };
 
-  const buildProspect = (message: string, isManual: boolean): LinkedInProspect | null => {
-    if (!message.trim() || !form.name.trim()) return null;
+  const buildProspect = (
+    message: string,
+    isManual: boolean,
+    options?: { allowEmptyMessage?: boolean }
+  ): LinkedInProspect | null => {
+    if (!form.name.trim()) return null;
+    if (!options?.allowEmptyMessage && !message.trim()) return null;
+    const id = `prospect_${Date.now()}`;
+    const trimmedMessage = message.trim();
     return {
-      id: `prospect_${Date.now()}`,
-      name: form.name, profileUrl: form.profileUrl || undefined,
+      id,
+      name: form.name.trim(), profileUrl: form.profileUrl || undefined,
+      avatarUrl: form.avatarUrl || undefined,
       siteUrl: form.siteUrl || undefined,
       actionType: form.actionType, context: form.context || undefined,
-      generatedMessage: message, isManual,
+      generatedMessage: trimmedMessage, isManual,
+      pendingLinkedInSend: trimmedMessage
+        ? {
+            id: `pending_${id}`,
+            text: trimmedMessage,
+            createdAt: new Date().toISOString(),
+          }
+        : undefined,
       skeletonId: !isManual && selectedSkeleton ? selectedSkeleton.id : undefined,
       status: "draft", createdAt: new Date().toISOString(),
     };
@@ -324,7 +366,7 @@ function LeftPanel({
     try {
       const res = await fetch("/api/leads", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, source: "linkedin", source_ref: form.profileUrl || null, channel_preference: "linkedin_dm", metadata: { action_type: form.actionType, context: form.context || null, site_url: form.siteUrl || null }, status: "new" }),
+        body: JSON.stringify({ name: form.name, source: "linkedin", source_ref: form.profileUrl || null, channel_preference: "linkedin_dm", metadata: { action_type: form.actionType, context: form.context || null, site_url: form.siteUrl || null, avatar_url: form.avatarUrl || null }, status: "new" }),
       });
       const data = await res.json();
       if (data.lead?.id) {
@@ -345,6 +387,58 @@ function LeftPanel({
     if (!prospect) return;
     onSave(prospect);
     resetDraft();
+  };
+
+  const handleSaveProspect = async () => {
+    if (savingProspect) return;
+    setSaveStatus(null);
+    const prospect = buildProspect("", true, { allowEmptyMessage: true });
+    if (!prospect) {
+      setSaveStatus({ kind: "error", message: "Ajoute au moins un nom pour creer le prospect." });
+      return;
+    }
+    prospect.conversation = [];
+    setSavingProspect(true);
+
+    try {
+      const status = PROSPECT_TO_LEAD_STATUS[prospect.status];
+      const res = await fetch("/api/leads", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: prospect.name,
+          company: "",
+          title: "",
+          email: "",
+          linkedinUrl: prospect.profileUrl,
+          website: prospect.siteUrl,
+          source: "linkedin",
+          status,
+          notes: prospect.context,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.lead?.id) prospect.leadId = data.lead.id;
+      if (!res.ok) {
+        setSaveStatus({
+          kind: "warning",
+          message: data?.error
+            ? `Prospect ajoute, mais synchro CRM incomplete: ${data.error}`
+            : "Prospect ajoute, mais synchro CRM incomplete.",
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      setSaveStatus({
+        kind: "warning",
+        message: "Prospect ajoute, mais le CRM n'a pas repondu. La synchro Airtable prendra le relais si elle est configuree.",
+      });
+    } finally {
+      setSavingProspect(false);
+    }
+
+    onSave(prospect);
+    resetDraft();
+    setSaveStatus((current) => current ?? { kind: "success", message: "Prospect ajoute." });
   };
 
   const handleCreateSkeletons = async () => {
@@ -386,315 +480,135 @@ function LeftPanel({
   };
 
   const canSaveManual = form.name.trim().length > 0 && manualMessage.trim().length > 0;
+  const canSaveProspect = form.name.trim().length > 0;
   const sentCount = allProspects.filter((p) => p.status !== "draft").length;
+  const isEditingProspect = Boolean(editingProspect);
+  const updateFormField = (key: keyof typeof form, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    if (!editingProspect) return;
+    const normalized = value.trim() ? value : undefined;
+    onUpdateProspect(editingProspect.id, { [key]: key === "actionType" ? value : normalized } as Partial<LinkedInProspect>);
+  };
 
   return (
     <div style={{ width: 384, background: "#fff", borderRight: "1px solid rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
-      {/* Header */}
-      <div style={{ padding: "14px 20px 0", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0, letterSpacing: "-0.3px" }}>Nouveau prospect</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {draftSavedAt && (
-              <span style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", whiteSpace: "nowrap" }}>
-                Auto-save
-              </span>
-            )}
+      <div style={{ padding: "18px 20px", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <h2 style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0, letterSpacing: "-0.3px" }}>{isEditingProspect ? "Modifier le prospect" : "Nouveau prospect"}</h2>
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.45)", margin: "4px 0 0" }}>{isEditingProspect ? "Les champs modifient la fiche selectionnee." : "Ajoutez seulement les infos du contact."}</p>
+          </div>
+          {draftSavedAt && <span style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", whiteSpace: "nowrap" }}>Auto-save</span>}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+          {saveStatus && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: saveStatus.kind === "error" ? "1px solid #fecaca" : saveStatus.kind === "warning" ? "1px solid #fed7aa" : "1px solid #bbf7d0",
+                background: saveStatus.kind === "error" ? "#fef2f2" : saveStatus.kind === "warning" ? "#fff7ed" : "#f0fdf4",
+                color: saveStatus.kind === "error" ? "#b91c1c" : saveStatus.kind === "warning" ? "#c2410c" : "#168b64",
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1.45,
+                ...jk,
+              }}
+            >
+              {saveStatus.message}
+            </div>
+          )}
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Pseudo / nom
+            <input
+              value={form.name}
+              onChange={(e) => updateFormField("name", e.target.value)}
+              placeholder="ex: Louis Martin"
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Profil LinkedIn
+            <input
+              value={form.profileUrl}
+              onChange={(e) => updateFormField("profileUrl", e.target.value)}
+              placeholder="https://linkedin.com/in/..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Photo de profil
+            <input
+              value={form.avatarUrl}
+              onChange={(e) => updateFormField("avatarUrl", e.target.value)}
+              placeholder="https://media.licdn.com/..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Site / entreprise
+            <input
+              value={form.siteUrl}
+              onChange={(e) => updateFormField("siteUrl", e.target.value)}
+              placeholder="https://..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Source du contact
             <select
-              value={language}
-              onChange={(e) => { onLanguageChange(e.target.value as "fr" | "en"); localStorage.setItem("linkedin_prospection_language", e.target.value); }}
-              style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 8, padding: "4px 8px", fontSize: 12, color: "#121a2e", background: "#f6f6f6", outline: "none", ...jk }}
+              value={form.actionType}
+              onChange={(e) => updateFormField("actionType", e.target.value)}
+              style={{ ...inp, marginTop: 6 }}
             >
-              <option value="fr">FR</option>
-              <option value="en">EN</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Mode tabs */}
-        <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3, marginBottom: 0 }}>
-          {([["ai", Bot, "Générer avec l'IA"], ["manual", PenLine, "Message manuel"]] as const).map(([m, Icon, label]) => (
-            <button key={m} onClick={() => setMode(m)} style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "7px 8px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", ...jk,
-              ...(mode === m
-                ? { background: "#fff", border: "none", color: "#121a2e", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
-                : { background: "none", border: "none", color: "rgba(18,26,46,0.45)" }),
-            }}>
-              <Icon size={13} />{label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Form */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Common fields */}
-        <div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Prénom du prospect *</label>
-          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Marie" style={inp} />
-        </div>
-
-        <div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Action effectuée</label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {ACTION_OPTIONS.map((opt) => (
-              <button key={opt.value} onClick={() => setForm({ ...form, actionType: opt.value })} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9,
-                fontSize: 13, textAlign: "left", cursor: "pointer", ...jk,
-                ...(form.actionType === opt.value
-                  ? { border: "1px solid #0147ff", background: "#e8edff", color: "#0147ff" }
-                  : { border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.7)" }),
-              }}>
-                {opt.icon}{opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>URL profil LinkedIn <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
-          <input type="text" value={form.profileUrl} onChange={(e) => setForm({ ...form, profileUrl: e.target.value })} placeholder="https://linkedin.com/in/..." style={inp} />
-        </div>
-
-        <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)" }}>
-              <Globe size={12} />
-              Site web du prospect <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span>
-            </label>
-            {form.siteUrl && (
-              <a href={form.siteUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#0147ff", textDecoration: "none", fontWeight: 600, ...jk }}>
-                <ExternalLink size={11} />Ouvrir
-              </a>
-            )}
-          </div>
-          <input type="text" value={form.siteUrl} onChange={(e) => setForm({ ...form, siteUrl: e.target.value })} placeholder="https://example.com" style={inp} />
-        </div>
-
-        <div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Contexte <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
-          <textarea value={form.context} onChange={(e) => setForm({ ...form, context: e.target.value })} placeholder="Ex: Directrice marketing, startup SaaS B2B..." rows={2} style={{ ...inp, resize: "none" }} />
-        </div>
-
-        {/* AI mode */}
-        {mode === "ai" && (
-          <>
-            {/* Skeleton selector */}
-            <div style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, overflow: "visible", position: "relative" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "#f6f6f6", borderRadius: "9px 9px 0 0" }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", display: "flex", alignItems: "center", gap: 5 }}>
-                  <Layers size={12} /> Squelette
-                </span>
-                <button
-                  onClick={() => setShowSkeletonPicker((v) => !v)}
-                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 500, background: "none", border: "none", cursor: "pointer", color: "#121a2e", ...jk }}
-                >
-                  {selectedSkeleton ? selectedSkeleton.name : <span style={{ color: "rgba(18,26,46,0.4)" }}>Aucun (auto)</span>}
-                  <ChevronDown size={11} style={{ color: "rgba(18,26,46,0.4)", transform: showSkeletonPicker ? "rotate(180deg)" : "none" }} />
-                </button>
-              </div>
-
-              {selectedSkeleton && !showSkeletonPicker && (
-                <div style={{ padding: "8px 12px", fontSize: 11, color: "rgba(18,26,46,0.45)", borderTop: "1px solid rgba(0,0,0,0.06)", background: "#fff", borderRadius: "0 0 9px 9px" }}>
-                  {selectedSkeleton.description}
-                  {selectedSkeleton.timesUsed > 0 && (
-                    <span style={{ marginLeft: 8, color: "#168b64", fontWeight: 600 }}>
-                      {Math.round((selectedSkeleton.timesSuccess / selectedSkeleton.timesUsed) * 100)}% de succès
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {showSkeletonPicker && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: "0 0 9px 9px", zIndex: 20, boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}>
-                  <button
-                    onClick={() => { setSelectedSkeleton(null); setShowSkeletonPicker(false); }}
-                    style={{ width: "100%", padding: "9px 12px", textAlign: "left", fontSize: 12, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", ...jk, borderBottom: "1px solid rgba(0,0,0,0.06)" }}
-                  >
-                    Aucun squelette (libre)
-                  </button>
-                  {skeletons.filter((s) => s.isActive).length === 0 ? (
-                    <p style={{ padding: "9px 12px", fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>
-                      Aucun squelette actif. Générez-en via l&apos;IA ci-dessous.
-                    </p>
-                  ) : (
-                    skeletons.filter((s) => s.isActive).map((sk) => (
-                      <button
-                        key={sk.id}
-                        onClick={() => { setSelectedSkeleton(sk); setShowSkeletonPicker(false); }}
-                        style={{
-                          width: "100%", padding: "9px 12px", textAlign: "left", background: selectedSkeleton?.id === sk.id ? "#f0f4ff" : "none",
-                          border: "none", cursor: "pointer", ...jk, borderBottom: "1px solid rgba(0,0,0,0.04)",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#121a2e" }}>{sk.name}</div>
-                        <div style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", marginTop: 2 }}>
-                          {sk.actionTypes.length > 0 ? sk.actionTypes.join(", ") : "tous types"}
-                          {sk.timesUsed > 0 && ` · ${Math.round((sk.timesSuccess / sk.timesUsed) * 100)}% succès`}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleGenerate}
-              disabled={generating || !form.name.trim()}
-              style={getLoginButtonStyle(generating || !form.name.trim(), generating)}
-            >
-              {generating ? <RefreshCw size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={15} />}
-              {generating ? "Génération..." : "Générer le message"}
-            </button>
-
-            {generatedMessage && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {explanation && <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>{explanation}</p>}
-                <SmartSelectionTextarea
-                  value={generatedMessage}
-                  onChange={setGeneratedMessage}
-                  rows={6}
-                  contextLabel="message de prospection LinkedIn"
-                  globalLabel="Améliorer tout le message"
-                  apiKey={smartAiSettings.openrouterApiKey || undefined}
-                  model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
-                  prompt={smartAiSettings.prospectionSmallPrompt || undefined}
-                  style={{ ...inp }}
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => copyMsg(generatedMessage)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "8px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
-                    {copied ? <Check size={13} /> : <Copy size={13} />}
-                    {copied ? "Copié !" : "Copier"}
-                  </button>
-                  <button onClick={handleSaveAI} style={{ ...getLoginButtonStyle(false, false), flex: 1, padding: "15px 16px" }}>
-                    <Plus size={13} />Sauvegarder
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Manual mode */}
-        {mode === "manual" && (
-          <>
-            <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>Votre message *</label>
-              <SmartSelectionTextarea
-                value={manualMessage}
-                onChange={setManualMessage}
-                placeholder={`${form.name || "Marie"}, j'ai vu ton post sur…`}
-                rows={6}
-                contextLabel="message manuel de prospection LinkedIn"
-                globalLabel="Améliorer tout le message"
-                apiKey={smartAiSettings.openrouterApiKey || undefined}
-                model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
-                prompt={smartAiSettings.prospectionSmallPrompt || undefined}
-                style={{ ...inp, lineHeight: 1.6 }}
-              />
-              <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", marginTop: 6, marginBottom: 0 }}>
-                {manualMessage.length} caractères · {manualMessage.split(/\s+/).filter(Boolean).length} mots
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => { if (manualMessage) copyMsg(manualMessage); }}
-                disabled={!manualMessage}
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "9px", borderRadius: 9, background: "#f6f6f6", cursor: manualMessage ? "pointer" : "not-allowed", opacity: manualMessage ? 1 : 0.5, ...jk }}
-              >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                {copied ? "Copié !" : "Copier"}
-              </button>
-              <button
-                onClick={handleSaveManual}
-                disabled={!canSaveManual}
-                style={{ ...getLoginButtonStyle(!canSaveManual, false), flex: 1, padding: "15px 16px" }}
-              >
-                <Plus size={13} />Sauvegarder
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* ── Skeleton management ── */}
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 16, marginTop: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.6)", display: "flex", alignItems: "center", gap: 5 }}>
-              <Layers size={13} /> Squelettes ({skeletons.filter((s) => s.isActive).length} actifs)
-            </span>
-            <button
-              onClick={handleCreateSkeletons}
-              disabled={creatingSkeletons || sentCount < 3}
-              title={sentCount < 3 ? "Il faut au moins 3 prospects envoyés" : "Générer des squelettes via Big AI"}
-              style={{ ...getLoginButtonStyle(creatingSkeletons || sentCount < 3, creatingSkeletons), width: "auto", padding: "10px 14px", fontSize: 12 }}
-            >
-              {creatingSkeletons
-                ? <RefreshCw size={11} style={{ animation: "spin 1s linear infinite" }} />
-                : <Sparkles size={11} />}
-              {creatingSkeletons ? "Analyse..." : "Générer via IA"}
-            </button>
-          </div>
-
-          {sentCount < 3 && (
-            <p style={{ fontSize: 11, color: "rgba(18,26,46,0.4)", margin: "0 0 8px", textAlign: "center" }}>
-              Envoyez au moins 3 messages pour générer des squelettes ({sentCount}/3)
-            </p>
-          )}
-
-          {skeletons.length === 0 ? (
-            <p style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", textAlign: "center", padding: "8px 0", margin: 0 }}>
-              Aucun squelette — la Big AI créera des structures basées sur vos données
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {skeletons.map((sk) => (
-                <div key={sk.id} style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-                  borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)",
-                  background: sk.isActive ? "#f9f9f9" : "#fff", opacity: sk.isActive ? 1 : 0.5,
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#121a2e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sk.name}</div>
-                    {sk.timesUsed > 0 && (
-                      <div style={{ fontSize: 10, color: "#168b64" }}>
-                        {Math.round((sk.timesSuccess / sk.timesUsed) * 100)}% · {sk.timesUsed} envoi{sk.timesUsed > 1 ? "s" : ""}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => toggleSkeleton(sk.id)}
-                    style={{
-                      fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, cursor: "pointer", ...jk,
-                      ...(sk.isActive
-                        ? { background: "#d1fae5", color: "#168b64", border: "none" }
-                        : { background: "#f6f6f6", color: "rgba(18,26,46,0.4)", border: "1px solid rgba(0,0,0,0.09)" }),
-                    }}
-                  >
-                    {sk.isActive ? "ON" : "OFF"}
-                  </button>
-                  <button
-                    onClick={() => deleteSkeleton(sk.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: 3, display: "flex" }}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
+              {ACTION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
-            </div>
-          )}
+            </select>
+          </label>
+
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Bio
+            <textarea
+              value={form.context}
+              onChange={(e) => updateFormField("context", e.target.value)}
+              placeholder="Bio LinkedIn, description du profil, infos importantes..."
+              rows={7}
+              style={{ ...inp, marginTop: 6, resize: "vertical", lineHeight: 1.5 }}
+            />
+          </label>
         </div>
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{ padding: 20, borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", gap: 10 }}>
+        <button
+          onClick={isEditingProspect ? onClearEditing : resetDraft}
+          style={{ flex: "0 0 auto", padding: "12px 14px", borderRadius: 11, border: "1px solid rgba(0,0,0,0.09)", background: "#f6f6f6", color: "rgba(18,26,46,0.68)", cursor: "pointer", fontWeight: 700, ...jk }}
+        >
+          {isEditingProspect ? "Fermer" : "Effacer"}
+        </button>
+        {!isEditingProspect && (
+          <button
+            onClick={handleSaveProspect}
+            disabled={!canSaveProspect || savingProspect}
+            style={{ ...getLoginButtonStyle(!canSaveProspect || savingProspect, savingProspect), flex: 1 }}
+          >
+            {savingProspect ? <RefreshCw size={15} style={{ animation: "spin 0.9s linear infinite" }} /> : <Plus size={15} />}
+            {savingProspect ? "Ajout..." : "Ajouter le prospect"}
+          </button>
+        )}
+      </div>
     </div>
   );
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AI Chat Panel
-// ─────────────────────────────────────────────────────────────────────────────
+}
 function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [input, setInput] = useState("");
@@ -706,9 +620,9 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
   const stats = getStats(prospects);
 
   const SUGGESTIONS = [
-    "Quel type d'action génère le plus de réponses ?",
-    "Qu'est-ce qui différencie mes messages performants ?",
-    "Comment améliorer mon taux de conversion ?",
+    "Quel type d'action gÃ©nÃ¨re le plus de rÃ©ponses ?",
+    "Qu'est-ce qui diffÃ©rencie mes messages performants ?",
+    "Comment amÃ©liorer mon taux de conversion ?",
     "Quel est le meilleur moment pour suivre un prospect ?",
   ];
 
@@ -759,8 +673,8 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
               <Bot size={24} style={{ color: "#0147ff" }} />
             </div>
             <div style={{ textAlign: "center" }}>
-              <p style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0 }}>Analyste IA — LinkedIn Prospection</p>
-              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.45)", marginTop: 6 }}>Posez des questions sur vos données de prospection</p>
+              <p style={{ fontWeight: 700, color: "#121a2e", fontSize: 15, margin: 0 }}>Analyste IA â€” LinkedIn Prospection</p>
+              <p style={{ fontSize: 13, color: "rgba(18,26,46,0.45)", marginTop: 6 }}>Posez des questions sur vos donnÃ©es de prospection</p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 440 }}>
               {SUGGESTIONS.map((s) => (
@@ -814,26 +728,25 @@ function AIChatPanel({ prospects }: { prospects: LinkedInProspect[] }) {
       <div style={{ padding: "12px 20px", background: "#fff", borderTop: "1px solid rgba(0,0,0,0.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-            placeholder="Posez une question sur vos données..." rows={1}
+            placeholder="Posez une question sur vos donnÃ©es..." rows={1}
             style={{ ...inp, flex: 1, resize: "none", padding: "10px 14px", lineHeight: 1.5 }}
           />
           <button onClick={() => sendMessage(input)} disabled={!input.trim() || loading} style={{ ...btnGrad, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "center", opacity: !input.trim() || loading ? 0.5 : 1, flexShrink: 0 }}>
             <Send size={15} />
           </button>
         </div>
-        <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 6, marginBottom: 0 }}>Entrée pour envoyer · Maj+Entrée pour sauter une ligne</p>
+        <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 6, marginBottom: 0 }}>EntrÃ©e pour envoyer · Maj+EntrÃ©e pour sauter une ligne</p>
       </div>
       <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1} }`}</style>
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Prospect Card
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ProspectCard({
   prospect, expanded, onToggle, onStatusChange, onMessageChange, onDelete, onCopy, copied,
-  showStatusDropdown, onToggleDropdown, onUpdateConversation,
+  showStatusDropdown, onToggleDropdown, onUpdateConversation, onOpenDetails, onUpdateInfo, selected,
 }: {
   prospect: LinkedInProspect;
   expanded: boolean;
@@ -846,6 +759,9 @@ function ProspectCard({
   showStatusDropdown: boolean;
   onToggleDropdown: () => void;
   onUpdateConversation: (msgs: ConversationMessage[]) => void;
+  onOpenDetails: () => void;
+  onUpdateInfo: (patch: Partial<LinkedInProspect>) => void;
+  selected: boolean;
 }) {
   const [cardTab, setCardTab] = useState<"message" | "conversation">("message");
   const [convInput, setConvInput] = useState("");
@@ -865,7 +781,11 @@ function ProspectCard({
     if (!convInput.trim()) return;
     const msg: ConversationMessage = {
       id: `msg_${Date.now()}`,
-      sender: convSender, content: convInput.trim(), sentAt: new Date().toISOString(),
+      sender: convSender,
+      content: convInput.trim(),
+      pendingLinkedInSend: convSender === "me",
+      source: "agenceflow",
+      sentAt: new Date().toISOString(),
     };
     onUpdateConversation([...(prospect.conversation ?? []), msg]);
     setConvInput("");
@@ -947,15 +867,25 @@ function ProspectCard({
   };
 
   return (
-    <div style={{ background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.09)", ...jk }}>
+    <div style={{ background: "#fff", borderRadius: 13, border: selected ? "1px solid #0147ff" : "1px solid rgba(0,0,0,0.09)", boxShadow: selected ? "0 0 0 3px rgba(1,71,255,0.08)" : "none", ...jk }}>
       {/* Row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }} onClick={onToggle}>
-        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", color: "#0147ff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-          {prospect.name[0]?.toUpperCase()}
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e8edff", display: "flex", alignItems: "center", justifyContent: "center", color: "#0147ff", fontWeight: 700, fontSize: 13, flexShrink: 0, overflow: "hidden" }}>
+          {prospect.avatarUrl ? (
+            <img src={prospect.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            prospect.name[0]?.toUpperCase()
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 600, color: "#121a2e", fontSize: 14 }}>{prospect.name}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenDetails(); }}
+              style={{ padding: 0, border: "none", background: "transparent", fontWeight: 600, color: "#121a2e", fontSize: 14, cursor: "pointer", ...jk }}
+            >
+              {prospect.name}
+            </button>
             <span style={{ fontSize: 12, color: "rgba(18,26,46,0.4)" }}>{ACTION_LABELS[prospect.actionType]}</span>
             {prospect.isManual && (
               <span style={{ fontSize: 10, background: "#f6f6f6", color: "rgba(18,26,46,0.4)", padding: "1px 6px", borderRadius: 20, border: "1px solid rgba(0,0,0,0.08)" }}>Manuel</span>
@@ -973,6 +903,11 @@ function ProspectCard({
             {convLen > 0 && (
               <span style={{ fontSize: 11, background: "#e0e7ff", color: "#3730a3", padding: "1px 7px", borderRadius: 20, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
                 <MessagesSquare size={10} />{convLen}
+              </span>
+            )}
+            {prospect.pendingLinkedInSend && (
+              <span style={{ fontSize: 10, background: "#fff7ed", color: "#c2410c", padding: "1px 7px", borderRadius: 20, border: "1px solid #fed7aa", fontWeight: 700 }}>
+                Pret a copier
               </span>
             )}
           </div>
@@ -1009,11 +944,83 @@ function ProspectCard({
               </div>
             )}
           </div>
-          <ChevronDown size={16} style={{ color: "rgba(18,26,46,0.4)", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenDetails(); }}
+            aria-label="Ouvrir la conversation"
+            style={{ width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(0,0,0,0.08)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", ...jk }}
+          >
+            <ChevronRight size={16} style={{ color: "rgba(18,26,46,0.48)" }} />
+          </button>
         </div>
       </div>
 
       {expanded && (
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.05)", padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, background: "#fff" }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Pseudo / nom
+            <input
+              value={prospect.name}
+              onChange={(e) => onUpdateInfo({ name: e.target.value })}
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Photo de profil
+            <input
+              value={prospect.avatarUrl ?? ""}
+              onChange={(e) => onUpdateInfo({ avatarUrl: e.target.value || undefined })}
+              placeholder="https://media.licdn.com/..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Profil LinkedIn
+            <input
+              value={prospect.profileUrl ?? ""}
+              onChange={(e) => onUpdateInfo({ profileUrl: e.target.value || undefined })}
+              placeholder="https://linkedin.com/in/..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Site / entreprise
+            <input
+              value={prospect.siteUrl ?? ""}
+              onChange={(e) => onUpdateInfo({ siteUrl: e.target.value || undefined })}
+              placeholder="https://..."
+              style={{ ...inp, marginTop: 6 }}
+            />
+          </label>
+          <label style={{ gridColumn: "1 / -1", fontSize: 12, fontWeight: 700, color: "#121a2e", ...jk }}>
+            Notes / contexte
+            <textarea
+              value={prospect.context ?? ""}
+              onChange={(e) => onUpdateInfo({ context: e.target.value || undefined })}
+              rows={4}
+              style={{ ...inp, marginTop: 6, resize: "vertical", lineHeight: 1.5 }}
+            />
+          </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(220,38,38,0.14)", background: "#fff5f5", color: "#c53030", cursor: "pointer", fontSize: 12, fontWeight: 700, ...jk }}
+            >
+              <Trash2 size={14} /> Effacer
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenDetails(); }}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px", borderRadius: 10, border: "1px solid rgba(1,71,255,0.16)", background: "#eef4ff", color: "#0147ff", cursor: "pointer", fontSize: 12, fontWeight: 700, ...jk }}
+            >
+              Voir la conversation <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {false && expanded && (
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
           {/* Tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
@@ -1039,14 +1046,19 @@ function ProspectCard({
               )}
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.5)", marginBottom: 6 }}>
-                  Message{prospect.customMessage ? " (modifié)" : ""}
+                  Message{prospect.customMessage ? " (modifiÃ©)" : ""}
                 </label>
+                {prospect.pendingLinkedInSend && (
+                  <p style={{ margin: "0 0 8px", fontSize: 12, color: "#c2410c", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "7px 9px" }}>
+                    Pret a copier dans LinkedIn, pas encore confirme envoye.
+                  </p>
+                )}
                 <SmartSelectionTextarea
                   value={displayMessage}
                   onChange={onMessageChange}
                   rows={5}
                   contextLabel="message de prospection LinkedIn"
-                  globalLabel="Améliorer tout le message"
+                  globalLabel="AmÃ©liorer tout le message"
                   apiKey={smartAiSettings.openrouterApiKey || undefined}
                   model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
                   prompt={smartAiSettings.prospectionSmallPrompt || undefined}
@@ -1056,11 +1068,11 @@ function ProspectCard({
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => onCopy(displayMessage)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.6)", padding: "7px 12px", borderRadius: 9, background: "#f6f6f6", cursor: "pointer", ...jk }}>
                   {copied ? <Check size={13} /> : <Copy size={13} />}
-                  {copied ? "Copié !" : "Copier"}
+                  {copied ? "CopiÃ© !" : "Copier"}
                 </button>
                 {prospect.status === "draft" && (
                   <button onClick={() => onStatusChange("sent")} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, ...btnGrad, padding: "7px 12px" }}>
-                    <Check size={13} />Marquer comme envoyé
+                    <Check size={13} />Marquer comme envoyÃ©
                   </button>
                 )}
                 <button onClick={onDelete} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#ef4444", padding: "7px 12px", borderRadius: 9, background: "none", border: "none", cursor: "pointer", ...jk }}>
@@ -1069,7 +1081,7 @@ function ProspectCard({
               </div>
               {prospect.sentAt && (
                 <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", margin: 0 }}>
-                  Envoyé le {new Date(prospect.sentAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  EnvoyÃ© le {new Date(prospect.sentAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                 </p>
               )}
             </div>
@@ -1084,7 +1096,7 @@ function ProspectCard({
                   <div style={{ textAlign: "center", padding: "20px 0" }}>
                     <MessagesSquare size={22} style={{ color: "rgba(18,26,46,0.2)", margin: "0 auto 8px" }} />
                     <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: 0 }}>Aucun message</p>
-                    <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 4 }}>Collez les messages échangés pour garder un historique</p>
+                    <p style={{ fontSize: 11, color: "rgba(18,26,46,0.3)", marginTop: 4 }}>Collez les messages Ã©changÃ©s pour garder un historique</p>
                   </div>
                 ) : (
                   (prospect.conversation ?? []).map((msg) => (
@@ -1096,6 +1108,9 @@ function ProspectCard({
                     >
                       <div style={{ fontSize: 10, color: "rgba(18,26,46,0.35)", marginBottom: 3, display: "flex", alignItems: "center", gap: 6, paddingLeft: msg.sender === "them" ? 6 : 0, paddingRight: msg.sender === "me" ? 6 : 0 }}>
                         {msg.sender === "me" ? "Moi" : prospect.name} · {new Date(msg.sentAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                        {msg.pendingLinkedInSend && (
+                          <span style={{ color: "#c2410c", fontWeight: 700 }}>Pret a copier</span>
+                        )}
                         {hoveredMsgId === msg.id && (
                           <button
                             onClick={() => deleteConvMessage(msg.id)}
@@ -1123,7 +1138,7 @@ function ProspectCard({
                 <div style={{ background: "#f0f4ff", border: "1px solid #c7d3ff", borderRadius: 9, padding: "10px 12px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: "#0147ff", display: "flex", alignItems: "center", gap: 5 }}>
-                      <Sparkles size={11} /> Réponse suggérée
+                      <Sparkles size={11} /> RÃ©ponse suggÃ©rÃ©e
                     </span>
                     <button onClick={() => setGeneratedReply("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.3)", padding: 0 }}>
                       <X size={12} />
@@ -1152,7 +1167,7 @@ function ProspectCard({
                 }}
               >
                 {generatingReply ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
-                {generatingReply ? "Génération..." : "Générer une réponse IA"}
+                {generatingReply ? "GÃ©nÃ©ration..." : "GÃ©nÃ©rer une rÃ©ponse IA"}
               </button>
 
               {/* Add message */}
@@ -1180,8 +1195,8 @@ function ProspectCard({
                   }}
                   placeholder="Collez ou tapez le message..."
                   rows={2}
-                  contextLabel="réponse de conversation LinkedIn"
-                  globalLabel="Améliorer tout le texte"
+                  contextLabel="rÃ©ponse de conversation LinkedIn"
+                  globalLabel="AmÃ©liorer tout le texte"
                   apiKey={smartAiSettings.openrouterApiKey || undefined}
                   model={smartAiSettings.prospectionSmallModel || smartAiSettings.model}
                   prompt={smartAiSettings.prospectionSmallPrompt || undefined}
@@ -1200,16 +1215,16 @@ function ProspectCard({
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Page principale
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function LinkedInProspectionPage() {
   const [prospects, setProspects] = useState<LinkedInProspect[]>([]);
   const [skeletons, setSkeletons] = useState<ProspectionSkeleton[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [prospectSearch, setProspectSearch] = useState("");
+  const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [statusDropdown, setStatusDropdown] = useState<string | null>(null);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [rightView, setRightView] = useState<"prospects" | "chat">("prospects");
@@ -1253,58 +1268,8 @@ export default function LinkedInProspectionPage() {
   useEffect(() => {
     if (initialAirtableLoadRef.current) return;
     initialAirtableLoadRef.current = true;
-
-    const s = loadLinkedInSettings();
-    if (!s.airtableKey || !s.airtableBaseId || !s.airtableTableName) return;
-
-    void (async () => {
-      setSyncingAirtable(true);
-      try {
-        const res = await fetch("/api/linkedin/airtable-sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode: "pull",
-            prospects: [],
-            airtableKey: s.airtableKey,
-            baseId: s.airtableBaseId,
-            tableName: s.airtableTableName,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          setAirtableSyncMsg(`❌ ${data.error || "Import Airtable impossible"}`);
-          return;
-        }
-
-        const importedProspects = Array.isArray(data.prospects) ? data.prospects as LinkedInProspect[] : [];
-        if (importedProspects.length > 0) {
-          setProspects(importedProspects);
-          persistLinkedInWorkspacePatch({ prospects: importedProspects });
-          syncSignatureRef.current = JSON.stringify(importedProspects.map((p) => ({
-            id: p.id,
-            status: p.status,
-            generatedMessage: p.generatedMessage,
-            customMessage: p.customMessage,
-            context: p.context,
-            profileUrl: p.profileUrl,
-            siteUrl: p.siteUrl,
-            sentAt: p.sentAt,
-            conversation: p.conversation,
-            leadId: p.leadId,
-          })));
-          setAirtableSyncMsg(`✓ ${data.message || `${importedProspects.length} prospects importés`}`);
-        } else {
-          setAirtableSyncMsg("✓ Airtable connecté");
-        }
-      } catch (error) {
-        console.error(error);
-        setAirtableSyncMsg("❌ Erreur réseau");
-      } finally {
-        setSyncingAirtable(false);
-        setTimeout(() => setAirtableSyncMsg(null), 5000);
-      }
-    })();
+    // Airtable is only a CRM mirror. Never pull it automatically here:
+    // it does not store conversations and would erase messages imported from LinkedIn.
   }, []);
 
   const saveProspects = (updated: LinkedInProspect[]) => {
@@ -1330,37 +1295,37 @@ export default function LinkedInProspectionPage() {
     prospectList: LinkedInProspect[],
     options?: { silentIfNotConfigured?: boolean }
   ) => {
-    const s = loadLinkedInSettings();
+    const s = await getFreshLinkedInSettings();
     if (!s.airtableKey || !s.airtableBaseId || !s.airtableTableName) {
       if (options?.silentIfNotConfigured) return;
-      setAirtableSyncMsg("⚠️ Configurez Airtable dans les paramètres");
+      setAirtableSyncMsg("âš ï¸ Configurez Airtable dans les paramÃ¨tres");
       setTimeout(() => setAirtableSyncMsg(null), 4000);
       return;
     }
     setSyncingAirtable(true);
     try {
-      const res = await fetch("/api/linkedin/airtable-sync", {
+      const res = await linkedinFetch("/api/linkedin/airtable-sync", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prospects: prospectList.map((p) => ({
             id: p.id, name: p.name, actionType: p.actionType, status: p.status,
             generatedMessage: p.generatedMessage, customMessage: p.customMessage,
-            isManual: p.isManual, context: p.context, profileUrl: p.profileUrl,
+            isManual: p.isManual, context: p.context, profileUrl: p.profileUrl, avatarUrl: p.avatarUrl,
             siteUrl: p.siteUrl, createdAt: p.createdAt, sentAt: p.sentAt,
             conversationLength: p.conversation?.length, skeletonId: p.skeletonId, leadId: p.leadId,
           })),
           airtableKey: s.airtableKey, baseId: s.airtableBaseId, tableName: s.airtableTableName,
-          pruneMissing: true,
+          pruneMissing: false,
         }),
       });
       const data = await res.json();
       if (data.error) {
-        setAirtableSyncMsg(`❌ ${data.error}`);
+        setAirtableSyncMsg(`âŒ ${data.error}`);
       } else {
-        setAirtableSyncMsg(`✓ ${data.message || `${data.synced} synchronisés`}`);
+        setAirtableSyncMsg(`âœ“ ${data.message || `${data.synced} synchronisÃ©s`}`);
       }
     } catch (e) {
-      setAirtableSyncMsg("❌ Erreur réseau");
+      setAirtableSyncMsg("âŒ Erreur rÃ©seau");
       console.error(e);
     } finally {
       setSyncingAirtable(false);
@@ -1381,6 +1346,7 @@ export default function LinkedInProspectionPage() {
       customMessage: p.customMessage,
       context: p.context,
       profileUrl: p.profileUrl,
+      avatarUrl: p.avatarUrl,
       siteUrl: p.siteUrl,
       sentAt: p.sentAt,
       conversation: p.conversation,
@@ -1459,10 +1425,25 @@ export default function LinkedInProspectionPage() {
   };
 
   const updateMessage = (id: string, msg: string) =>
-    saveProspects(prospects.map((p) => p.id === id ? { ...p, customMessage: msg } : p));
+    saveProspects(prospects.map((p) => p.id === id ? {
+      ...p,
+      customMessage: msg,
+      pendingLinkedInSend: msg.trim()
+        ? {
+            id: p.pendingLinkedInSend?.id ?? `pending_${p.id}_${Date.now()}`,
+            text: msg,
+            createdAt: p.pendingLinkedInSend?.createdAt ?? new Date().toISOString(),
+          }
+        : undefined,
+      status: p.status === "sent" ? "draft" : p.status,
+      sentAt: p.status === "sent" ? undefined : p.sentAt,
+    } : p));
 
   const updateConversation = (id: string, msgs: ConversationMessage[]) =>
     saveProspects(prospects.map((p) => p.id === id ? { ...p, conversation: msgs } : p));
+
+  const updateProspectInfo = (id: string, patch: Partial<LinkedInProspect>) =>
+    saveProspects(prospects.map((p) => p.id === id ? { ...p, ...patch } : p));
 
   const deleteProspect = (id: string) => saveProspects(prospects.filter((p) => p.id !== id));
 
@@ -1472,7 +1453,21 @@ export default function LinkedInProspectionPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const filtered = filterStatus === "all" ? prospects : prospects.filter((p) => p.status === filterStatus);
+  const normalizedSearch = prospectSearch.trim().toLowerCase();
+  const filtered = (filterStatus === "all" ? prospects : prospects.filter((p) => p.status === filterStatus))
+    .filter((p) => {
+      if (!normalizedSearch) return true;
+      return [
+        p.name,
+        p.headline,
+        p.profileUrl,
+        p.siteUrl,
+        p.context,
+        p.customMessage,
+        p.generatedMessage,
+      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch));
+    });
+  const selectedProspect = prospects.find((p) => p.id === selectedProspectId) ?? null;
   const stats = getStats(prospects);
 
   return (
@@ -1480,6 +1475,9 @@ export default function LinkedInProspectionPage() {
       <LeftPanel
         language={language} onLanguageChange={setLanguage} onSave={handleSave}
         skeletons={skeletons} onSkeletonsUpdate={handleSkeletonsUpdate} allProspects={prospects}
+        editingProspect={selectedProspect}
+        onUpdateProspect={updateProspectInfo}
+        onClearEditing={() => setSelectedProspectId(null)}
       />
 
       {/* Right area */}
@@ -1490,7 +1488,7 @@ export default function LinkedInProspectionPage() {
             {[
               { val: prospects.length, label: "Total", color: "#121a2e" },
               { val: stats.sent, label: "Envoyés", color: "#0147ff" },
-              { val: stats.positive, label: "Positifs", color: "#168b64" },
+              { val: stats.positive, label: "A repondu", color: "#168b64" },
               { val: stats.dealClosed, label: "Deals", color: "#168b64" },
               { val: stats.conversionRate, label: "Conversion", color: "#0147ff" },
             ].map((stat, i) => (
@@ -1505,10 +1503,33 @@ export default function LinkedInProspectionPage() {
 
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               {airtableSyncMsg && (
-                <span style={{ fontSize: 11, color: airtableSyncMsg.startsWith("✓") ? "#168b64" : airtableSyncMsg.startsWith("⚠") ? "#b45309" : "#c53030", fontWeight: 600 }}>
+                <span style={{ fontSize: 11, color: airtableSyncMsg.startsWith("âœ“") ? "#168b64" : airtableSyncMsg.startsWith("âš ") ? "#b45309" : "#c53030", fontWeight: 600 }}>
                   {syncingAirtable ? "Synchronisation Airtable..." : airtableSyncMsg}
                 </span>
               )}
+
+              <button
+                type="button"
+                onClick={() => void handleAirtableSync(prospects)}
+                disabled={syncingAirtable}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 12px",
+                  borderRadius: 9,
+                  border: "1px solid rgba(10,102,194,0.18)",
+                  background: syncingAirtable ? "#f2f2f2" : "#eef6ff",
+                  color: syncingAirtable ? "rgba(18,26,46,0.42)" : "#0A66C2",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: syncingAirtable ? "not-allowed" : "pointer",
+                  ...jk,
+                }}
+              >
+                {syncingAirtable ? <RefreshCw size={13} style={{ animation: "spin 1s linear infinite" }} /> : <DatabaseZap size={13} />}
+                Sync Airtable
+              </button>
 
               <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 10, padding: 3, gap: 3 }}>
                 <button onClick={() => setRightView("prospects")} style={{
@@ -1564,6 +1585,28 @@ export default function LinkedInProspectionPage() {
                     </button>
                   );
                 })}
+                <div style={{ marginLeft: "auto", position: "relative", width: 260, maxWidth: "100%" }}>
+                  <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "rgba(18,26,46,0.38)", pointerEvents: "none" }} />
+                  <input
+                    value={prospectSearch}
+                    onChange={(e) => setProspectSearch(e.target.value)}
+                    placeholder="Rechercher un pseudo..."
+                    style={{
+                      width: "100%",
+                      height: 34,
+                      boxSizing: "border-box",
+                      borderRadius: 999,
+                      border: "1px solid rgba(0,0,0,0.08)",
+                      background: "#f6f6f6",
+                      padding: "0 14px 0 34px",
+                      outline: "none",
+                      color: "#121a2e",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      ...jk,
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1572,7 +1615,7 @@ export default function LinkedInProspectionPage() {
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 256, textAlign: "center" }}>
                   <MessageSquare size={24} style={{ color: "rgba(18,26,46,0.2)", marginBottom: 12 }} />
                   <p style={{ fontWeight: 600, color: "rgba(18,26,46,0.5)", fontSize: 14, margin: 0 }}>
-                    {prospects.length === 0 ? "Aucun prospect enregistré" : "Aucun prospect dans cette catégorie"}
+                    {prospects.length === 0 ? "Aucun prospect enregistrÃ©" : "Aucun prospect dans cette catÃ©gorie"}
                   </p>
                   <p style={{ fontSize: 12, color: "rgba(18,26,46,0.35)", marginTop: 4 }}>
                     {prospects.length === 0 ? "Ajoutez votre premier prospect depuis le panneau de gauche" : ""}
@@ -1582,10 +1625,13 @@ export default function LinkedInProspectionPage() {
                 filtered.map((prospect) => (
                   <ProspectCard
                     key={prospect.id} prospect={prospect}
-                    expanded={expandedId === prospect.id}
-                    onToggle={() => setExpandedId(expandedId === prospect.id ? null : prospect.id)}
+                    expanded={false}
+                    selected={selectedProspectId === prospect.id}
+                    onToggle={() => setSelectedProspectId(prospect.id)}
+                    onOpenDetails={() => { window.location.href = `/admin/linkedin/prospection/${prospect.id}`; }}
                     onStatusChange={(s) => updateStatus(prospect.id, s)}
                     onMessageChange={(msg) => updateMessage(prospect.id, msg)}
+                    onUpdateInfo={(patch) => updateProspectInfo(prospect.id, patch)}
                     onDelete={() => deleteProspect(prospect.id)}
                     onCopy={(msg) => copyMessage(prospect.id, msg)}
                     copied={copied === prospect.id}

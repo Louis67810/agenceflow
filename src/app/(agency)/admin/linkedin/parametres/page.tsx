@@ -16,6 +16,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_BIG_PROMPT,
   DEFAULT_CAROUSEL_SKILL_PROMPT,
+  DEFAULT_VIRALITY_PROMPT,
   DEFAULT_SMALL_PROMPT,
   MODELS_BIG,
   MODELS_SMALL,
@@ -88,6 +89,8 @@ export default function LinkedInParametresPage() {
   const [showKey, setShowKey] = useState(false);
   const [showBigPrompt, setShowBigPrompt] = useState(false);
   const [showSmallPrompt, setShowSmallPrompt] = useState(false);
+  const [showViralityPrompt, setShowViralityPrompt] = useState(false);
+  const [showEditActions, setShowEditActions] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [syncInfo, setSyncInfo] = useState("");
@@ -168,15 +171,20 @@ export default function LinkedInParametresPage() {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     setSaveError("");
     setSyncingSupabase(true);
+    const localSavedSettings = queueRemoteLinkedInSettingsSync(settings);
+    lastSavedSnapshotRef.current = JSON.stringify(localSavedSettings);
+    setSettings(localSavedSettings);
     try {
-      const savedSettings = await persistRemoteLinkedInSettings(settings);
+      const savedSettings = await persistRemoteLinkedInSettings(localSavedSettings);
       lastSavedSnapshotRef.current = JSON.stringify(savedSettings);
       setSettings(savedSettings); // Met a jour le state avec les donnees sauvegardees
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Sauvegarde impossible.";
-      setSaveError(msg);
+      const msg = error instanceof Error ? error.message : "Synchronisation Supabase impossible.";
+      setSaveError(`Sauvegarde locale effectuee. Sync Supabase en attente : ${msg}`);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
       console.error("[LinkedIn Settings] Save failed:", error);
     } finally {
       setSyncingSupabase(false);
@@ -295,6 +303,70 @@ export default function LinkedInParametresPage() {
         <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Contexte business</h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>
+                Ce contexte est injecte par defaut dans toutes les generations LinkedIn.
+              </p>
+            </div>
+            <button type="button" onClick={() => setSettings((current) => ({ ...current, postSystemPrompt: DEFAULT_SETTINGS.postSystemPrompt }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
+              Reinitialiser le prompt systeme
+            </button>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Contexte business par defaut</label>
+              <textarea value={settings.businessContext} onChange={(e) => setSettings({ ...settings, businessContext: e.target.value })} rows={5} placeholder="Decris ton offre, ton audience, tes angles, tes objections, ton positionnement..." style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: '"Inter", sans-serif', resize: "vertical" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Prompt systeme global posts LinkedIn</label>
+              <textarea value={settings.postSystemPrompt} onChange={(e) => setSettings({ ...settings, postSystemPrompt: e.target.value })} rows={10} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
+            </div>
+          </div>
+        </section>
+
+        <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Editer avec IA</h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>
+                Prompts utilises quand tu selectionnes une partie d'un post et que tu appliques une action IA.
+              </p>
+            </div>
+            <button type="button" onClick={() => setSettings((current) => ({ ...current, editActionGeneralPrompt: DEFAULT_SETTINGS.editActionGeneralPrompt, editActions: DEFAULT_SETTINGS.editActions }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
+              Reinitialiser
+            </button>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Regles generales</label>
+              <textarea value={settings.editActionGeneralPrompt} onChange={(e) => setSettings({ ...settings, editActionGeneralPrompt: e.target.value })} rows={9} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
+            </div>
+            <button type="button" onClick={() => setShowEditActions((value) => !value)} style={{ justifySelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6, border: 0, background: "transparent", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#5f6b7a" }}>
+              {showEditActions ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Modifier les prompts des actions
+            </button>
+            {showEditActions ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                {settings.editActions.map((action, index) => (
+                  <div key={action.id} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 18, background: "#fbfbfb", padding: 14, display: "grid", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 10 }}>
+                      <input value={action.label} onChange={(e) => setSettings((current) => ({ ...current, editActions: current.editActions.map((item, itemIndex) => itemIndex === index ? { ...item, label: e.target.value } : item) }))} style={{ minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px", outline: "none", fontSize: 13, fontWeight: 700, color: "#121a2e" }} />
+                      <select value={action.category} onChange={(e) => setSettings((current) => ({ ...current, editActions: current.editActions.map((item, itemIndex) => itemIndex === index ? { ...item, category: e.target.value as typeof item.category } : item) }))} style={{ minHeight: 40, borderRadius: 12, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: "0 12px", outline: "none", fontSize: 13, color: "#121a2e" }}>
+                        {["Base", "Attention technique", "Rythme et structure", "Engagement", "Emotion"].map((category) => <option key={category} value={category}>{category}</option>)}
+                      </select>
+                    </div>
+                    <textarea value={action.prompt} onChange={(e) => setSettings((current) => ({ ...current, editActions: current.editActions.map((item, itemIndex) => itemIndex === index ? { ...item, prompt: e.target.value } : item) }))} rows={4} style={{ width: "100%", borderRadius: 14, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", padding: 12, fontSize: 12, lineHeight: "19px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
+                    <span style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", fontFamily: "monospace" }}>{action.id}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Carrousel IA</h2>
               <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>
                 Reglages dedies a la generation des slides, des images et du format long LinkedIn.
@@ -373,6 +445,41 @@ export default function LinkedInParametresPage() {
                 <span style={{ fontSize: 13, color: "#5f6b7a" }}>prospects</span>
               </div>
             ) : null}
+          </div>
+        </section>
+
+        <section style={{ borderRadius: 24, background: "#fff", border: "1px solid rgba(18,26,46,0.08)", boxShadow: "0 18px 40px rgba(18,26,46,0.06)", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>Analyse virale des posts</h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.56)", fontFamily: '"Inter", sans-serif' }}>
+                Branche ici ton modele OpenAI fine-tune et le modele OpenRouter qui decrit l'image du post.
+              </p>
+            </div>
+            <button type="button" onClick={() => setSettings((current) => ({ ...current, viralityOpenAiApiKey: "", viralityAnalyzerModel: "", viralityImageModel: DEFAULT_SETTINGS.viralityImageModel, viralitySystemPrompt: DEFAULT_VIRALITY_PROMPT }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
+              Reinitialiser
+            </button>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Cle API OpenAI du modele fine-tune</label>
+              <input value={settings.viralityOpenAiApiKey} onChange={(e) => setSettings({ ...settings, viralityOpenAiApiKey: e.target.value })} placeholder="sk-proj-..." type="password" style={{ width: "100%", minHeight: 46, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: "0 14px", fontSize: 14, outline: "none", fontFamily: "monospace" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Modele OpenAI fine-tune</label>
+              <input value={settings.viralityAnalyzerModel} onChange={(e) => setSettings({ ...settings, viralityAnalyzerModel: e.target.value })} placeholder="ft:gpt-4o-mini-..." style={{ width: "100%", minHeight: 46, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: "0 14px", fontSize: 14, outline: "none", fontFamily: "monospace" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Modele OpenRouter pour decrire l'image</label>
+              <input value={settings.viralityImageModel} onChange={(e) => setSettings({ ...settings, viralityImageModel: e.target.value })} placeholder="qwen/qwen2.5-vl-72b-instruct" style={{ width: "100%", minHeight: 46, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: "0 14px", fontSize: 14, outline: "none", fontFamily: "monospace" }} />
+            </div>
+            <div>
+              <button type="button" onClick={() => setShowViralityPrompt((value) => !value)} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: 0, background: "transparent", padding: 0, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#5f6b7a" }}>
+                {showViralityPrompt ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                Prompt analyse virale
+              </button>
+              {showViralityPrompt ? <textarea value={settings.viralitySystemPrompt} onChange={(e) => setSettings({ ...settings, viralitySystemPrompt: e.target.value })} rows={9} style={{ width: "100%", marginTop: 10, borderRadius: 14, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} /> : null}
+            </div>
           </div>
         </section>
 

@@ -1,0 +1,242 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 440px;
+  min-height: 720px;
+  margin: 0;
+  color: #121a2e;
+  background: #fbfbfb;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+main {
+  padding: 18px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(18, 26, 46, 0.42);
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.dot.ok {
+  background: #16a34a;
+}
+
+.settings,
+.status,
+.pending,
+.prospects {
+  background: #fff;
+  border: 1px solid rgba(18, 26, 46, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(18, 26, 46, 0.7);
+  margin-bottom: 9px;
+}
+
+input,
+textarea {
+  width: 100%;
+  margin-top: 5px;
+  border: 1px solid rgba(18, 26, 46, 0.12);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #121a2e;
+  background: #f7f7f7;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+}
+
+textarea {
+  min-height: 128px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary {
+  width: 100%;
+  padding: 9px 11px;
+  color: rgba(18, 26, 46, 0.7);
+  background: #f2f4f7;
+}
+
+.primary {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 12px;
+  color: #fff;
+  background: linear-gradient(121deg, rgb(78, 126, 250) 10%, rgb(1, 71, 255) 82%);
+  box-shadow: inset 0 -3px 0 #0e42c8, 0 6px 16px rgba(1, 71, 255, 0.22);
+}
+
+.status {
+  display: grid;
+  gap: 8px;
+}
+
+.status div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.status span {
+  color: rgba(18, 26, 46, 0.45);
+}
+
+.status strong {
+  text-align: right;
+  color: rgba(18, 26, 46, 0.78);
+}
+
+.pending {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 10px;
+  align-items: end;
+}
+
+.pending p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0147ff;
+}
+
+.copy {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  color: #0147ff;
+  background: #edf3ff;
+}
+
+.prospects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.prospects-header p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #121a2e;
+}
+
+.prospects-header span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(18, 26, 46, 0.42);
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #0147ff;
+  background: #edf3ff;
+}
+
+.prospects-list {
+  max-height: 260px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.prospect-row {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+  color: #121a2e;
+  background: #f7f7f7;
+  border: 1px solid transparent;
+}
+
+.prospect-row.selected {
+  background: #edf3ff;
+  border-color: rgba(1, 71, 255, 0.28);
+}
+
+.prospect-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.prospect-meta,
+.prospect-empty {
+  font-size: 11px;
+  color: rgba(18, 26, 46, 0.48);
+}
+
+.prospect-empty {
+  padding: 10px;
+  text-align: center;
+  background: #f7f7f7;
+  border-radius: 8px;
+}
+
+.hidden {
+  display: none;
+}

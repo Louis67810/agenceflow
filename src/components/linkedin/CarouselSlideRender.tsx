@@ -8,6 +8,7 @@ export type CarouselSlidePayload = {
   label: string;
   stepNumber?: number;
   pointNumber?: number;
+  showPointNumber?: boolean;
   title?: string;
   subtitle?: string;
   body?: string;
@@ -236,6 +237,7 @@ export function CarouselSlideCanvas({
   }
 
   if (data.kind === "argument-blue" || data.kind === "argument-red") {
+    const showPointNumber = data.showPointNumber !== false;
     return (
       <div style={card} data-carousel-slide-inner>
         {leftBars}
@@ -243,10 +245,12 @@ export function CarouselSlideCanvas({
         {logo}
         <div style={{ position: "absolute", left: 86, top: 98, width: 403, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 66, height: 65, borderRadius: 15, background: "#e5e5e5", border: "1px solid rgba(0,0,0,0.06)", display: "grid", placeItems: "center" }}>
-              <span style={{ width: 56, height: 56, borderRadius: 11, background: "#fff", display: "grid", placeItems: "center", fontFamily: "Inter, sans-serif", fontSize: 31.86, fontWeight: 700, color: "#121A2E", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "inset 0 2.93px 2.93px rgba(255,255,255,0.25), inset 0 -2.93px 1.61px rgba(0,0,0,0.09), 0 5.87px 2.2px rgba(0,0,0,0.02), 0 2.93px 2.2px rgba(0,0,0,0.08), 0 1.47px 1.47px rgba(0,0,0,0.13)" }}>{data.pointNumber || 1}</span>
-            </span>
-            <span style={{ minHeight: 60, borderRadius: 14, background: gradient, color: "#fff", display: "inline-flex", alignItems: "center", padding: "0 20px", fontSize: 26, lineHeight: 1.06, fontWeight: 700, boxShadow: isRed ? "0 24px 9.38px rgba(150,13,13,0.02), 0 13.39px 8.04px rgba(150,13,13,0.08), 0 6.03px 6.03px rgba(150,13,13,0.13), 0 1.34px 3.35px rgba(150,13,13,0.15)" : "0 24px 9.38px rgba(1,71,255,0.02), 0 13.39px 8.04px rgba(1,71,255,0.08), 0 6.03px 6.03px rgba(1,71,255,0.13), 0 1.34px 3.35px rgba(1,71,255,0.15)" }}>{data.title || ""}</span>
+            {showPointNumber && (
+              <span style={{ width: 66, height: 65, borderRadius: 15, background: "#e5e5e5", border: "1px solid rgba(0,0,0,0.06)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <span style={{ width: 56, height: 56, borderRadius: 11, background: "#fff", display: "grid", placeItems: "center", fontFamily: "Inter, sans-serif", fontSize: 31.86, fontWeight: 700, color: "#121A2E", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "inset 0 2.93px 2.93px rgba(255,255,255,0.25), inset 0 -2.93px 1.61px rgba(0,0,0,0.09), 0 5.87px 2.2px rgba(0,0,0,0.02), 0 2.93px 2.2px rgba(0,0,0,0.08), 0 1.47px 1.47px rgba(0,0,0,0.13)" }}>{data.pointNumber || 1}</span>
+              </span>
+            )}
+            <span style={{ minHeight: 60, borderRadius: 14, background: gradient, color: "#fff", display: "inline-flex", alignItems: "center", padding: "0 20px", fontSize: 26, lineHeight: 1.06, fontWeight: 700, boxShadow: isRed ? "0 24px 9.38px rgba(150,13,13,0.02), 0 13.39px 8.04px rgba(150,13,13,0.08), 0 6.03px 6.03px rgba(150,13,13,0.13), 0 1.34px 3.35px rgba(150,13,13,0.15)" : "0 24px 9.38px rgba(1,71,255,0.02), 0 13.39px 8.04px rgba(1,71,255,0.08), 0 6.03px 6.03px rgba(1,71,255,0.13), 0 1.34px 3.35px rgba(1,71,255,0.15)", flex: showPointNumber ? "0 1 auto" : "1 1 auto", justifyContent: "flex-start", textAlign: "left" }}>{data.title || ""}</span>
           </div>
           <p style={{ margin: "12px 0 0", minHeight: 99, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 21, lineHeight: 1.58, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)", textAlign: "left" }}>{data.subtitle}</p>
           <div style={{ position: "relative", marginTop: 12, height: 264, borderRadius: data.imageMode === "full" ? 0 : 16, background: "#fff", border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)", overflow: data.showCheck === false ? "hidden" : "visible" }}>
@@ -260,9 +264,9 @@ export function CarouselSlideCanvas({
             )}
           </div>
           {data.showResult && (
-            <p style={{ margin: "16px 0 0", display: "flex", alignItems: "center", gap: 16, fontSize: 18, lineHeight: 1.34, fontWeight: 700 }}>
-              <MoveRight size={24} strokeWidth={3} style={{ color: accent }} />
-              {data.result}
+            <p style={{ margin: "16px 0 0", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 16, width: "100%", fontSize: 18, lineHeight: 1.34, fontWeight: 700, textAlign: "left" }}>
+              <MoveRight size={24} strokeWidth={3} style={{ color: accent, flexShrink: 0 }} />
+              <span style={{ flex: 1, textAlign: "left" }}>{data.result}</span>
             </p>
           )}
         </div>

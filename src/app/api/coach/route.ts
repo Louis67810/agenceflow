@@ -54,6 +54,25 @@ Tu dois analyser les donnees disponibles et en deduire des priorites. Structure 
   return prompts[tool];
 }
 
+function extractJsonArray(text: string): unknown[] {
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+  if (start === -1 || end === -1 || end <= start) return [];
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function shouldCreateAgendaTasks(tool: CoachTool | null, messages: CoachMessage[]) {
+  const last = messages[messages.length - 1]?.content.toLowerCase() ?? "";
+  const asksForTasks = /\b(cr[eé]e|créer|ajoute|ajouter|planifie|organise|g[eé]n[eè]re|génère)\b/.test(last) && /\b(t[aâ]che|taches|todo|journ[eé]e|planning)\b/.test(last);
+  return tool === "task" || asksForTasks;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -65,6 +84,7 @@ export async function POST(req: NextRequest) {
     const messages = normalizeMessages(body.messages);
     const model = typeof body.model === "string" ? body.model : "openai/gpt-4o-mini";
     const businessContext = typeof body.business_context === "string" ? body.business_context : "";
+    const bodyOpenRouterApiKey = typeof body.openrouter_api_key === "string" ? body.openrouter_api_key.trim() : "";
     const conversationId = typeof body.conversation_id === "string" && body.conversation_id.trim() ? body.conversation_id.trim() : null;
     const tool = normalizeTool(body.tool);
 
@@ -72,7 +92,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message manquant." }, { status: 400 });
     }
 
-    const [projectsRes, leadsRes, statsRes, articlesCountRes, tasksCountRes, postsCountRes, carouselsCountRes] = await Promise.all([
+    const [projectsRes, leadsRes, statsRes, articlesCountRes, tasksCountRes, postsCountRes, carouselsCountRes, agendaTasksRes, habitsRes, objectivesRes, recapRes, appSettingsRes, linkedinSettingsRes] = await Promise.all([
       supabase.from("projects").select("name, status, deadline, current_stage").limit(10),
       supabase.from("leads").select("name, company, sector, status").limit(20),
       supabase.from("agenda_points_log").select("points").eq("user_id", user.id),
@@ -80,6 +100,12 @@ export async function POST(req: NextRequest) {
       supabase.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", user.id),
       supabase.from("linkedin_posts").select("id", { count: "exact", head: true }).eq("user_id", user.id),
       supabase.from("carousels").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabase.from("agenda_tasks").select("title, date, start_time, status, importance").eq("user_id", user.id).order("date", { ascending: true }).limit(30),
+      supabase.from("agenda_habits").select("title, frequency, active, streak_current").eq("user_id", user.id).eq("active", true).limit(30),
+      supabase.from("agenda_objectives").select("title, progress, status, target_date").eq("user_id", user.id).eq("status", "active").limit(20),
+      supabase.from("agenda_daily_recap").select("recap_date, tasks_completed, tasks_planned, habits_done, habits_total, day_score, mood").eq("user_id", user.id).order("recap_date", { ascending: false }).limit(14),
+      supabase.from("app_settings").select("openrouter_api_key, ai_models").eq("user_id", user.id).maybeSingle(),
+      supabase.from("linkedin_user_settings").select("settings").eq("user_id", user.id).maybeSingle(),
     ]);
 
     const projects = projectsRes.data ?? [];
@@ -88,6 +114,10 @@ export async function POST(req: NextRequest) {
     const activeProjects = projects.filter((project) => project.status === "active").length;
     const activeLeads = leads.filter((lead) => lead.status === "active" || lead.status === "new").length;
 
+    const agendaTasks = agendaTasksRes.data ?? [];
+    const habits = habitsRes.data ?? [];
+    const objectives = objectivesRes.data ?? [];
+    const recaps = recapRes.data ?? [];
     const businessData = `
 ## Donnees actuelles de l'agence
 - Projets actifs : ${activeProjects} / ${projects.length} total
@@ -98,8 +128,13 @@ export async function POST(req: NextRequest) {
 - Taches en base : ${tasksCountRes.count ?? "Non connecte"}
 - Posts LinkedIn en base : ${postsCountRes.count ?? "Non connecte"}
 - Carrousels en base : ${carouselsCountRes.count ?? "Non connecte"}
+- Taches agenda recentes/a venir : ${agendaTasks.length}
+- Habitudes actives : ${habits.map((habit) => `${habit.title} (${habit.frequency}, streak ${habit.streak_current ?? 0})`).join(", ") || "Aucune"}
+- Objectifs actifs : ${objectives.map((objective) => `${objective.title} (${objective.progress ?? 0}%)`).join(", ") || "Aucun"}
+- Recaps recents : ${recaps.map((recap) => `${recap.recap_date}: score ${recap.day_score ?? 0}/10, humeur ${recap.mood ?? "N/A"}, taches ${recap.tasks_completed ?? 0}/${recap.tasks_planned ?? 0}`).join(" | ") || "Aucun"}
 
 ${projects.length > 0 ? `### Projets\n${projects.map((project) => `- ${project.name} (${project.status}, etape: ${project.current_stage ?? "N/A"})`).join("\n")}` : ""}
+${agendaTasks.length > 0 ? `\n### Agenda\n${agendaTasks.map((task) => `- ${task.title} (${task.status}, ${task.date ?? "sans date"} ${task.start_time ?? ""}, importance ${task.importance ?? 3})`).join("\n")}` : ""}
     `.trim();
 
     const systemPrompt = `Tu es le Coach IA business de Louis dans AgenceFlow. Tu aides a prendre de meilleures decisions sur l'agence, les projets, les leads, la prospection, l'organisation, le contenu et les offres.
@@ -113,12 +148,18 @@ Regles :
 - Reponds avec des recommandations concretes et priorisees.
 - Si une information manque, propose une hypothese prudente et dis ce qu'il faudrait verifier.
 - Quand un outil est actif, respecte strictement sa structure.
-- Ne dis jamais que tu as cree un element en base si tu as seulement prepare le contenu.
+- Ne dis jamais que tu as cree un element en base si tu as seulement prepare le contenu. Si l'API confirme une creation, tu peux le dire.
 - Reste concis sauf si Louis demande un plan detaille.`;
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const linkedinSettings = linkedinSettingsRes.data?.settings as Record<string, unknown> | null | undefined;
+    const appSettings = appSettingsRes.data as { openrouter_api_key?: string | null; ai_models?: Record<string, string> | null } | null;
+    const apiKey =
+      bodyOpenRouterApiKey ||
+      (typeof appSettings?.openrouter_api_key === "string" && appSettings.openrouter_api_key.trim()) ||
+      (typeof linkedinSettings?.openrouterApiKey === "string" && linkedinSettings.openrouterApiKey.trim()) ||
+      process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "OPENROUTER_API_KEY non configuree" }, { status: 500 });
+      return NextResponse.json({ error: "Cle OpenRouter non configuree. Ajoute-la dans les parametres LinkedIn ou dans les parametres IA." }, { status: 500 });
     }
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -146,7 +187,62 @@ Regles :
     }
 
     const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content ?? "";
+    let reply = data.choices?.[0]?.message?.content ?? "";
+    let createdTasks: Array<{ id: string; title: string }> = [];
+
+    if (shouldCreateAgendaTasks(tool, messages)) {
+      const today = new Date().toISOString().slice(0, 10);
+      const taskResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL ?? "https://agenceflow.app",
+          "X-Title": "AgenceFlow Coach IA Tasks",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: `Transforme la demande utilisateur en taches agenda concretes. Reponds UNIQUEMENT avec un tableau JSON valide. Champs: title, description, date (YYYY-MM-DD ou null), start_time (HH:mm ou null), duration_minutes (nombre), importance (1-5), tags (tableau). Date du jour: ${today}. Ne cree que les taches vraiment demandees.`,
+            },
+            ...messages,
+          ],
+          temperature: 0.25,
+          max_tokens: 1300,
+        }),
+      });
+      if (taskResponse.ok) {
+        const taskData = await taskResponse.json();
+        const rawTasks = extractJsonArray(taskData.choices?.[0]?.message?.content ?? "");
+        const rows = rawTasks
+          .map((item) => item && typeof item === "object" ? item as Record<string, unknown> : null)
+          .filter((item): item is Record<string, unknown> => Boolean(item?.title))
+          .slice(0, 20)
+          .map((item) => ({
+            user_id: user.id,
+            title: String(item.title).slice(0, 180),
+            description: typeof item.description === "string" ? item.description.slice(0, 2000) : null,
+            date: typeof item.date === "string" && item.date ? item.date : today,
+            start_time: typeof item.start_time === "string" && item.start_time ? item.start_time : null,
+            duration_minutes: typeof item.duration_minutes === "number" ? item.duration_minutes : 45,
+            importance: typeof item.importance === "number" ? Math.min(5, Math.max(1, Math.round(item.importance))) : 3,
+            status: "todo",
+            tags: Array.isArray(item.tags) ? item.tags.map(String).slice(0, 6) : ["coach-ia"],
+          }));
+        if (rows.length > 0) {
+          const { data: insertedTasks, error: insertTasksError } = await supabase
+            .from("agenda_tasks")
+            .insert(rows)
+            .select("id, title");
+          if (!insertTasksError) {
+            createdTasks = insertedTasks ?? [];
+            reply = `${reply}\n\n---\nJ'ai cree ${createdTasks.length} tache${createdTasks.length > 1 ? "s" : ""} dans ton agenda :\n${createdTasks.map((task) => `- ${task.title}`).join("\n")}`;
+          }
+        }
+      }
+    }
     const allMessages: CoachMessage[] = [...messages, { role: "assistant", content: reply }];
     const now = new Date().toISOString();
 
@@ -163,6 +259,7 @@ Regles :
       return NextResponse.json({
         reply,
         tool,
+        created_tasks: createdTasks,
         conversation_id: updatedConversation?.id ?? conversationId,
         conversation: updatedConversation,
       });
@@ -184,6 +281,7 @@ Regles :
     return NextResponse.json({
       reply,
       tool,
+      created_tasks: createdTasks,
       conversation_id: createdConversation.id,
       conversation: createdConversation,
     });

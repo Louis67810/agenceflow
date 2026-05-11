@@ -28,6 +28,13 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import {
+  DEFAULT_LINKEDIN_EDIT_ACTIONS,
+  fillLinkedInEditActionPrompt,
+  normalizeLinkedInEditActions,
+  type LinkedInEditAction,
+  type LinkedInEditActionCategory,
+} from "@/lib/linkedin/edit-ai-actions";
 
 interface SmartSelectionTextareaProps {
   value: string;
@@ -46,6 +53,8 @@ interface SmartSelectionTextareaProps {
   showWordCount?: boolean;
   richFormatting?: boolean;
   onUseSelection?: (text: string) => void;
+  aiCommands?: AiCommand[];
+  autoApplyAiActions?: boolean;
   onHistory?: (entry: { label: string; before: string; after: string }) => void;
   onAiAction?: (entry: { label: string; before: string; after: string; scope: "selection" | "full" | "format" }) => void;
 }
@@ -56,11 +65,11 @@ interface SelectionState {
   text: string;
 }
 
-interface AiCommand {
+export interface AiCommand {
   id: string;
   label: string;
   instruction: string;
-  category: "Base" | "Attention technique" | "Rythme et structure" | "Engagement" | "Emotion";
+  category: LinkedInEditActionCategory;
   icon: typeof Sparkles;
   color: string;
   script?: (text: string) => string;
@@ -75,32 +84,49 @@ interface AiResult {
   index: number;
 }
 
-export const SMART_SELECTION_COMMANDS: AiCommand[] = [
-  { id: "variation", label: "Faire une variation", instruction: "Cree une variation du passage avec le meme sens, mais une formulation differente.", category: "Base", icon: Repeat2, color: "#0147ff" },
-  { id: "remove-emojis", label: "Retirer les emojis", instruction: "Retire tous les emojis sans changer le sens.", category: "Base", icon: X, color: "#6b7280", script: (text) => text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "").replace(/[ \t]+\n/g, "\n").trim() },
-  { id: "fix-spelling", label: "Corriger les fautes d'orthographe", instruction: "Corrige uniquement les fautes d'orthographe, de grammaire et de ponctuation sans changer le style.", category: "Base", icon: Check, color: "#168b64" },
-  { id: "expand", label: "Developper", instruction: "Developpe ce passage tout en gardant le ton et l'idee principale.", category: "Base", icon: Expand, color: "#0147ff" },
-  { id: "condense", label: "Condenser", instruction: "Raccourcis ce passage sans perdre l'idee.", category: "Base", icon: Minus, color: "#0147ff" },
-  { id: "hook", label: "Transformer en hook", instruction: "Transforme ce passage en hook LinkedIn tres accrocheur.", category: "Attention technique", icon: Zap, color: "#ef4444" },
-  { id: "open-loop", label: "Transformer en open loop", instruction: "Transforme ce passage en open loop qui donne envie de lire la suite.", category: "Attention technique", icon: Repeat2, color: "#ef4444" },
-  { id: "micro-open-loop", label: "Transformer en micro open loop", instruction: "Transforme ce passage en micro open loop court et subtil.", category: "Attention technique", icon: RotateCcw, color: "#ef4444" },
-  { id: "pattern-interrupt", label: "Transformer en pattern interrupt", instruction: "Transforme ce passage en pattern interrupt surprenant mais credible.", category: "Attention technique", icon: Target, color: "#ef4444" },
-  { id: "curiosity-gap", label: "Transformer en curiosity gap", instruction: "Transforme ce passage en curiosity gap sans clickbait.", category: "Attention technique", icon: Sparkles, color: "#ef4444" },
-  { id: "contrarian", label: "Transformer en accroche contrarienne", instruction: "Transforme ce passage en accroche contrarienne forte mais defendable.", category: "Attention technique", icon: Zap, color: "#ef4444" },
-  { id: "rhythmic-list", label: "Transformer en liste rythmee", instruction: "Transforme ce passage en liste courte et rythmee.", category: "Rythme et structure", icon: AlignLeft, color: "#6236AA" },
-  { id: "staircase", label: "Transformer en structure escalier", instruction: "Transforme ce passage en structure escalier avec des lignes de longueur variee.", category: "Rythme et structure", icon: ArrowDownLeft, color: "#6236AA" },
-  { id: "visual-symbol", label: "Transformer en symbole visuel", instruction: "Ajoute quelques symboles visuels utiles sans surcharger.", category: "Rythme et structure", icon: Sparkles, color: "#6236AA" },
-  { id: "short-cadence", label: "Transformer en cadence courte", instruction: "Transforme ce passage avec une cadence courte, nette et percutante.", category: "Rythme et structure", icon: ArrowUpRight, color: "#6236AA" },
-  { id: "open-question", label: "Transformer en question ouverte", instruction: "Transforme ce passage en question ouverte qui invite a repondre.", category: "Engagement", icon: MessageCircle, color: "#0f766e" },
-  { id: "polarization", label: "Transformer en polarisation", instruction: "Transforme ce passage en prise de position polarisante mais professionnelle.", category: "Engagement", icon: Target, color: "#0f766e" },
-  { id: "memorable-quote", label: "Transformer en citation memorable", instruction: "Transforme ce passage en phrase courte, memorable et citable.", category: "Engagement", icon: Quote, color: "#0f766e" },
-  { id: "personal-insight", label: "Transformer en insight personnel", instruction: "Transforme ce passage en insight personnel credible et specifique.", category: "Engagement", icon: Sparkles, color: "#0f766e" },
-  { id: "lead-magnet", label: "Transformer en lead magnet", instruction: "Transforme ce passage en invitation subtile a demander une ressource.", category: "Engagement", icon: Clipboard, color: "#0f766e" },
-  { id: "voluntary-error", label: "Transformer en erreur volontaire", instruction: "Ajoute une asperite volontaire qui peut provoquer des reactions, sans nuire a la credibilite.", category: "Engagement", icon: Zap, color: "#0f766e" },
-  { id: "dynamic-repeat", label: "Transformer en repetition dynamique", instruction: "Ajoute une repetition dynamique pour renforcer le rythme.", category: "Emotion", icon: Repeat2, color: "#f97316" },
-  { id: "vulnerability", label: "Transformer en vulnerabilite", instruction: "Transforme ce passage avec plus de vulnerabilite, sans dramatiser.", category: "Emotion", icon: Heart, color: "#f97316" },
-  { id: "emotional-contrast", label: "Transformer en contraste emotionnel", instruction: "Ajoute un contraste emotionnel clair entre tension et resolution.", category: "Emotion", icon: Heart, color: "#f97316" },
-];
+const commandVisuals: Record<string, Pick<AiCommand, "icon" | "color" | "script">> = {
+  faire_variation: { icon: Repeat2, color: "#0147ff" },
+  retirer_emojis: { icon: X, color: "#6b7280", script: (text) => text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "").replace(/[ \t]+\n/g, "\n").trim() },
+  corriger_fautes: { icon: Check, color: "#168b64" },
+  developper: { icon: Expand, color: "#0147ff" },
+  condenser: { icon: Minus, color: "#0147ff" },
+  attention_technique: { icon: Zap, color: "#ef4444" },
+  transformer_hook: { icon: Zap, color: "#ef4444" },
+  transformer_open_loop: { icon: Repeat2, color: "#ef4444" },
+  transformer_micro_open_loop: { icon: RotateCcw, color: "#ef4444" },
+  transformer_pattern_interrupt: { icon: Target, color: "#ef4444" },
+  transformer_curiosity_gap: { icon: Sparkles, color: "#ef4444" },
+  transformer_accroche_contrarienne: { icon: Zap, color: "#ef4444" },
+  rythme_structure: { icon: AlignLeft, color: "#6236AA" },
+  transformer_liste_rytmee: { icon: AlignLeft, color: "#6236AA" },
+  transformer_structure_escalier: { icon: ArrowDownLeft, color: "#6236AA" },
+  transformer_symbole_visuel: { icon: Sparkles, color: "#6236AA" },
+  transformer_cadence_courte: { icon: ArrowUpRight, color: "#6236AA" },
+  transformer_question_ouverte: { icon: MessageCircle, color: "#0f766e" },
+  transformer_polarisation: { icon: Target, color: "#0f766e" },
+  transformer_citation_memorable: { icon: Quote, color: "#0f766e" },
+  transformer_insight_personnel: { icon: Sparkles, color: "#0f766e" },
+  transformer_lead_magnet: { icon: Clipboard, color: "#0f766e" },
+  transformer_erreur_volontaire: { icon: Zap, color: "#0f766e" },
+  transformer_repetition_dynamique: { icon: Repeat2, color: "#f97316" },
+  transformer_vulnerabilite: { icon: Heart, color: "#f97316" },
+  transformer_contraste_emotionnel: { icon: Heart, color: "#f97316" },
+};
+
+export function buildSmartSelectionCommands(actions?: LinkedInEditAction[] | null): AiCommand[] {
+  return normalizeLinkedInEditActions(actions ?? DEFAULT_LINKEDIN_EDIT_ACTIONS).map((action) => {
+    const visual = commandVisuals[action.id] ?? { icon: Sparkles, color: "#0147ff" };
+    return {
+      id: action.id,
+      label: action.label,
+      instruction: action.prompt,
+      category: action.category,
+      ...visual,
+    };
+  });
+}
+
+export const SMART_SELECTION_COMMANDS: AiCommand[] = buildSmartSelectionCommands();
 
 const baseButton: CSSProperties = {
   border: 0,
@@ -142,7 +168,7 @@ function htmlToMarkdown(html: string) {
     .replace(/<\/(strong|b)>/gi, "**")
     .replace(/<(em|i)[^>]*>/gi, "*")
     .replace(/<\/(em|i)>/gi, "*");
-  return (container.textContent ?? "").replace(/\n{3,}/g, "\n\n").trimEnd();
+  return container.textContent ?? "";
 }
 
 export default function SmartSelectionTextarea({
@@ -162,12 +188,15 @@ export default function SmartSelectionTextarea({
   showWordCount = false,
   richFormatting = false,
   onUseSelection,
+  aiCommands,
+  autoApplyAiActions = false,
   onHistory,
   onAiAction,
 }: SmartSelectionTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const selectingRef = useRef(false);
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<{ top: number; left: number } | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -176,6 +205,7 @@ export default function SmartSelectionTextarea({
   const [loadingCommand, setLoadingCommand] = useState<string | null>(null);
   const [result, setResult] = useState<AiResult | null>(null);
   const [copiedResult, setCopiedResult] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const hasText = value.trim().length > 0;
   const canTransformSelection = !!selection?.text.trim();
@@ -190,10 +220,68 @@ export default function SmartSelectionTextarea({
     ? Math.max(8, Math.min(selectionToolbar.left, (wrapperRef.current?.clientWidth ?? width + 16) - width - 8))
     : undefined;
   const floatingRight = selectionToolbar ? undefined : 10;
-  const filteredCommands = SMART_SELECTION_COMMANDS.filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
+  const commands = aiCommands?.length ? aiCommands : SMART_SELECTION_COMMANDS;
+  const filteredCommands = commands.filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
   const categories = Array.from(new Set(filteredCommands.map((command) => command.category)));
   const currentResultText = result ? result.variations[result.index] ?? result.text : "";
   const isOriginalVariation = result?.index === 0;
+
+  function getTextareaSelectionToolbar(start: number) {
+    const textarea = textareaRef.current;
+    const wrapper = wrapperRef.current;
+    if (!textarea || !wrapper || typeof document === "undefined") return null;
+
+    const textareaRect = textarea.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const computed = window.getComputedStyle(textarea);
+    const mirror = document.createElement("div");
+    const span = document.createElement("span");
+    const properties = [
+      "boxSizing",
+      "width",
+      "fontFamily",
+      "fontSize",
+      "fontWeight",
+      "fontStyle",
+      "letterSpacing",
+      "lineHeight",
+      "textTransform",
+      "textIndent",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft",
+      "borderTopWidth",
+      "borderRightWidth",
+      "borderBottomWidth",
+      "borderLeftWidth",
+    ] as const;
+
+    properties.forEach((property) => {
+      mirror.style[property] = computed[property];
+    });
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.overflowWrap = "break-word";
+    mirror.style.wordBreak = computed.wordBreak;
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    mirror.style.height = "auto";
+    mirror.textContent = textarea.value.slice(0, start);
+    span.textContent = textarea.value.slice(start, start + 1) || ".";
+    mirror.appendChild(span);
+    document.body.appendChild(mirror);
+
+    const top = textareaRect.top - wrapperRect.top + span.offsetTop - textarea.scrollTop - 48;
+    const left = textareaRect.left - wrapperRect.left + span.offsetLeft - textarea.scrollLeft;
+    mirror.remove();
+
+    return {
+      top: Math.max(8, top),
+      left: Math.max(8, Math.min(left, wrapper.clientWidth - 420)),
+    };
+  }
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -209,6 +297,20 @@ export default function SmartSelectionTextarea({
     const nextHtml = markdownToHtml(value);
     if (editor.innerHTML !== nextHtml) editor.innerHTML = nextHtml;
   }, [richFormatting, value]);
+
+  useEffect(() => {
+    function handleDocumentMouseUp() {
+      if (!selectingRef.current) return;
+      selectingRef.current = false;
+      window.setTimeout(() => {
+        if (richFormatting) refreshRichSelection();
+        else refreshSelection();
+      }, 0);
+    }
+
+    document.addEventListener("mouseup", handleDocumentMouseUp);
+    return () => document.removeEventListener("mouseup", handleDocumentMouseUp);
+  });
 
   function refreshSelection() {
     const textarea = textareaRef.current;
@@ -227,7 +329,7 @@ export default function SmartSelectionTextarea({
       return;
     }
     setSelection({ start, end, text });
-    setSelectionToolbar(null);
+    setSelectionToolbar(getTextareaSelectionToolbar(start));
   }
 
   function syncRichValue(label?: string, beforeValue?: string) {
@@ -299,9 +401,13 @@ export default function SmartSelectionTextarea({
         onHistory?.({ label, before, after: nextText });
         onAiAction?.({ label, before, after: nextText, scope: "full" });
       } else {
-        editorRef.current?.focus();
-        document.execCommand("insertText", false, nextText);
-        syncRichValue(label, before);
+        const selectedText = selection?.text ?? "";
+        const after = selectedText && value.includes(selectedText)
+          ? value.replace(selectedText, nextText)
+          : nextText;
+        onChange(after);
+        onHistory?.({ label, before, after });
+        onAiAction?.({ label, before, after, scope: "selection" });
       }
       setSelection(null);
       setSelectionToolbar(null);
@@ -328,9 +434,14 @@ export default function SmartSelectionTextarea({
     const existing = result;
     const targetText = existing?.original || (applyToFullText ? value : selection?.text ?? "");
     if (!targetText.trim()) return;
+    setAiError("");
 
     if (command.script) {
       const text = command.script(targetText);
+      if (autoApplyAiActions) {
+        replaceSelection(text, applyToFullText, command.label);
+        return;
+      }
       setCopiedResult(false);
       setResult({ command, text, original: targetText, applyToFullText, variations: [targetText, text], index: 1 });
       return;
@@ -344,7 +455,9 @@ export default function SmartSelectionTextarea({
         body: JSON.stringify({
           text: targetText,
           fullText: value,
-          instruction: customPrompt.trim() ? `${command.instruction}\n\nPrecision utilisateur : ${customPrompt}` : command.instruction,
+          instruction: customPrompt.trim()
+            ? `${fillLinkedInEditActionPrompt(command.instruction, targetText)}\n\nPrecision utilisateur : ${customPrompt}`
+            : fillLinkedInEditActionPrompt(command.instruction, targetText),
           contextLabel,
           openrouterApiKey: apiKey,
           model,
@@ -353,6 +466,10 @@ export default function SmartSelectionTextarea({
       });
       const data = await res.json();
       if (!res.ok || !data.text) throw new Error(data.error || "Transformation impossible");
+      if (autoApplyAiActions) {
+        replaceSelection(data.text, applyToFullText, command.label);
+        return;
+      }
       setCopiedResult(false);
       setResult((current) => {
         if (current && current.command.id === command.id && current.original === targetText && current.applyToFullText === applyToFullText) {
@@ -363,6 +480,7 @@ export default function SmartSelectionTextarea({
       });
     } catch (error) {
       console.error(error);
+      setAiError(error instanceof Error ? error.message : "Transformation impossible.");
     } finally {
       setLoadingCommand(null);
     }
@@ -411,7 +529,7 @@ export default function SmartSelectionTextarea({
                 {filteredCommands.filter((command) => command.category === category).map((command) => {
                   const Icon = command.icon;
                   return (
-                    <button key={command.id} type="button" onClick={() => runTransform(command, false)} disabled={loadingCommand !== null} style={{ ...baseButton, width: "100%", minHeight: 38, padding: "0 10px", background: "transparent", color: "#121a2e", display: "flex", alignItems: "center", gap: 10, textAlign: "left", fontSize: 13, fontWeight: 750 }}>
+                    <button key={command.id} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => runTransform(command, false)} disabled={loadingCommand !== null} style={{ ...baseButton, width: "100%", minHeight: 38, padding: "0 10px", background: "transparent", color: "#121a2e", display: "flex", alignItems: "center", gap: 10, textAlign: "left", fontSize: 13, fontWeight: 750 }}>
                       {loadingCommand === command.id ? <Loader2 size={15} style={{ color: command.color, animation: "spin 1s linear infinite" }} /> : <Icon size={15} style={{ color: command.color }} />}
                       <span>{command.label}</span>
                     </button>
@@ -419,6 +537,11 @@ export default function SmartSelectionTextarea({
                 })}
               </div>
             ))}
+            {aiError ? (
+              <p style={{ margin: "8px 10px 6px", borderRadius: 12, background: "rgba(239,68,68,0.08)", color: "#b91c1c", padding: "9px 10px", fontSize: 12, fontWeight: 700, lineHeight: 1.45 }}>
+                {aiError}
+              </p>
+            ) : null}
           </div>
         </div>
       )}
@@ -467,6 +590,7 @@ export default function SmartSelectionTextarea({
           contentEditable
           suppressContentEditableWarning
           onInput={() => syncRichValue()}
+          onMouseDown={() => { selectingRef.current = true; }}
           onMouseUp={refreshRichSelection}
           onKeyUp={refreshRichSelection}
           onBlur={() => setSelectionToolbar(null)}
@@ -481,6 +605,7 @@ export default function SmartSelectionTextarea({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
+          onMouseDown={() => { selectingRef.current = true; }}
           onMouseUp={refreshSelection}
           onKeyUp={refreshSelection}
           onSelect={refreshSelection}
@@ -497,7 +622,7 @@ export default function SmartSelectionTextarea({
 
       {showGlobalAction && hasText && (
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button type="button" onClick={() => runTransform(SMART_SELECTION_COMMANDS.find((command) => command.id === "fix-spelling") ?? SMART_SELECTION_COMMANDS[1], true)} disabled={loadingCommand !== null} style={{ ...baseButton, minHeight: 38, padding: "0 13px", background: "#f0f4ff", border: "1px solid #c7d3ff", color: "#0147ff", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
+          <button type="button" onClick={() => runTransform(commands.find((command) => command.id === "corriger_fautes") ?? commands[0], true)} disabled={loadingCommand !== null} style={{ ...baseButton, minHeight: 38, padding: "0 13px", background: "#f0f4ff", border: "1px solid #c7d3ff", color: "#0147ff", display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800 }}>
             {loadingCommand ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Sparkles size={13} />}
             {globalLabel}
           </button>

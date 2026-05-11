@@ -20,6 +20,9 @@ interface StoredLinkedInPostRow {
   impressions: number;
   post_url: string | null;
   analytics: unknown;
+  editor_history: LinkedInPost["editorHistory"] | null;
+  editor_chat: LinkedInPost["editorChat"] | null;
+  editor_snapshots: LinkedInPost["editorSnapshots"] | null;
   status: "draft" | "scheduled" | "published";
   tags: string[] | null;
   created_at: string;
@@ -44,6 +47,9 @@ function rowToPost(row: StoredLinkedInPostRow): LinkedInPost {
     impressions: row.impressions ?? 0,
     postUrl: row.post_url ?? undefined,
     analytics: (row.analytics as LinkedInPost["analytics"]) ?? undefined,
+    editorHistory: row.editor_history ?? [],
+    editorChat: row.editor_chat ?? [],
+    editorSnapshots: row.editor_snapshots ?? [],
     status: row.status,
     tags: row.tags ?? [],
     createdAt: row.created_at,
@@ -69,6 +75,9 @@ function postToRow(userId: string, post: LinkedInPost) {
     impressions: post.impressions ?? 0,
     post_url: post.postUrl ?? null,
     analytics: post.analytics ?? null,
+    editor_history: post.editorHistory ?? [],
+    editor_chat: post.editorChat ?? [],
+    editor_snapshots: post.editorSnapshots ?? [],
     status: post.status,
     tags: post.tags ?? [],
     created_at: post.createdAt,

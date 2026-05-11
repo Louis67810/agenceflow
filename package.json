@@ -6,6 +6,7 @@
     "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
     "predev": "npm run clean",
     "prebuild": "npm run clean",
+    "prestart": "npm run build",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

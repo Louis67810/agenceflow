@@ -440,10 +440,13 @@ function styleCategoryLabel(style: LinkedInStyle) {
   const labels: Record<LinkedInStyle["category"], string> = {
     storytelling: "Storytelling",
     valeur: "Valeur / Liste",
+    educatif_carrousel: "Educatif carrousel",
+    presentation_projet: "Presentation de projet",
     educatif: "Éducatif",
     viral: "Opinion forte",
     engagement: "Engagement",
     data: "Data / Chiffres",
+    lead_magnet: "Lead magnet",
     custom: "Personnalisé",
   };
   return labels[style.category] ?? style.category;
@@ -452,10 +455,13 @@ function styleCategoryLabel(style: LinkedInStyle) {
 const STYLE_TAG_STYLES: Record<LinkedInStyle["category"], { bg: string; color: string; border: string }> = {
   storytelling: { bg: "#f1eaff", color: "#6236AA", border: "#d8c3ff" },
   valeur: { bg: "#e8f6ff", color: "#073e63", border: "#bfe2fa" },
+  educatif_carrousel: { bg: "#e6faff", color: "#036782", border: "#bae6fd" },
+  presentation_projet: { bg: "#f1f5f9", color: "#334155", border: "#cbd5e1" },
   educatif: { bg: "#dcfaf5", color: "#0f766e", border: "#99f6e4" },
   viral: { bg: "#ffecec", color: "#c53030", border: "#fecaca" },
   engagement: { bg: "#fff0df", color: "#663b12", border: "#fed7aa" },
   data: { bg: "#eef2ff", color: "#3730a3", border: "#c7d2fe" },
+  lead_magnet: { bg: "#e4fff1", color: "#047857", border: "#a7f3d0" },
   custom: { bg: "#f6f6f6", color: "#5f6673", border: "#d9dce2" },
 };
 

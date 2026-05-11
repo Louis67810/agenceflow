@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatSupabaseError } from "@/lib/supabase/format-error";
 import { getRouteAuthenticatedUser } from "@/lib/supabase/route-client";
+import { DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT } from "@/lib/linkedin/post-style-prompts";
+import {
+  DEFAULT_LINKEDIN_EDIT_ACTION_GENERAL_PROMPT,
+  DEFAULT_LINKEDIN_EDIT_ACTIONS,
+} from "@/lib/linkedin/edit-ai-actions";
 
 const DEFAULT_SETTINGS = {
   openrouterApiKey: "",
   model: "anthropic/claude-sonnet-4-6",
+  businessContext: "",
+  postSystemPrompt: DEFAULT_LINKEDIN_GLOBAL_SYSTEM_PROMPT,
+  editActionGeneralPrompt: DEFAULT_LINKEDIN_EDIT_ACTION_GENERAL_PROMPT,
+  editActions: DEFAULT_LINKEDIN_EDIT_ACTIONS,
   carouselTemplate: `Pour chaque slide, genere exactement ce format :
 
 TITRE: [3-5 mots - accroche courte et percutante]
@@ -67,7 +76,35 @@ Regles absolues :
   airtableBaseId: "",
   airtableTableName: "Prospects LinkedIn",
   airtableAutoSync: false,
+  viralityOpenAiApiKey: "",
+  viralityAnalyzerModel: "",
+  viralityImageModel: "qwen/qwen2.5-vl-72b-instruct",
+  viralitySystemPrompt: "",
 };
+
+function normalizeSettings(settings?: Record<string, unknown> | null) {
+  const airtableKey = typeof settings?.airtableKey === "string"
+    ? settings.airtableKey
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .trim()
+        .replace(/^authorization:\s*/i, "")
+        .replace(/^Bearer\s+/i, "")
+        .replace(/^["'`]+|["'`]+$/g, "")
+        .trim()
+    : DEFAULT_SETTINGS.airtableKey;
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(settings ?? {}),
+    airtableKey,
+    airtableBaseId: typeof settings?.airtableBaseId === "string"
+      ? settings.airtableBaseId.trim()
+      : DEFAULT_SETTINGS.airtableBaseId,
+    airtableTableName: typeof settings?.airtableTableName === "string"
+      ? settings.airtableTableName.trim()
+      : DEFAULT_SETTINGS.airtableTableName,
+  };
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -83,7 +120,7 @@ export async function GET(req: NextRequest) {
     if (fetchError) throw fetchError;
 
     if (!data) {
-      const bootstrappedSettings = { ...DEFAULT_SETTINGS };
+      const bootstrappedSettings = normalizeSettings();
       const { data: inserted, error: insertError } = await supabase
         .from("linkedin_user_settings")
         .upsert(
@@ -98,10 +135,10 @@ export async function GET(req: NextRequest) {
         .single();
 
       if (insertError) throw insertError;
-      return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(inserted?.settings ?? {}) } });
+      return NextResponse.json({ settings: normalizeSettings(inserted?.settings ?? null) });
     }
 
-    return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) } });
+    return NextResponse.json({ settings: normalizeSettings(data.settings ?? null) });
   } catch (e) {
     return NextResponse.json({ error: formatSupabaseError(e) }, { status: 500 });
   }
@@ -113,7 +150,7 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const settings = { ...DEFAULT_SETTINGS, ...(body?.settings ?? {}) };
+    const settings = normalizeSettings(body?.settings ?? null);
 
     // 1. Upsert
     const { error: upsertError } = await supabase
@@ -138,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     if (fetchError) throw fetchError;
 
-    return NextResponse.json({ settings: { ...DEFAULT_SETTINGS, ...(freshData?.settings ?? {}) } });
+    return NextResponse.json({ settings: normalizeSettings(freshData?.settings ?? null) });
   } catch (e) {
     return NextResponse.json({ error: formatSupabaseError(e) }, { status: 500 });
   }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine, Trash2 } from "lucide-react";
-import { LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
+import { Sparkles, RefreshCw, Check, X, ArrowRight, Lightbulb, Plus, Bot, PenLine, Trash2, Repeat, Image as ImageIcon } from "lucide-react";
+import { LinkedInConcept, LinkedInIdea, LinkedInPost, LinkedInStyle, DEFAULT_STYLES } from "@/types/linkedin";
 import { loadLinkedInSettings } from "@/lib/linkedin/settings";
 import { computeLinkedInPostScore, loadLinkedInPosts } from "@/lib/linkedin/posts";
 import {
@@ -42,12 +42,85 @@ const STYLE_CATEGORY_STYLES: Record<string, { bg: string; color: string }> = {
   custom:       { bg: "#f6f6f6", color: "rgba(18,26,46,0.55)" },
 };
 
+const STYLE_CATEGORY_LABEL_MAP: Record<string, string> = {
+  ...STYLE_CATEGORY_LABELS,
+  educatif: "Educatif",
+  educatif_carrousel: "Educatif carrousel",
+  presentation_projet: "Presentation de projet",
+  data: "Data chiffres",
+  lead_magnet: "Lead magnet",
+  custom: "Personnalise",
+};
+
+const STYLE_CATEGORY_STYLE_MAP: Record<string, { bg: string; color: string }> = {
+  ...STYLE_CATEGORY_STYLES,
+  educatif_carrousel: { bg: "#dff7ff", color: "#036782" },
+  presentation_projet: { bg: "#e9edf5", color: "#334155" },
+  lead_magnet: { bg: "#d1fae5", color: "#047857" },
+};
+
 function daysAgo(isoDate: string): string {
   const diff = Date.now() - new Date(isoDate).getTime();
   const days = Math.floor(diff / 86400000);
   if (days === 0) return "Aujourd'hui";
   if (days === 1) return "Hier";
   return `Il y a ${days} jours`;
+}
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Image illisible"));
+    reader.readAsDataURL(file);
+  });
+}
+
+const RECURRENCE_UNITS = [
+  { value: "days", label: "jour(s)" },
+  { value: "weeks", label: "semaine(s)" },
+  { value: "months", label: "mois" },
+];
+
+function getNextRecurringDate(every: number, unit: LinkedInConcept["recurrenceUnit"], index: number) {
+  const date = new Date();
+  date.setHours(9, 0, 0, 0);
+  const amount = Math.max(1, every) * index;
+  if (unit === "days") date.setDate(date.getDate() + amount);
+  if (unit === "weeks") date.setDate(date.getDate() + amount * 7);
+  if (unit === "months") date.setMonth(date.getMonth() + amount);
+  return date;
+}
+
+function createRecurringIdeasFromConcept(concept: LinkedInConcept, existingIdeas: LinkedInIdea[], occurrences = 8) {
+  const existingKeys = new Set(
+    existingIdeas
+      .filter((idea) => idea.conceptId === concept.id && idea.scheduledAt)
+      .map((idea) => idea.scheduledAt!.slice(0, 10))
+  );
+
+  const nextIdeas: LinkedInIdea[] = [];
+  for (let index = 0; index < occurrences; index += 1) {
+    const scheduledAt = getNextRecurringDate(
+      concept.recurrenceEvery,
+      concept.recurrenceUnit,
+      index
+    ).toISOString();
+    const dateKey = scheduledAt.slice(0, 10);
+    if (existingKeys.has(dateKey)) continue;
+    nextIdeas.push({
+      id: `idea_${Date.now()}_${index}_${Math.random().toString(36).slice(2)}`,
+      title: concept.title,
+      description: concept.description,
+      conceptId: concept.id,
+      styleId: concept.styleId,
+      styleName: concept.styleName,
+      scheduledAt,
+      status: "new",
+      generatedAt: new Date().toISOString(),
+    });
+  }
+  return nextIdeas;
 }
 
 // ── Modal Ajouter manuellement ──────────────────────────────────────────────
@@ -62,6 +135,7 @@ function AddManualModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [selectedStyleId, setSelectedStyleId] = useState<string>(styles[0]?.id ?? "");
   const [scheduledAt, setScheduledAt] = useState("");
 
@@ -86,6 +160,7 @@ function AddManualModal({
       id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       title: title.trim(),
       description: description.trim(),
+      imageUrl: imageUrl || undefined,
       styleId: selectedStyle?.id,
       styleName: selectedStyle?.name,
       scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
@@ -93,6 +168,12 @@ function AddManualModal({
       generatedAt: new Date().toISOString(),
     };
     onSave(idea);
+  };
+
+  const importImage = async (file?: File) => {
+    if (!file) return;
+    const dataUrl = await readImageAsDataUrl(file);
+    setImageUrl(dataUrl);
   };
 
   return (
@@ -140,12 +221,30 @@ function AddManualModal({
             />
           </div>
 
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 6 }}>Image <span style={{ fontWeight: 400, opacity: 0.7 }}>(optionnel)</span></label>
+            {imageUrl ? (
+              <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid rgba(18,26,46,0.1)", background: "#f6f6f6" }}>
+                <img src={imageUrl} alt="" style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} />
+                <button type="button" onClick={() => setImageUrl("")} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0px 6px 14px rgba(18,26,46,0.14)" }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <label style={{ minHeight: 82, borderRadius: 14, border: "1px dashed rgba(18,26,46,0.18)", background: "#f8f8f8", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, color: "rgba(18,26,46,0.56)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <ImageIcon size={17} />
+                Ajouter une image a l'idee
+                <input type="file" accept="image/*" onChange={(event) => { void importImage(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ display: "none" }} />
+              </label>
+            )}
+          </div>
+
           {/* Style */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 8 }}>Style de post *</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {styles.map((s) => {
-                const ss = STYLE_CATEGORY_STYLES[s.category] ?? STYLE_CATEGORY_STYLES.custom;
+                const ss = STYLE_CATEGORY_STYLE_MAP[s.category] ?? STYLE_CATEGORY_STYLE_MAP.custom;
                 const isActive = selectedStyleId === s.id;
                 return (
                   <button
@@ -201,6 +300,129 @@ function AddManualModal({
 }
 
 // ── Modal Générer avec l'IA ────────────────────────────────────────────────
+function AddConceptModal({
+  styles,
+  onSave,
+  onClose,
+}: {
+  styles: LinkedInStyle[];
+  onSave: (concept: LinkedInConcept) => void;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedStyleId, setSelectedStyleId] = useState<string>(styles[0]?.id ?? "");
+  const [recurrenceEvery, setRecurrenceEvery] = useState(1);
+  const [recurrenceUnit, setRecurrenceUnit] = useState<LinkedInConcept["recurrenceUnit"]>("weeks");
+
+  const inp = {
+    background: "#f6f6f6",
+    border: "1px solid rgba(0,0,0,0.09)",
+    borderRadius: 9,
+    padding: "9px 12px",
+    fontSize: 13,
+    color: "#121a2e",
+    outline: "none",
+    width: "100%",
+    fontFamily: '"Plus Jakarta Sans", sans-serif',
+    boxSizing: "border-box" as const,
+  };
+
+  const canSave = title.trim().length > 0 && selectedStyleId.length > 0;
+
+  const handleSave = () => {
+    if (!canSave) return;
+    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+    onSave({
+      id: `concept_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      title: title.trim(),
+      description: description.trim(),
+      styleId: selectedStyle?.id,
+      styleName: selectedStyle?.name,
+      recurrenceEvery: Math.max(1, recurrenceEvery),
+      recurrenceUnit,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.15)", overflow: "hidden", ...jakartaSans }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#121a2e", margin: 0 }}>Concept recurrent</h3>
+            <p style={{ fontSize: 12, color: "rgba(18,26,46,0.5)", margin: "3px 0 0" }}>Ajoute ce concept au planning selon son intervalle.</p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(18,26,46,0.4)", padding: 4 }}><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 6 }}>Concept *</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ex: Audit SEO d'une page en 5 minutes" style={inp} autoFocus />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 6 }}>Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Angle, structure recurrente, exemples a reprendre..." rows={3} style={{ ...inp, resize: "vertical", lineHeight: 1.6 }} />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)", display: "block", marginBottom: 8 }}>Style</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {styles.map((style) => {
+                const ss = STYLE_CATEGORY_STYLE_MAP[style.category] ?? STYLE_CATEGORY_STYLE_MAP.custom;
+                const isActive = selectedStyleId === style.id;
+                return (
+                  <button
+                    key={style.id}
+                    onClick={() => setSelectedStyleId(style.id)}
+                    style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", background: isActive ? ss.bg : "#f6f6f6", border: isActive ? `1px solid ${ss.color}40` : "1px solid rgba(0,0,0,0.09)", color: isActive ? ss.color : "rgba(18,26,46,0.55)" }}
+                  >
+                    {style.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)" }}>
+              Tous les
+              <input
+                type="number"
+                min={1}
+                value={recurrenceEvery}
+                onChange={(e) => setRecurrenceEvery(Math.max(1, Number(e.target.value) || 1))}
+                style={{ ...inp, marginTop: 6 }}
+              />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.55)" }}>
+              Periode
+              <select
+                value={recurrenceUnit}
+                onChange={(e) => setRecurrenceUnit(e.target.value as LinkedInConcept["recurrenceUnit"])}
+                style={{ ...inp, marginTop: 6 }}
+              >
+                {RECURRENCE_UNITS.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "rgba(18,26,46,0.65)", cursor: "pointer", ...jakartaSans }}>Annuler</button>
+          <button onClick={handleSave} disabled={!canSave} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", cursor: canSave ? "pointer" : "not-allowed", opacity: canSave ? 1 : 0.5, ...jakartaSans }}>
+            <Repeat size={14} />
+            Ajouter au planning
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenerateModal({
   styles,
   language,
@@ -260,7 +482,7 @@ function GenerateModal({
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {styles.map((s) => {
-                const ss = STYLE_CATEGORY_STYLES[s.category] ?? STYLE_CATEGORY_STYLES.custom;
+                const ss = STYLE_CATEGORY_STYLE_MAP[s.category] ?? STYLE_CATEGORY_STYLE_MAP.custom;
                 const isSelected = selectedIds.includes(s.id);
                 return (
                   <button
@@ -284,7 +506,7 @@ function GenerateModal({
                       <div style={{ fontSize: 11, color: "rgba(18,26,46,0.45)", marginTop: 1 }}>{s.description}</div>
                     </div>
                     <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, fontWeight: 500, background: ss.bg, color: ss.color, flexShrink: 0 }}>
-                      {STYLE_CATEGORY_LABELS[s.category] ?? s.category}
+                      {STYLE_CATEGORY_LABEL_MAP[s.category] ?? s.category}
                     </span>
                   </button>
                 );
@@ -352,17 +574,20 @@ function GenerateModal({
 // ── Page principale ─────────────────────────────────────────────────────────
 export default function LinkedInIdeesPage() {
   const [ideas, setIdeas] = useState<LinkedInIdea[]>([]);
+  const [concepts, setConcepts] = useState<LinkedInConcept[]>([]);
   const [styles, setStyles] = useState<LinkedInStyle[]>(DEFAULT_STYLES);
   const [generating, setGenerating] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showConceptModal, setShowConceptModal] = useState(false);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
 
   useEffect(() => {
     const cachedWorkspace = loadLinkedInWorkspaceCache();
     setIdeas(cachedWorkspace.ideas);
+    setConcepts(cachedWorkspace.concepts);
     setStyles(cachedWorkspace.styles);
     setLanguage(cachedWorkspace.preferences.ideasLanguage);
     setLastGenerated(cachedWorkspace.preferences.ideasLastGenerated);
@@ -372,6 +597,7 @@ export default function LinkedInIdeesPage() {
         const remote = await fetchRemoteLinkedInWorkspace();
         if (remote.hasStoredData) {
           setIdeas(remote.workspace.ideas);
+          setConcepts(remote.workspace.concepts);
           setStyles(remote.workspace.styles);
           setLanguage(remote.workspace.preferences.ideasLanguage);
           setLastGenerated(remote.workspace.preferences.ideasLastGenerated);
@@ -387,6 +613,12 @@ export default function LinkedInIdeesPage() {
   const saveIdeas = (updated: LinkedInIdea[]) => {
     setIdeas(updated);
     persistLinkedInWorkspacePatch({ ideas: updated });
+  };
+
+  const saveConceptsAndIdeas = (updatedConcepts: LinkedInConcept[], updatedIdeas: LinkedInIdea[]) => {
+    setConcepts(updatedConcepts);
+    setIdeas(updatedIdeas);
+    persistLinkedInWorkspacePatch({ concepts: updatedConcepts, ideas: updatedIdeas });
   };
 
   const getTopPosts = useCallback((): LinkedInPost[] => {
@@ -447,7 +679,7 @@ export default function LinkedInIdeesPage() {
           id: `idea_${Date.now()}_${Math.random().toString(36).slice(2)}`,
           title: idea.title,
           description: idea.description,
-          styleName: idea.styleCategory ? STYLE_CATEGORY_LABELS[idea.styleCategory] : undefined,
+          styleName: idea.styleCategory ? STYLE_CATEGORY_LABEL_MAP[idea.styleCategory] : undefined,
           status: "new" as const,
           generatedAt: new Date().toISOString(),
         })
@@ -478,6 +710,12 @@ export default function LinkedInIdeesPage() {
   const handleAddManual = (idea: LinkedInIdea) => {
     saveIdeas([idea, ...ideas]);
     setShowAddModal(false);
+  };
+
+  const handleAddConcept = (concept: LinkedInConcept) => {
+    const plannedIdeas = createRecurringIdeasFromConcept(concept, ideas, 8);
+    saveConceptsAndIdeas([concept, ...concepts], [...plannedIdeas, ...ideas]);
+    setShowConceptModal(false);
   };
 
   const updateStatus = (id: string, status: LinkedInIdea["status"]) => {
@@ -525,6 +763,19 @@ export default function LinkedInIdeesPage() {
               Ajouter
             </button>
 
+            <button
+              onClick={() => setShowConceptModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+                fontSize: 13, fontWeight: 600, borderRadius: 9, cursor: "pointer",
+                background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", color: "#121a2e",
+                ...jakartaSans,
+              }}
+            >
+              <Repeat size={14} />
+              Concept
+            </button>
+
             {/* Bouton IA */}
             <button
               onClick={() => setShowGenerateModal(true)}
@@ -569,6 +820,26 @@ export default function LinkedInIdeesPage() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        {concepts.length > 0 && (
+          <div style={{ marginBottom: 18, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+            {concepts.map((concept) => {
+              const unitLabel = RECURRENCE_UNITS.find((unit) => unit.value === concept.recurrenceUnit)?.label ?? "semaine(s)";
+              return (
+                <div key={concept.id} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 13, padding: 14, boxShadow: "0px 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#121a2e", letterSpacing: "-0.2px" }}>{concept.title}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(18,26,46,0.45)" }}>Tous les {concept.recurrenceEvery} {unitLabel}</p>
+                    </div>
+                    <span style={{ flexShrink: 0, fontSize: 11, background: "#e0e7ff", color: "#3730a3", padding: "3px 8px", borderRadius: 999, fontWeight: 700 }}>Recurrence</span>
+                  </div>
+                  {concept.description && <p style={{ margin: "9px 0 0", color: "rgba(18,26,46,0.56)", fontSize: 12, lineHeight: 1.5 }}>{concept.description}</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {ideas.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", gap: 16 }}>
             <div style={{ width: 64, height: 64, background: "rgba(18,26,46,0.06)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -625,6 +896,13 @@ export default function LinkedInIdeesPage() {
           onClose={() => setShowAddModal(false)}
         />
       )}
+      {showConceptModal && (
+        <AddConceptModal
+          styles={styles}
+          onSave={handleAddConcept}
+          onClose={() => setShowConceptModal(false)}
+        />
+      )}
       {showGenerateModal && (
         <GenerateModal
           styles={styles}
@@ -648,9 +926,9 @@ function IdeaCard({ idea, onUse, onDelete, onRestore }: {
   onRestore: () => void;
 }) {
   const categoryKey = idea.styleName
-    ? Object.entries(STYLE_CATEGORY_LABELS).find(([, v]) => v === idea.styleName)?.[0]
+    ? Object.entries(STYLE_CATEGORY_LABEL_MAP).find(([, v]) => v === idea.styleName)?.[0]
     : undefined;
-  const ss = categoryKey ? STYLE_CATEGORY_STYLES[categoryKey] : undefined;
+  const ss = categoryKey ? STYLE_CATEGORY_STYLE_MAP[categoryKey] : undefined;
 
   return (
     <div
@@ -681,6 +959,14 @@ function IdeaCard({ idea, onUse, onDelete, onRestore }: {
           </span>
         )}
       </div>
+
+      {idea.imageUrl ? (
+        <img
+          src={idea.imageUrl}
+          alt=""
+          style={{ width: "100%", height: 142, objectFit: "cover", borderRadius: 12, border: "1px solid rgba(18,26,46,0.08)", background: "#f6f6f6" }}
+        />
+      ) : null}
 
       {idea.styleName && ss && (
         <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 20, fontWeight: 500, alignSelf: "flex-start", background: ss.bg, color: ss.color }}>

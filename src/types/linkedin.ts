@@ -1,3 +1,5 @@
+import { DEFAULT_LINKEDIN_PROMPT_STYLES } from "@/lib/linkedin/post-style-prompts";
+
 export interface LinkedInPostAnalytics {
   postUrl?: string;
   publishedDate?: string;
@@ -70,12 +72,19 @@ export interface LinkedInPost {
     content: string;
     createdAt: string;
   }>;
+  editorSnapshots?: Array<{
+    id: string;
+    label: string;
+    content: string;
+    createdAt: string;
+    updatedAt?: string;
+  }>;
 }
 
 export interface LinkedInStyle {
   id: string;
   name: string;
-  category: "storytelling" | "valeur" | "educatif" | "viral" | "engagement" | "data" | "custom";
+  category: "storytelling" | "valeur" | "educatif" | "educatif_carrousel" | "presentation_projet" | "engagement" | "data" | "lead_magnet" | "viral" | "custom";
   description: string;
   example: string;
   prompt: string;
@@ -87,12 +96,26 @@ export interface LinkedInIdea {
   id: string;
   title: string;
   description: string;
+  imageUrl?: string;
+  conceptId?: string;
   styleId?: string;
   styleName?: string;
   scheduledAt?: string;
   status: "new" | "used" | "dismissed";
   generatedAt: string;
   usedAt?: string;
+}
+
+export interface LinkedInConcept {
+  id: string;
+  title: string;
+  description: string;
+  styleId?: string;
+  styleName?: string;
+  recurrenceEvery: number;
+  recurrenceUnit: "days" | "weeks" | "months";
+  isActive: boolean;
+  createdAt: string;
 }
 
 export interface LinkedInCarouselFieldTemplate {
@@ -143,6 +166,7 @@ export interface LinkedInWorkspacePreferences {
 export interface LinkedInWorkspaceData {
   styles: LinkedInStyle[];
   ideas: LinkedInIdea[];
+  concepts: LinkedInConcept[];
   carouselPageTemplates: LinkedInCarouselPageTemplate[];
   carouselTemplates: LinkedInCarouselTemplate[];
   prospects: LinkedInProspect[];
@@ -154,6 +178,14 @@ export interface ConversationMessage {
   id: string;
   sender: "me" | "them";
   content: string;
+  images?: string[];
+  links?: string[];
+  externalId?: string;
+  senderName?: string;
+  rawHash?: string;
+  source?: "manual" | "linkedin_chrome_extension" | "agenceflow";
+  pendingLinkedInSend?: boolean;
+  confirmedSentAt?: string;
   sentAt: string;
 }
 
@@ -181,6 +213,13 @@ export interface LinkedInProspect {
   context?: string;
   generatedMessage: string;
   customMessage?: string;
+  avatarUrl?: string;
+  headline?: string;
+  pendingLinkedInSend?: {
+    id: string;
+    text: string;
+    createdAt: string;
+  };
   isManual?: boolean; // true if the message was written manually
   skeletonId?: string; // skeleton used when generating this message
   status:
@@ -210,7 +249,7 @@ export const PROSPECT_TO_LEAD_STATUS: Record<string, string> = {
   deal_lost: "lost",
 };
 
-export const DEFAULT_STYLES: LinkedInStyle[] = [
+const LEGACY_DEFAULT_STYLES: LinkedInStyle[] = [
   {
     id: "storytelling",
     name: "Storytelling",
@@ -256,6 +295,28 @@ export const DEFAULT_STYLES: LinkedInStyle[] = [
     createdAt: new Date().toISOString(),
   },
   {
+    id: "educatif_carrousel",
+    name: "Educatif carrousel",
+    category: "educatif_carrousel",
+    description: "Structure pedagogique slide par slide, pensee pour les carrousels LinkedIn",
+    example: "Slide 1: Le probleme\nSlide 2: L'erreur\nSlide 3: La methode\nSlide 4: L'exemple",
+    prompt:
+      "Cree un contenu educatif pense pour un carrousel LinkedIn. Structure la logique en slides courtes, chacune avec une seule idee claire. Commence par un probleme ou une promesse concrete, puis deroule une methode simple, progressive et actionnable. Garde des titres courts, un ton expert accessible, et termine par une synthese ou un CTA.",
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "presentation_projet",
+    name: "Presentation de projet",
+    category: "presentation_projet",
+    description: "Met en avant un projet, une realisation ou un cas client avec un angle business",
+    example: "On a repris une landing qui convertissait peu.\n\nObjectif: clarifier l'offre et augmenter les demandes entrantes.",
+    prompt:
+      "Cree un post LinkedIn de presentation de projet. Structure: contexte du projet, probleme initial, decisions prises, resultat ou enseignement, puis CTA. Mets l'accent sur la clarte, les choix concrets et la valeur business. Evite le ton portfolio froid: raconte ce que le projet prouve.",
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: "engagement",
     name: "Question / Engagement",
     category: "engagement",
@@ -277,15 +338,33 @@ export const DEFAULT_STYLES: LinkedInStyle[] = [
     isDefault: true,
     createdAt: new Date().toISOString(),
   },
+  {
+    id: "lead_magnet",
+    name: "Lead magnet",
+    category: "lead_magnet",
+    description: "Post concu pour donner envie de recuperer une ressource ou un contenu premium",
+    example: "J'ai cree une checklist pour auditer une landing page en 12 minutes.\n\nSi tu la veux, commente CHECKLIST.",
+    prompt:
+      "Cree un post LinkedIn oriente lead magnet. Commence par un probleme concret ou un resultat desirable, montre la valeur de la ressource, liste ce que la personne va obtenir, puis termine par un CTA clair pour demander la ressource. Le ton doit rester utile et credible, pas agressif.",
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+  },
 ];
+
+void LEGACY_DEFAULT_STYLES;
+
+export const DEFAULT_STYLES = DEFAULT_LINKEDIN_PROMPT_STYLES as LinkedInStyle[];
 
 export const STYLE_CATEGORY_COLORS: Record<string, string> = {
   storytelling: "bg-purple-100 text-purple-700",
   valeur: "bg-blue-100 text-blue-700",
   educatif: "bg-teal-100 text-teal-700",
+  educatif_carrousel: "bg-cyan-100 text-cyan-700",
+  presentation_projet: "bg-slate-100 text-slate-700",
   viral: "bg-red-100 text-red-700",
   engagement: "bg-orange-100 text-orange-700",
   data: "bg-indigo-100 text-indigo-700",
+  lead_magnet: "bg-emerald-100 text-emerald-700",
   custom: "bg-gray-100 text-gray-700",
 };
 
