@@ -46,7 +46,6 @@ const btnGrad = {
 };
 
 function getLoginButtonStyle(disabled = false, loading = false) {
-  const dealClosed = prospects.filter((p) => p.status === "deal_closed").length;
   return {
     width: "100%",
     padding: "15px 20px",
@@ -116,6 +115,7 @@ function pickBestSkeleton(skeletons: ProspectionSkeleton[], actionType: string):
 
 function getStats(prospects: LinkedInProspect[]) {
   const sent = prospects.filter((p) => p.status !== "draft").length;
+  const dealClosed = prospects.filter((p) => p.status === "deal_closed").length;
   const positive = prospects.filter((p) =>
     ["accepted", "replied", "conversation", "deal_closed"].includes(p.status)
   ).length;
