@@ -4471,7 +4471,7 @@ export default function PostsPage() {
                 </button>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: STATUS_STYLES.draft.bg, color: STATUS_STYLES.draft.color, marginLeft: "auto" }}>Brouillon</span>
               </div>
-              <div style={{ position: "relative", width: "100%", maxWidth: 700, flex: 1, minHeight: 0, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 20, background: "#fff", boxShadow: "none", padding: 20, display: "flex", flexDirection: "column", overflow: "hidden", zIndex: 1 }}>
+              <div style={{ position: "relative", width: "100%", maxWidth: 700, flex: 1, minHeight: 0, border: "1px solid rgba(18,26,46,0.08)", borderRadius: 20, background: "#fff", boxShadow: "none", padding: 20, display: "flex", flexDirection: "column", overflowX: "hidden", overflowY: "auto", zIndex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: "50%", background: "#d9d9d9", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, letterSpacing: "-0.03em", flexShrink: 0 }}>LS</div>
                   <div style={{ flex: 1, display: "flex", alignItems: "center", minHeight: 42 }}>
@@ -4499,8 +4499,27 @@ export default function PostsPage() {
                     setSelectedChatText(text);
                     setEditorPanelMode("conversation");
                   }}
-                  style={{ ...inp, flex: 1, minHeight: 0, overflowY: "auto", background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: "0 0 96px", resize: "none", whiteSpace: "pre-wrap", fontFamily: 'Arial, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}
+                  style={{ ...inp, flex: 1, minHeight: 0, overflowY: "auto", background: "#fff", border: "none", lineHeight: 1.55, fontSize: 15, padding: "0 0 24px", resize: "none", whiteSpace: "pre-wrap", fontFamily: 'Arial, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' }}
                 />
+                <div style={{ marginTop: 16, marginBottom: 16 }}>
+                  {draftMedia ? (
+                  <div onMouseEnter={() => setHoveredDraftImage(true)} onMouseLeave={() => setHoveredDraftImage(false)} style={{ position: "relative", width: "100%", borderRadius: 16, overflow: "hidden", background: "#f5f7fa" }}>
+                    <img src={draftMedia.url} alt="Image du post" style={{ display: "block", width: "100%", height: "auto" }} />
+                    <button type="button" onClick={() => setDraftMedia(null)} style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.14)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: hoveredDraftImage ? 1 : 0, transform: hoveredDraftImage ? "translateY(0px)" : "translateY(-6px)", transition: "opacity 0.18s ease, transform 0.18s ease" }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label style={{ display: "none", width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer" }}>
+                    <ImageIcon size={16} />
+                    <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleDraftMedia(file);
+                      event.currentTarget.value = "";
+                    }} />
+                  </label>
+                )}
+                </div>
                 <div style={{ position: "sticky", bottom: 0, zIndex: 3, background: "#fff", paddingTop: 12 }}>
                 <div style={{ height: 1, background: "rgba(18,26,46,0.04)", margin: "0 0 12px" }} />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -4519,25 +4538,6 @@ export default function PostsPage() {
                   </div>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(18,26,46,0.42)" }}>{countWords(generatedContent)} mots</span>
                 </div>
-                </div>
-                <div style={{ marginTop: 16 }}>
-                  {draftMedia ? (
-                  <div onMouseEnter={() => setHoveredDraftImage(true)} onMouseLeave={() => setHoveredDraftImage(false)} style={{ position: "relative", width: "100%", minHeight: 240, borderRadius: 16, overflow: "hidden", background: "#f5f7fa" }}>
-                    <div style={{ width: "100%", height: 240, background: `url(${draftMedia.url}) center / cover` }} />
-                    <button type="button" onClick={() => setDraftMedia(null)} style={{ position: "absolute", top: 12, right: 12, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(18,26,46,0.14)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", opacity: hoveredDraftImage ? 1 : 0, transform: hoveredDraftImage ? "translateY(0px)" : "translateY(-6px)", transition: "opacity 0.18s ease, transform 0.18s ease" }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <label style={{ display: "none", width: 34, height: 34, borderRadius: 999, border: 0, background: "#F6F6F6", alignItems: "center", justifyContent: "center", color: "rgba(18,26,46,0.58)", cursor: "pointer" }}>
-                    <ImageIcon size={16} />
-                    <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) void handleDraftMedia(file);
-                      event.currentTarget.value = "";
-                    }} />
-                  </label>
-                )}
                 </div>
               </div>
               <div style={{ display: "none" }}>
@@ -4845,9 +4845,10 @@ export default function PostsPage() {
                       </div>
                     ) : null}
                     {analytics.mediaPreviewUrl && (
-                      <div
-                        style={{ width: "100%", height: 168, borderRadius: 11, background: `url(${analytics.mediaPreviewUrl}) center / cover`, boxShadow: "0 12px 26px rgba(18,26,46,0.1)" }}
-                        aria-label="Apercu image du post"
+                      <img
+                        src={analytics.mediaPreviewUrl}
+                        alt="Apercu image du post"
+                        style={{ display: "block", width: "100%", height: "auto", borderRadius: 11, boxShadow: "0 12px 26px rgba(18,26,46,0.1)" }}
                       />
                     )}
 
@@ -5610,5 +5611,4 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
     </div>
   );
 }
-
 
