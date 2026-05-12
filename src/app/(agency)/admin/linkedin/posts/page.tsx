@@ -366,7 +366,6 @@ function countWords(text: string) {
 
 const jk: CSSProperties = { fontFamily: '"Plus Jakarta Sans", sans-serif' };
 const inp: CSSProperties = { width: "100%", background: "#f6f6f6", border: "1px solid rgba(0,0,0,0.09)", borderRadius: 9, padding: "8px 12px", fontSize: 13, color: "#121a2e", outline: "none", boxSizing: "border-box", fontFamily: '"Plus Jakarta Sans", sans-serif' };
-const btnGrad: CSSProperties = { background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", border: "1px solid #2f4d9d", color: "#fff", borderRadius: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: '"Plus Jakarta Sans", sans-serif', fontWeight: 600 };
 
 const STATUS_STYLES: Record<"draft" | "scheduled" | "published", { bg: string; color: string }> = {
   draft: { bg: "#f6f6f6", color: "rgba(18,26,46,0.5)" },
@@ -3643,10 +3642,9 @@ export default function PostsPage() {
           Revenir aux carrousels
         </button>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-          <button type="button" onClick={() => void generatePostFromCurrentCarousel(false)} disabled={generating || generatedSlides.length === 0} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(0,0,0,0.06)", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: generating || generatedSlides.length === 0 ? "not-allowed" : "pointer", opacity: generating || generatedSlides.length === 0 ? 0.7 : 1 }}>
-            {generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />}
+          <ClientBlueButton compact type="button" onClick={() => void generatePostFromCurrentCarousel(false)} disabled={generating || generatedSlides.length === 0} icon={generating ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Wand2 size={14} />} wrapperStyle={{ width: "auto" }} style={{ minHeight: 40, padding: "0 18px", fontSize: 13, fontWeight: 650 }}>
             Generer le format long
-          </button>
+          </ClientBlueButton>
           <button type="button" onClick={downloadCurrentCarousel} disabled={carouselDownloading || generatedSlides.length === 0} style={{ minHeight: 40, borderRadius: 10, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", boxShadow: "0px 4px 12px rgba(18,26,46,0.06)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: carouselDownloading || generatedSlides.length === 0 ? "not-allowed" : "pointer", opacity: carouselDownloading || generatedSlides.length === 0 ? 0.55 : 1 }}>
             {carouselDownloading ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Download size={15} />}
             Telecharger
@@ -4449,10 +4447,9 @@ export default function PostsPage() {
                 <button type="button" onClick={() => { setViralityOpen(true); if (!viralityResult && generatedContent.trim()) void analyzeVirality(); }} title="Statistiques predites" style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "#121a2e", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0px 4px 12px rgba(18,26,46,0.06)" }}>
                   <BarChart3 size={16} />
                 </button>
-                <button type="button" onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim()} style={{ minHeight: 40, borderRadius: 10, border: "1px solid #2f4d9d", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), inset 0px 3px 0px 0px rgba(255,255,255,0.5), 0px 4px 12px rgba(1,71,255,0.25)", padding: "0 18px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 650, fontFamily: '"Plus Jakarta Sans", sans-serif', cursor: saving || !generatedContent.trim() ? "not-allowed" : "pointer", opacity: saving || !generatedContent.trim() ? 0.7 : 1 }}>
-                  <CalendarIcon size={15} />
+                <ClientBlueButton compact type="button" onClick={() => openScheduleOverlay()} disabled={saving || !generatedContent.trim()} icon={<CalendarIcon size={15} />} wrapperStyle={{ width: "auto" }} style={{ minHeight: 40, padding: "0 18px", fontSize: 13, fontWeight: 650 }}>
                   Planifier
-                </button>
+                </ClientBlueButton>
               </div>
             </div>
             <div
@@ -5024,10 +5021,9 @@ export default function PostsPage() {
                   <textarea value={viralityImageDescription} onChange={(event) => setViralityImageDescription(event.target.value)} rows={4} placeholder="L'IA de vision remplira ce champ automatiquement. Tu peux le corriger avant de relancer l'analyse." style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", background: "#fbfbfb", padding: 14, fontSize: 13, lineHeight: 1.5, color: "#121a2e", outline: "none", resize: "vertical", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
                 </label>
               )}
-              <button type="button" onClick={() => void analyzeVirality()} disabled={viralityLoading || !generatedContent.trim()} style={{ minHeight: 46, borderRadius: 14, border: "1px solid #2f4d9d", background: "linear-gradient(146.81deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)", color: "#fff", boxShadow: "inset 0px -3px 0px #0e42c8, inset 0px 2px 6px 4px rgba(0,0,0,0.08), 0px 12px 28px rgba(1,71,255,0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, fontWeight: 800, cursor: viralityLoading || !generatedContent.trim() ? "not-allowed" : "pointer", opacity: viralityLoading || !generatedContent.trim() ? 0.65 : 1 }}>
-                {viralityLoading ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <BarChart3 size={15} />}
+              <ClientBlueButton type="button" onClick={() => void analyzeVirality()} disabled={viralityLoading || !generatedContent.trim()} loading={viralityLoading} icon={<BarChart3 size={15} />} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 46, fontSize: 13, fontWeight: 800 }}>
                 {viralityLoading ? "Analyse..." : "Analyser le post"}
-              </button>
+              </ClientBlueButton>
               {viralityError && <p style={{ margin: 0, color: "#c53030", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 700 }}>{viralityError}</p>}
               {viralityResult && (
                 <>
@@ -5168,9 +5164,9 @@ export default function PostsPage() {
             <a href="/admin/linkedin/statistiques" style={{ fontSize: 12, color: "#0147ff", textDecoration: "none" }}>
               Ouvrir l'onglet Statistiques pour l'import `.xlsx/.csv` complet
             </a>
-            <button onClick={() => saveStats(statsPost.id)} style={{ ...btnGrad, width: "100%", padding: "10px 0", fontSize: 13 }}>
+            <ClientBlueButton compact type="button" onClick={() => saveStats(statsPost.id)} wrapperStyle={{ width: "100%" }} style={{ width: "100%", minHeight: 40, fontSize: 13 }}>
               Sauvegarder
-            </button>
+            </ClientBlueButton>
           </div>
         </div>
       )}
@@ -5611,4 +5607,3 @@ function SlidePreview({ content, slideNum, totalSlides, onChange }: { content: s
     </div>
   );
 }
-
