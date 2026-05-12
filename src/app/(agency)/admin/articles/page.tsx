@@ -86,7 +86,7 @@ function BlueCta({ children, onClick }: { children: string; onClick?: () => void
         alignItems: "flex-start",
         padding: 6,
         gap: 10,
-        width: 247,
+        width: 286,
         height: 64,
         background: "#E1E5EE",
         boxShadow: "inset 0px 0px 2px rgba(0,0,0,0.1)",
@@ -104,7 +104,7 @@ function BlueCta({ children, onClick }: { children: string; onClick?: () => void
           alignItems: "center",
           padding: "18px 24px",
           gap: 12,
-          width: 235,
+          width: 274,
           height: 52,
           background: "linear-gradient(96.83deg, #4E7EFA 9.99%, #0147FF 82.49%)",
           border: "1px solid #2F4D9D",
@@ -115,6 +115,7 @@ function BlueCta({ children, onClick }: { children: string; onClick?: () => void
           fontWeight: 500,
           fontSize: 16,
           lineHeight: "102.88%",
+          whiteSpace: "nowrap",
           cursor: "pointer",
         }}
       >
