@@ -14,6 +14,7 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
+import { fetchRemoteArticleConfig } from "@/lib/articles/settings";
 
 type ArticleTab = "actions" | "ai";
 type ArticlePage = {
@@ -45,9 +46,6 @@ const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,
 
 const articlePages: ArticlePage[] = [];
 const actionEntries: ActionEntry[] = [];
-const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
-const CONNECTION_STORAGE_KEY = "agenceflow.articlePublishingConnection.v1";
-
 function formatDuration(ms?: number) {
   if (!ms) return "0s";
   const seconds = Math.round(ms / 1000);
@@ -147,18 +145,8 @@ export default function ArticlesPage() {
 
   useEffect(() => {
     async function loadCloudflarePages() {
-      const rawConnection = window.localStorage.getItem(CONNECTION_STORAGE_KEY);
-      const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-
-      if (!rawConnection || !rawSettings) {
-        setPagesLoading(false);
-        setPagesMessage("Connecte Cloudflare dans Parametres pour afficher automatiquement les pages articles.");
-        return;
-      }
-
       try {
-        const connection = JSON.parse(rawConnection) as { cloudflareConnected?: boolean };
-        const settings = JSON.parse(rawSettings) as { articleDomain?: string; cloudflareDestination?: string };
+        const { settings, connection } = await fetchRemoteArticleConfig();
         if (!connection.cloudflareConnected || !settings.articleDomain) {
           setPagesLoading(false);
           setPagesMessage("Cloudflare n'est pas encore connecte pour les articles.");
@@ -198,8 +186,7 @@ export default function ArticlesPage() {
       if (detectedPages.length === 0) return;
 
       try {
-        const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-        const settings = rawSettings ? JSON.parse(rawSettings) as { analyticsSiteId?: string } : {};
+        const { settings } = await fetchRemoteArticleConfig();
         const response = await fetch("/api/articles/analytics/summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

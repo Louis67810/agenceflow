@@ -20,26 +20,21 @@ import {
   UploadCloud,
   Workflow,
 } from "lucide-react";
+import {
+  DEFAULT_ARTICLE_SETTINGS,
+  fetchRemoteArticleConfig,
+  hasMeaningfulArticleSettings,
+  loadLocalArticleConnection,
+  loadLocalArticleSettings,
+  normalizeArticleConnection,
+  normalizeArticleSettings,
+  saveLocalArticleConfig,
+  saveRemoteArticleConfig,
+  type ArticlePublishingConnection,
+  type ArticlePublishingSettings,
+} from "@/lib/articles/settings";
 
 type ConnectionState = "idle" | "testing" | "connected" | "error";
-
-type ArticleFramerSettings = {
-  projectId: string;
-  collectionName: string;
-  apiToken: string;
-  siteUrl: string;
-  cloudflareUploadUrl: string;
-  cloudflareDestination: string;
-  cloudflareAccountId: string;
-  cloudflareZoneId: string;
-  cloudflareToken: string;
-  articleDomain: string;
-  googleAnalyticsPropertyId: string;
-  googleAnalyticsMeasurementId: string;
-  googleAnalyticsApiSecret: string;
-  googleAnalyticsServiceAccountJson: string;
-  analyticsSiteId: string;
-};
 
 type TrackingDiagnostic = {
   ok: boolean;
@@ -77,27 +72,8 @@ type TrackingDiagnostic = {
   recommendations: string[];
 };
 
-const STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
-const CONNECTION_STORAGE_KEY = "agenceflow.articlePublishingConnection.v1";
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
-const emptySettings: ArticleFramerSettings = {
-  projectId: "",
-  collectionName: "Articles",
-  apiToken: "",
-  siteUrl: "",
-  cloudflareUploadUrl: "",
-  cloudflareDestination: "/articles/{slug}/index.html",
-  cloudflareAccountId: "",
-  cloudflareZoneId: "",
-  cloudflareToken: "",
-  articleDomain: "",
-  googleAnalyticsPropertyId: "",
-  googleAnalyticsMeasurementId: "",
-  googleAnalyticsApiSecret: "",
-  googleAnalyticsServiceAccountJson: "",
-  analyticsSiteId: "ruff-agency",
-};
 
 const inputStyle = {
   width: "100%",
@@ -233,7 +209,8 @@ function TextAreaField({
 }
 
 export default function ArticleSettingsPage() {
-  const [settings, setSettings] = useState<ArticleFramerSettings>(emptySettings);
+  const [settings, setSettings] = useState<ArticlePublishingSettings>(DEFAULT_ARTICLE_SETTINGS);
+  const [connection, setConnection] = useState<ArticlePublishingConnection>({});
   const [framerState, setFramerState] = useState<ConnectionState>("idle");
   const [cloudflareState, setCloudflareState] = useState<ConnectionState>("idle");
   const [googleAnalyticsState, setGoogleAnalyticsState] = useState<ConnectionState>("idle");
@@ -244,19 +221,74 @@ export default function ArticleSettingsPage() {
 
   useEffect(() => {
     setAppOrigin(window.location.origin);
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return;
-    try {
-      setSettings({ ...emptySettings, ...JSON.parse(stored) });
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+    const localSettings = loadLocalArticleSettings();
+    const localConnection = loadLocalArticleConnection();
+    if (localSettings) setSettings(localSettings);
+    if (localConnection) {
+      setConnection(localConnection);
+      if (typeof localConnection.cloudflareConnected === "boolean") {
+        setCloudflareState(localConnection.cloudflareConnected ? "connected" : "error");
+      }
+      if (typeof localConnection.googleAnalyticsConnected === "boolean") {
+        setGoogleAnalyticsState(localConnection.googleAnalyticsConnected ? "connected" : "error");
+      }
     }
+
+    let cancelled = false;
+    async function loadSettings() {
+      try {
+        const remote = await fetchRemoteArticleConfig();
+        const shouldMigrateLocal = localSettings && hasMeaningfulArticleSettings(localSettings);
+        const nextSettings = shouldMigrateLocal ? localSettings : remote.settings;
+        const nextConnection = normalizeArticleConnection({
+          ...remote.connection,
+          ...(localConnection ?? {}),
+        });
+        if (shouldMigrateLocal || localConnection) {
+          await saveRemoteArticleConfig(nextSettings, nextConnection);
+        }
+        if (cancelled) return;
+        setSettings(nextSettings);
+        setConnection(nextConnection);
+        if (typeof nextConnection.cloudflareConnected === "boolean") {
+          setCloudflareState(nextConnection.cloudflareConnected ? "connected" : "error");
+        }
+        if (typeof nextConnection.googleAnalyticsConnected === "boolean") {
+          setGoogleAnalyticsState(nextConnection.googleAnalyticsConnected ? "connected" : "error");
+        }
+        saveLocalArticleConfig(nextSettings, nextConnection);
+        setMessage("Parametres articles synchronises avec Supabase.");
+      } catch (error) {
+        if (cancelled) return;
+        setMessage(error instanceof Error ? error.message : "Impossible de synchroniser les parametres articles avec Supabase.");
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  function updateSetting<K extends keyof ArticleFramerSettings>(key: K, value: ArticleFramerSettings[K]) {
+  function persistConfig(nextSettings: ArticlePublishingSettings, nextConnection = connection) {
+    saveLocalArticleConfig(nextSettings, nextConnection);
+    void saveRemoteArticleConfig(nextSettings, nextConnection).catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Impossible de sauvegarder dans Supabase.");
+    });
+  }
+
+  function persistConnection(nextConnection: ArticlePublishingConnection) {
+    setConnection(nextConnection);
+    saveLocalArticleConfig(settings, nextConnection);
+    void saveRemoteArticleConfig(settings, nextConnection).catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Impossible de sauvegarder l'etat des connexions dans Supabase.");
+    });
+  }
+
+  function updateSetting<K extends keyof ArticlePublishingSettings>(key: K, value: ArticlePublishingSettings[K]) {
     setSettings((current) => {
-      const next = { ...current, [key]: value };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      const next = normalizeArticleSettings({ ...current, [key]: value });
+      persistConfig(next);
       return next;
     });
     if (key.toString().startsWith("googleAnalytics")) {
@@ -311,6 +343,7 @@ export default function ArticleSettingsPage() {
     let framerMessage = "";
     let cloudflareMessage = "";
     let googleAnalyticsMessage = "";
+    let nextConnection = normalizeArticleConnection(connection);
 
     try {
       const res = await fetch("/api/articles/framer/test-connection", {
@@ -352,37 +385,31 @@ export default function ArticleSettingsPage() {
       if (!res.ok || !data.connected) {
         setCloudflareState("error");
         cloudflareMessage = data.message || "Cloudflare non valide.";
-        window.localStorage.setItem(
-          CONNECTION_STORAGE_KEY,
-          JSON.stringify({
-            cloudflareConnected: false,
-            cloudflareMessage,
-            testedAt: new Date().toISOString(),
-          })
-        );
+        nextConnection = normalizeArticleConnection({
+          ...nextConnection,
+          cloudflareConnected: false,
+          cloudflareMessage,
+          testedAt: new Date().toISOString(),
+        });
       } else {
         setCloudflareState("connected");
         cloudflareMessage = data.message || "Cloudflare connecte.";
-        window.localStorage.setItem(
-          CONNECTION_STORAGE_KEY,
-          JSON.stringify({
-            cloudflareConnected: true,
-            cloudflareMessage,
-            testedAt: new Date().toISOString(),
-          })
-        );
+        nextConnection = normalizeArticleConnection({
+          ...nextConnection,
+          cloudflareConnected: true,
+          cloudflareMessage,
+          testedAt: new Date().toISOString(),
+        });
       }
     } catch {
       setCloudflareState("error");
       cloudflareMessage = "Impossible de tester Cloudflare depuis l'application.";
-      window.localStorage.setItem(
-        CONNECTION_STORAGE_KEY,
-        JSON.stringify({
-          cloudflareConnected: false,
-          cloudflareMessage,
-          testedAt: new Date().toISOString(),
-        })
-      );
+      nextConnection = normalizeArticleConnection({
+        ...nextConnection,
+        cloudflareConnected: false,
+        cloudflareMessage,
+        testedAt: new Date().toISOString(),
+      });
     }
 
     try {
@@ -404,20 +431,24 @@ export default function ArticleSettingsPage() {
         setGoogleAnalyticsState("connected");
         googleAnalyticsMessage = data.message || "Google Analytics connecte.";
       }
-      window.localStorage.setItem(
-        CONNECTION_STORAGE_KEY,
-        JSON.stringify({
-          ...(JSON.parse(window.localStorage.getItem(CONNECTION_STORAGE_KEY) || "{}") as Record<string, unknown>),
-          googleAnalyticsConnected: Boolean(res.ok && data.connected),
-          googleAnalyticsMessage,
-          testedAt: new Date().toISOString(),
-        })
-      );
+      nextConnection = normalizeArticleConnection({
+        ...nextConnection,
+        googleAnalyticsConnected: Boolean(res.ok && data.connected),
+        googleAnalyticsMessage,
+        testedAt: new Date().toISOString(),
+      });
     } catch {
       setGoogleAnalyticsState("error");
       googleAnalyticsMessage = "Impossible de tester Google Analytics depuis l'application.";
+      nextConnection = normalizeArticleConnection({
+        ...nextConnection,
+        googleAnalyticsConnected: false,
+        googleAnalyticsMessage,
+        testedAt: new Date().toISOString(),
+      });
     }
 
+    persistConnection(nextConnection);
     setMessage(`Framer : ${framerMessage} Cloudflare : ${cloudflareMessage} Google Analytics : ${googleAnalyticsMessage}`);
   }
 

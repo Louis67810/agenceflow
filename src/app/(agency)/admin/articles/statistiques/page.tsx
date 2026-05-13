@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, Users, X } from "lucide-react";
+import { fetchRemoteArticleConfig } from "@/lib/articles/settings";
 
 type DailyStat = {
   date: string;
@@ -46,7 +47,6 @@ type GoogleAnalyticsPageStats = {
 
 const jk = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 const cardShadow = "0px 20px 12px rgba(0,0,0,0.02), 0px 9px 9px rgba(0,0,0,0.03), 0px 2px 5px rgba(0,0,0,0.03)";
-const SETTINGS_STORAGE_KEY = "agenceflow.articlePublishingSettings.v1";
 const DATE_RANGES = [
   { label: "7 jours", value: 7 },
   { label: "30 jours", value: 30 },
@@ -220,12 +220,7 @@ export default function ArticleStatsPage() {
     async function loadStats() {
       setLoading(true);
       try {
-        const rawSettings = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-        const settings = rawSettings ? JSON.parse(rawSettings) as {
-          analyticsSiteId?: string;
-          googleAnalyticsPropertyId?: string;
-          googleAnalyticsServiceAccountJson?: string;
-        } : {};
+        const { settings } = await fetchRemoteArticleConfig();
         const response = await fetch("/api/articles/analytics/summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
