@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, Users, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Clock3, ExternalLink, Eye, MousePointerClick, Search, Users, X } from "lucide-react";
 import { fetchRemoteArticleConfig } from "@/lib/articles/settings";
 
 type DailyStat = {
@@ -13,6 +13,7 @@ type DailyStat = {
   clicks: number;
   formSubmits: number;
   avgDurationMs: number;
+  avgScrollDepth?: number;
   maxScrollDepth: number;
 };
 
@@ -105,7 +106,8 @@ function mergeDailyStats(left: DailyStat[], right: DailyStat[]) {
       visitors: Math.max(existing.visitors, stat.visitors),
       clicks: existing.clicks + stat.clicks,
       formSubmits: existing.formSubmits + stat.formSubmits,
-      avgDurationMs: Math.max(existing.avgDurationMs, stat.avgDurationMs),
+      avgDurationMs: Math.round((existing.avgDurationMs + stat.avgDurationMs) / 2),
+      avgScrollDepth: Math.round(((existing.avgScrollDepth ?? existing.maxScrollDepth) + (stat.avgScrollDepth ?? stat.maxScrollDepth)) / 2),
       maxScrollDepth: Math.max(existing.maxScrollDepth, stat.maxScrollDepth),
     } : stat);
   }
@@ -215,6 +217,7 @@ export default function ArticleStatsPage() {
   const [message, setMessage] = useState("Chargement des statistiques...");
   const [googleAnalyticsMessage, setGoogleAnalyticsMessage] = useState("Google Analytics non charge.");
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     async function loadStats() {
@@ -270,6 +273,15 @@ export default function ArticleStatsPage() {
   }, [dateRange]);
 
   const uniqueSummaries = useMemo(() => dedupeSummaries(summaries), [summaries]);
+  const filteredSummaries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return uniqueSummaries;
+    return uniqueSummaries.filter((page) => (
+      titleFromPath(page.path).toLowerCase().includes(query)
+      || page.path.toLowerCase().includes(query)
+      || page.url.toLowerCase().includes(query)
+    ));
+  }, [searchQuery, uniqueSummaries]);
   const selectedPage = uniqueSummaries.find((page) => page.path === selectedPath) ?? null;
   const googleAnalyticsByPath = useMemo(() => new Map(googleAnalyticsPages.map((page) => [page.path, page])), [googleAnalyticsPages]);
   const selectedGaPage = selectedPage ? googleAnalyticsByPath.get(selectedPage.path) ?? null : null;
@@ -340,7 +352,7 @@ export default function ArticleStatsPage() {
                 { label: "Visiteurs", value: formatNumber(selectedPage.visitorsLastWeek) },
                 { label: "Clics", value: formatNumber(selectedPage.clicksLastWeek) },
                 { label: "Temps moyen", value: formatDuration(selectedPage.avgDurationMs) },
-                { label: "Scroll max", value: `${selectedPage.maxScrollDepth}%` },
+                { label: "Scroll moyen", value: `${selectedPage.maxScrollDepth}%` },
               ].map((metric) => (
                 <div key={metric.label} style={{ borderRadius: 12, border: "1px solid rgba(18,26,46,0.08)", background: "#fbfbfb", padding: 14 }}>
                   <span style={{ display: "block", fontSize: 12, color: "rgba(18,26,46,0.48)", fontFamily: "Inter, sans-serif" }}>{metric.label}</span>
@@ -400,8 +412,8 @@ export default function ArticleStatsPage() {
                 <MiniLineChart data={selectedPage.dailyStats ?? []} metric="avgDurationMs" color="#7c3aed" />
               </article>
               <article style={{ borderRadius: 13, border: "1px solid rgba(18,26,46,0.08)", background: "#fff", padding: 20 }}>
-                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Profondeur de scroll</h3>
-                <MiniLineChart data={selectedPage.dailyStats ?? []} metric="maxScrollDepth" color="#0147ff" />
+                <h3 style={{ margin: "0 0 14px", fontSize: 18, fontWeight: 750, color: "#121a2e" }}>Profondeur de scroll moyenne</h3>
+                <MiniLineChart data={(selectedPage.dailyStats ?? []).map((stat) => ({ ...stat, maxScrollDepth: stat.avgScrollDepth ?? stat.maxScrollDepth }))} metric="maxScrollDepth" color="#0147ff" />
               </article>
             </div>
           </div>
@@ -413,6 +425,15 @@ export default function ArticleStatsPage() {
         <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
           <h2 style={{ margin: 0, fontSize: 20, lineHeight: "26px", fontWeight: 750 }}>Performance par page</h2>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <label style={{ minHeight: 38, width: 260, borderRadius: 10, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "flex", alignItems: "center", gap: 9, padding: "0 12px", color: "rgba(18,26,46,0.46)", fontFamily: "Inter, sans-serif" }}>
+              <Search size={15} />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Rechercher une page"
+                style={{ minWidth: 0, flex: 1, border: 0, outline: "none", background: "transparent", color: "#121a2e", fontSize: 13, fontFamily: "Inter, sans-serif" }}
+              />
+            </label>
             <div style={{ display: "inline-flex", alignItems: "center", padding: 3, borderRadius: 999, background: "#f0f0f0" }}>
               {DATE_RANGES.map((range) => (
                 <button key={range.value} type="button" onClick={() => setDateRange(range.value)} style={{ minHeight: 32, borderRadius: 999, border: dateRange === range.value ? "1px solid rgba(0,0,0,0.12)" : 0, background: dateRange === range.value ? "#fff" : "transparent", padding: "0 13px", color: dateRange === range.value ? "#121a2e" : "rgba(18,26,46,0.52)", fontSize: 12, fontWeight: 700, fontFamily: "Inter, sans-serif", cursor: "pointer" }}>
@@ -440,7 +461,11 @@ export default function ArticleStatsPage() {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            {uniqueSummaries.map((page) => (
+            {filteredSummaries.length === 0 ? (
+              <div style={{ minHeight: 220, display: "grid", placeItems: "center", color: "rgba(18,26,46,0.42)", fontSize: 14 }}>
+                Aucune page ne correspond a la recherche.
+              </div>
+            ) : filteredSummaries.map((page) => (
               <button key={page.path} type="button" onClick={() => setSelectedPath(page.path)} style={{ width: "100%", minHeight: 76, padding: "0 28px", border: 0, borderBottom: "1px solid rgba(18,26,46,0.08)", background: "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 1fr) repeat(6, auto)", gap: 18, alignItems: "center", fontFamily: "Inter, sans-serif", textAlign: "left", cursor: "pointer" }}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "block", color: "#121a2e", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{titleFromPath(page.path)}</strong>
@@ -450,7 +475,7 @@ export default function ArticleStatsPage() {
                 <span>{page.visitorsLastWeek} visiteurs</span>
                 <span>{page.clicksLastWeek} clics</span>
                 <span>{formatDuration(page.avgDurationMs)}</span>
-                <span>{page.maxScrollDepth}% scroll</span>
+                <span>{page.maxScrollDepth}% scroll moyen</span>
                 <span>{googleAnalyticsByPath.get(page.path)?.organicSessions ?? 0} SEO</span>
               </button>
             ))}
