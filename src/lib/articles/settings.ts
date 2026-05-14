@@ -97,8 +97,28 @@ export function saveLocalArticleConfig(settings: ArticlePublishingSettings, conn
   }
 }
 
+async function articleConfigFetch(url: string, options: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    ...((options.headers as Record<string, string> | undefined) ?? {}),
+  };
+
+  if (typeof window !== "undefined") {
+    const { getAccessToken } = await import("@/lib/supabase/client");
+    const token = await getAccessToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+}
+
 export async function fetchRemoteArticleConfig() {
-  const res = await fetch("/api/articles/settings-store", { method: "GET" });
+  const res = await articleConfigFetch("/api/articles/settings-store", { method: "GET" });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Impossible de charger les parametres articles.");
   return {
@@ -111,7 +131,7 @@ export async function saveRemoteArticleConfig(
   settings: ArticlePublishingSettings,
   connection?: ArticlePublishingConnection
 ) {
-  const res = await fetch("/api/articles/settings-store", {
+  const res = await articleConfigFetch("/api/articles/settings-store", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

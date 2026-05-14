@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -211,6 +211,7 @@ function TextAreaField({
 export default function ArticleSettingsPage() {
   const [settings, setSettings] = useState<ArticlePublishingSettings>(DEFAULT_ARTICLE_SETTINGS);
   const [connection, setConnection] = useState<ArticlePublishingConnection>({});
+  const remoteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [framerState, setFramerState] = useState<ConnectionState>("idle");
   const [cloudflareState, setCloudflareState] = useState<ConnectionState>("idle");
   const [googleAnalyticsState, setGoogleAnalyticsState] = useState<ConnectionState>("idle");
@@ -267,19 +268,31 @@ export default function ArticleSettingsPage() {
     void loadSettings();
     return () => {
       cancelled = true;
+      if (remoteSaveTimerRef.current) {
+        clearTimeout(remoteSaveTimerRef.current);
+      }
     };
   }, []);
 
   function persistConfig(nextSettings: ArticlePublishingSettings, nextConnection = connection) {
     saveLocalArticleConfig(nextSettings, nextConnection);
-    void saveRemoteArticleConfig(nextSettings, nextConnection).catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Impossible de sauvegarder dans Supabase.");
-    });
+    if (remoteSaveTimerRef.current) {
+      clearTimeout(remoteSaveTimerRef.current);
+    }
+    remoteSaveTimerRef.current = setTimeout(() => {
+      void saveRemoteArticleConfig(nextSettings, nextConnection).catch((error) => {
+        setMessage(error instanceof Error ? error.message : "Impossible de sauvegarder dans Supabase.");
+      });
+    }, 500);
   }
 
   function persistConnection(nextConnection: ArticlePublishingConnection) {
     setConnection(nextConnection);
     saveLocalArticleConfig(settings, nextConnection);
+    if (remoteSaveTimerRef.current) {
+      clearTimeout(remoteSaveTimerRef.current);
+      remoteSaveTimerRef.current = null;
+    }
     void saveRemoteArticleConfig(settings, nextConnection).catch((error) => {
       setMessage(error instanceof Error ? error.message : "Impossible de sauvegarder l'etat des connexions dans Supabase.");
     });
