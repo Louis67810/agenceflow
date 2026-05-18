@@ -15,6 +15,7 @@ import {
   DEFAULT_CAROUSEL_TEMPLATE,
   DEFAULT_SETTINGS,
   DEFAULT_BIG_PROMPT,
+  DEFAULT_CAROUSEL_LONG_FORMAT_PROMPT,
   DEFAULT_CAROUSEL_SKILL_PROMPT,
   DEFAULT_VIRALITY_PROMPT,
   DEFAULT_SMALL_PROMPT,
@@ -318,6 +319,10 @@ export default function LinkedInParametresPage() {
               <textarea value={settings.businessContext} onChange={(e) => setSettings({ ...settings, businessContext: e.target.value })} rows={5} placeholder="Decris ton offre, ton audience, tes angles, tes objections, ton positionnement..." style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: '"Inter", sans-serif', resize: "vertical" }} />
             </div>
             <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Style d'ecriture utilisateur</label>
+              <textarea value={settings.userWritingStylePrompt} onChange={(e) => setSettings({ ...settings, userWritingStylePrompt: e.target.value })} rows={5} placeholder="Explique comment tu ecris tes posts: rythme, ton, longueur, structure, mots a eviter..." style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: '"Inter", sans-serif', resize: "vertical" }} />
+            </div>
+            <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Prompt systeme global posts LinkedIn</label>
               <textarea value={settings.postSystemPrompt} onChange={(e) => setSettings({ ...settings, postSystemPrompt: e.target.value })} rows={10} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
             </div>
@@ -372,7 +377,7 @@ export default function LinkedInParametresPage() {
                 Reglages dedies a la generation des slides, des images et du format long LinkedIn.
               </p>
             </div>
-            <button type="button" onClick={() => setSettings((current) => ({ ...current, carouselContentModel: DEFAULT_SETTINGS.carouselContentModel, carouselImageModel: DEFAULT_SETTINGS.carouselImageModel, carouselSkillPrompt: DEFAULT_CAROUSEL_SKILL_PROMPT, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
+            <button type="button" onClick={() => setSettings((current) => ({ ...current, carouselContentModel: DEFAULT_SETTINGS.carouselContentModel, carouselImageModel: DEFAULT_SETTINGS.carouselImageModel, carouselSkillPrompt: DEFAULT_CAROUSEL_SKILL_PROMPT, carouselLongFormatPrompt: DEFAULT_CAROUSEL_LONG_FORMAT_PROMPT, carouselTemplate: DEFAULT_CAROUSEL_TEMPLATE }))} style={{ border: 0, background: "transparent", cursor: "pointer", fontSize: 12, color: "#6f7887", fontWeight: 600 }}>
               Reinitialiser
             </button>
           </div>
@@ -398,6 +403,10 @@ export default function LinkedInParametresPage() {
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Prompt global carrousel (skill md)</label>
               <textarea value={settings.carouselSkillPrompt} onChange={(e) => setSettings({ ...settings, carouselSkillPrompt: e.target.value })} rows={12} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5f6b7a", marginBottom: 8 }}>Prompt format long</label>
+              <textarea value={settings.carouselLongFormatPrompt} onChange={(e) => setSettings({ ...settings, carouselLongFormatPrompt: e.target.value })} rows={7} style={{ width: "100%", borderRadius: 16, border: "1px solid rgba(18,26,46,0.12)", padding: 14, fontSize: 13, lineHeight: "20px", outline: "none", fontFamily: "monospace", resize: "vertical" }} />
             </div>
           </div>
         </section>

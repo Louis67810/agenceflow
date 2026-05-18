@@ -5,20 +5,26 @@ import Link from "next/link";
 import {
   ArrowUp,
   BarChart3,
+  Brain,
   ChevronDown,
+  Database,
   Eye,
   FileBarChart,
+  FilePlus2,
   FileText,
   Hammer,
   Layers,
+  LineChart,
   Loader2,
   MessageSquareText,
   Plus,
+  RotateCcw,
   Search,
   Send,
   Settings,
   Sparkles,
   Video,
+  X,
 } from "lucide-react";
 import { fetchRemoteArticleConfig } from "@/lib/articles/settings";
 
@@ -64,6 +70,7 @@ const sortShadow = "0px 4.71px 3px rgba(0,0,0,0.02), 0px 2.12px 2.12px rgba(0,0,
 const articleChatStorageKey = "agenceflow.articleAiChat.v1";
 const articleModelStorageKey = "agenceflow.articleAiModel.v1";
 const articlePanelShadow = "0px 18px 48px rgba(1,71,255,0.12), 0px 10px 28px rgba(18,26,46,0.08)";
+const actionCardShadow = "0px 24px 24px rgba(59,59,59,0.03), 0px 12px 12px rgba(59,59,59,0.04), 0px 3px 6px rgba(59,59,59,0.06)";
 const articleModelOptions = [
   "anthropic/claude-sonnet-4",
   "openai/gpt-4.1",
@@ -86,6 +93,11 @@ function formatDuration(ms?: number) {
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function formatPercent(value?: number) {
+  if (!value) return "0%";
+  return `${Math.round(value)}%`;
 }
 
 function normalizePath(value: string) {
@@ -272,6 +284,49 @@ function EmptyState({ label }: { label: string }) {
   );
 }
 
+function DataMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ borderRadius: 12, border: "1px solid rgba(18,26,46,0.08)", background: "#fbfbfb", padding: 12 }}>
+      <span style={{ display: "block", fontSize: 11, color: "rgba(18,26,46,0.46)", fontFamily: "Inter, sans-serif" }}>{label}</span>
+      <strong style={{ display: "block", marginTop: 5, fontSize: 16, color: "#121a2e", fontFamily: "Inter, sans-serif" }}>{value}</strong>
+    </div>
+  );
+}
+
+function PageDataOverlay({ page, onClose }: { page: ArticlePage; onClose: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(18,26,46,0.28)", zIndex: 50, display: "grid", placeItems: "center", padding: 24 }}>
+      <section style={{ width: "min(620px, 100%)", borderRadius: 22, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0px 34px 80px rgba(18,26,46,0.18)", overflow: "hidden" }}>
+        <div style={{ minHeight: 74, padding: "0 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 19, lineHeight: "25px", fontWeight: 800, color: "#121a2e" }}>Data de la page</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(18,26,46,0.52)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "Inter, sans-serif" }}>{page.url || page.title}</p>
+          </div>
+          <button type="button" onClick={onClose} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ padding: 22, display: "grid", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+            <DataMetric label="Vues 7 jours" value={`${page.viewsLastWeek ?? 0}`} />
+            <DataMetric label="Visiteurs" value={`${page.visitorsLastWeek ?? 0}`} />
+            <DataMetric label="Sessions" value={`${page.sessionsLastWeek ?? 0}`} />
+            <DataMetric label="Temps moyen" value={formatDuration(page.avgDurationMs)} />
+            <DataMetric label="Scroll max" value={formatPercent(page.maxScrollDepth)} />
+            <DataMetric label="Clics" value={`${page.clicksLastWeek ?? 0}`} />
+          </div>
+          <div style={{ borderRadius: 16, border: "1px solid rgba(1,71,255,0.12)", background: "linear-gradient(135deg, rgba(232,237,255,0.92), rgba(255,255,255,0.96))", padding: 16 }}>
+            <strong style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#0147ff", fontFamily: "Inter, sans-serif" }}><Brain size={15} /> Entree pour l'analyse IA</strong>
+            <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(18,26,46,0.62)", fontFamily: "Inter, sans-serif" }}>
+              Cette fiche est la data que la boucle utilise pour comparer les pages ressources, reperer les sujets qui performent et proposer les prochains articles.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function ArticlesPage() {
   const [activeTab, setActiveTab] = useState<ArticleTab>("actions");
   const [chatInput, setChatInput] = useState("");
@@ -283,6 +338,7 @@ export default function ArticlesPage() {
   const [activeModel, setActiveModel] = useState(articleModelOptions[0]);
   const [articleChatLoading, setArticleChatLoading] = useState(false);
   const [detectedPages, setDetectedPages] = useState<ArticlePage[]>([]);
+  const [selectedDataPage, setSelectedDataPage] = useState<ArticlePage | null>(null);
   const [pagesLoading, setPagesLoading] = useState(true);
   const [pagesMessage, setPagesMessage] = useState("Verification de la connexion Cloudflare...");
 
@@ -293,6 +349,7 @@ export default function ArticlesPage() {
   const sortedPages = useMemo(() => {
     return dedupePages([...articlePages, ...detectedPages]).sort((a, b) => (b.viewsLastWeek ?? 0) - (a.viewsLastWeek ?? 0));
   }, [detectedPages]);
+  const actionGraphPages = sortedPages.slice(0, 5);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -490,8 +547,84 @@ export default function ArticlesPage() {
         </aside>
 
         {activeTab === "actions" ? (
-          <div style={{ position: "relative", minWidth: 0, overflow: "auto", padding: "46px 36px" }}>
-            {actionEntries.length === 0 ? (
+          <div style={{ position: "relative", minWidth: 0, overflow: "auto", padding: 0, background: "#fbfbfb" }}>
+            {pagesLoading ? (
+              <EmptyState label="Chargement des pages ressources et des statistiques..." />
+            ) : actionGraphPages.length === 0 ? (
+              <EmptyState label={pagesMessage || "Aucune page /ressources detectee pour construire la boucle."} />
+            ) : (
+              <div style={{ position: "relative", width: 1320, minHeight: 760, padding: 42 }}>
+                <svg width="1320" height="760" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  <path d="M138 150 C240 150 246 150 330 150" fill="none" stroke="rgba(18,26,46,0.22)" strokeWidth="2" strokeDasharray="7 8" />
+                  <path d="M530 150 C620 150 640 150 720 150" fill="none" stroke="rgba(18,26,46,0.22)" strokeWidth="2" strokeDasharray="7 8" />
+                  <path d="M920 150 C1016 150 1028 150 1110 150" fill="none" stroke="rgba(18,26,46,0.22)" strokeWidth="2" strokeDasharray="7 8" />
+                  <path d="M1205 218 C1205 410 170 410 170 268" fill="none" stroke="rgba(1,71,255,0.26)" strokeWidth="2" strokeDasharray="7 9" />
+                  {actionGraphPages.map((page, index) => {
+                    const y = 330 + index * 82;
+                    return (
+                      <g key={`line-${page.id}`}>
+                        <path d={`M330 ${y} C430 ${y} 450 ${y} 535 ${y}`} fill="none" stroke="rgba(18,26,46,0.18)" strokeWidth="2" strokeDasharray="6 8" />
+                        <path d={`M678 ${y} C760 ${y} 780 ${y} 860 ${y}`} fill="none" stroke="rgba(18,26,46,0.18)" strokeWidth="2" strokeDasharray="6 8" />
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                {[
+                  { left: 52, top: 98, label: "Recherche", sub: "Veille, SERP, angles SEO", icon: Search, color: "#0147ff" },
+                  { left: 330, top: 98, label: "Creation pages", sub: "Briefs et brouillons Framer", icon: FilePlus2, color: "#168b64" },
+                  { left: 720, top: 98, label: "Stats", sub: "AgenceFlow + GA4", icon: LineChart, color: "#7c3aed" },
+                  { left: 1110, top: 98, label: "Relance", sub: "Nouveaux tests", icon: RotateCcw, color: "#f97316" },
+                ].map((node) => {
+                  const Icon = node.icon;
+                  return (
+                    <div key={node.label} style={{ position: "absolute", left: node.left, top: node.top, width: 190, borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: actionCardShadow, padding: 16 }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 12, background: `${node.color}14`, color: node.color, display: "grid", placeItems: "center", marginBottom: 11 }}><Icon size={18} /></span>
+                      <strong style={{ display: "block", fontSize: 15, color: "#121a2e" }}>{node.label}</strong>
+                      <span style={{ display: "block", marginTop: 5, fontSize: 12, lineHeight: "17px", color: "rgba(18,26,46,0.52)", fontFamily: "Inter, sans-serif" }}>{node.sub}</span>
+                    </div>
+                  );
+                })}
+
+                <div style={{ position: "absolute", left: 860, top: 280, width: 300, borderRadius: 24, padding: 18, color: "#fff", background: "linear-gradient(95.73deg, #0147FF 25.27%, #376EFF 45.55%, #0147FF 67.55%)", backgroundSize: "220% 220%", animation: "articleGradientFlow 5s ease infinite", boxShadow: "0px 24px 36px rgba(1,71,255,0.2)" }}>
+                  <span style={{ width: 42, height: 42, borderRadius: 14, background: "rgba(255,255,255,0.16)", display: "grid", placeItems: "center", marginBottom: 14 }}><Brain size={20} /></span>
+                  <strong style={{ display: "block", fontSize: 19, lineHeight: "24px" }}>Analyse IA</strong>
+                  <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: "20px", color: "rgba(255,255,255,0.82)", fontFamily: "Inter, sans-serif" }}>Compare les pages, detecte les gagnants, sort les conclusions et nourrit le prochain cycle.</p>
+                </div>
+
+                <div style={{ position: "absolute", left: 52, top: 300, width: 300, display: "grid", gap: 12 }}>
+                  <div style={{ borderRadius: 18, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: actionCardShadow, padding: 16 }}>
+                    <strong style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 15, color: "#121a2e" }}><FileText size={17} color="#0147ff" /> Pages ressources</strong>
+                    <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: "18px", color: "rgba(18,26,46,0.54)", fontFamily: "Inter, sans-serif" }}>Les pages detectees dans /ressources alimentent automatiquement la boucle.</p>
+                  </div>
+                  {actionGraphPages.map((page) => (
+                    <div key={`page-${page.id}`} style={{ minHeight: 68, borderRadius: 16, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: actionCardShadow, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", fontSize: 13, color: "#121a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{page.title}</strong>
+                        <span style={{ display: "block", marginTop: 4, fontSize: 11, color: "rgba(18,26,46,0.46)", fontFamily: "Inter, sans-serif" }}>{page.viewsLastWeek ?? 0} vues - {formatDuration(page.avgDurationMs)}</span>
+                      </div>
+                      <button type="button" onClick={() => setSelectedDataPage(page)} style={{ width: 38, height: 38, borderRadius: 999, border: "1px solid rgba(1,71,255,0.12)", background: "#e8edff", color: "#0147ff", display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }} title="Voir la data">
+                        <Database size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ position: "absolute", left: 535, top: 300, width: 210, display: "grid", gap: 12 }}>
+                  {actionGraphPages.map((page) => (
+                    <button key={`data-${page.id}`} type="button" onClick={() => setSelectedDataPage(page)} style={{ minHeight: 68, borderRadius: 16, border: "1px solid rgba(1,71,255,0.12)", background: "#fff", boxShadow: actionCardShadow, padding: "0 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif', textAlign: "left" }}>
+                      <span style={{ width: 36, height: 36, borderRadius: 12, background: "#e8edff", color: "#0147ff", display: "grid", placeItems: "center", flexShrink: 0 }}><BarChart3 size={16} /></span>
+                      <span style={{ minWidth: 0 }}>
+                        <strong style={{ display: "block", fontSize: 12, color: "#121a2e" }}>Data</strong>
+                        <span style={{ display: "block", marginTop: 3, fontSize: 11, color: "rgba(18,26,46,0.52)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "Inter, sans-serif" }}>{formatPercent(page.maxScrollDepth)} scroll</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <style>{`@keyframes articleGradientFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+            {false && actionEntries.length === 0 ? (
               <EmptyState label="Aucune action réalisée pour le moment. Les analyses, pages créées et données SEO apparaîtront ici dès que le module sera connecté." />
             ) : null}
           </div>
@@ -581,10 +714,23 @@ export default function ArticlesPage() {
       </section>
 
       <section style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
-        <div style={{ height: 430, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden" }} />
+        <div style={{ height: 430, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden", position: "relative" }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,0.92), rgba(232,237,255,0.72)), repeating-linear-gradient(35deg, rgba(1,71,255,0.08) 0px, rgba(1,71,255,0.08) 1px, transparent 1px, transparent 34px)" }} />
+          <div style={{ position: "absolute", left: 34, top: 34, right: 34, bottom: 34, borderRadius: 22, border: "1px solid rgba(18,26,46,0.08)", background: "rgba(255,255,255,0.74)", boxShadow: actionCardShadow, padding: 24, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div>
+              <span style={{ minHeight: 28, borderRadius: 999, background: "#e8edff", color: "#0147ff", padding: "0 11px", display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, fontFamily: "Inter, sans-serif" }}><Sparkles size={13} /> Boucle continue</span>
+              <h2 style={{ margin: "18px 0 0", maxWidth: 430, fontSize: 28, lineHeight: "34px", letterSpacing: "-0.03em", fontWeight: 800 }}>Recherche, creation, stats et analyse dans le meme cycle.</h2>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              <DataMetric label="Pages lues" value={`${sortedPages.length}`} />
+              <DataMetric label="Top vues" value={`${sortedPages[0]?.viewsLastWeek ?? 0}`} />
+              <DataMetric label="Cycle" value="Configurable" />
+            </div>
+          </div>
+        </div>
 
         <article style={{ height: 430, borderRadius: 13, border: "1px solid rgba(0,0,0,0.13)", background: "#fff", boxShadow: cardShadow, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+          <div style={{ minHeight: 66, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(18,26,46,0.08)", background: "#fbfbfb" }}>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ margin: 0, fontSize: 20, lineHeight: "26px", fontWeight: 750 }}>Toutes mes pages</h2>
               {!pagesLoading && sortedPages.length === 0 && pagesMessage ? (
@@ -629,6 +775,7 @@ export default function ArticlesPage() {
           </div>
         </article>
       </section>
+      {selectedDataPage ? <PageDataOverlay page={selectedDataPage} onClose={() => setSelectedDataPage(null)} /> : null}
     </main>
   );
 }

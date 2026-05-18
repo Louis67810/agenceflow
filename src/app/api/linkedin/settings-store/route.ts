@@ -48,6 +48,15 @@ Genere un carrousel coherent slide par slide en respectant strictement :
 - Garde un ton adapte a LinkedIn, clair, expert, impactant
 - Assure une progression logique entre les slides
 - Evite les repetitions entre slides`,
+  carouselLongFormatPrompt: `Transforme le carrousel en post LinkedIn format long.
+
+Objectif :
+- garder l'idee centrale du carrousel
+- developper les arguments avec plus de profondeur
+- conserver un rythme naturel LinkedIn avec des sauts de ligne
+- ne pas decrire les slides, mais ecrire un vrai post autonome
+- terminer par une question ou un CTA clair`,
+  userWritingStylePrompt: "Ecris comme l'utilisateur: direct, concret, phrases courtes, sauts de ligne naturels, ton expert mais humain, sans formulation corporate.",
   language: "fr",
   prospectionBigModel: "anthropic/claude-sonnet-4-6",
   prospectionSmallModel: "google/gemini-2.0-flash-001",

@@ -1,0 +1,260 @@
+{
+  "name": "AgenceFlow - Article continuous improvement loop",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "0b5b7f4f-0d7f-4dd4-84d6-f9f2af02bb1b",
+      "name": "Every 24 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/articles/agent/context",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.ARTICLE_AGENT_API_KEY}}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "f14a8b90-2577-41a8-9388-6d2c08a073c6",
+      "name": "Get article context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENROUTER_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ {\n  model: $json.settings?.agentAnalysisModel || 'openai/gpt-4.1',\n  messages: [\n    {\n      role: 'system',\n      content: 'Tu es le moteur d amelioration continue SEO d AgenceFlow. Tu dois analyser les pages ressources, expliquer tes decisions et retourner uniquement du JSON valide.'\n    },\n    {\n      role: 'user',\n      content: JSON.stringify({\n        objective: 'Analyser les performances des pages ressources et proposer le prochain cycle.',\n        required_output: {\n          summary: 'string',\n          winning_patterns: ['string'],\n          weak_pages: ['string'],\n          recommendations: [\n            {\n              title: 'string',\n              slug: 'string',\n              intent: 'informational|commercial|transactional',\n              priority: 1,\n              reason: 'string',\n              source_pages: ['string']\n            }\n          ],\n          actions: [\n            {\n              type: 'create_page|improve_page|research_more|pause_topic',\n              label: 'string',\n              reason: 'string'\n            }\n          ]\n        },\n        context: $json\n      })\n    }\n  ],\n  response_format: { type: 'json_object' }\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "370d7caa-3658-454a-8215-16d33a66f53d",
+      "name": "Analyse with AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet analysis;\ntry {\n  analysis = JSON.parse(raw);\n} catch (error) {\n  analysis = {\n    summary: 'JSON parse failed',\n    winning_patterns: [],\n    weak_pages: [],\n    recommendations: [],\n    actions: [{ type: 'research_more', label: 'Verifier la sortie IA', reason: raw.slice(0, 1000) }]\n  };\n}\nreturn [{ json: { analysis, generatedAt: new Date().toISOString() } }];"
+      },
+      "id": "595e3071-464e-4602-bdcf-9c5615f6c913",
+      "name": "Parse AI analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/articles/agent/cycles",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.ARTICLE_AGENT_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "4198b92d-2f56-482d-b204-b588f6911dff",
+      "name": "Save cycle in AgenceFlow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/articles/agent/recommendations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.ARTICLE_AGENT_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={{ { cycleId: $json.cycle?.id || $json.id, recommendations: $json.analysis?.recommendations || [], actions: $json.analysis?.actions || [] } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "9fdf4e99-f407-4bbf-8386-017a515756c6",
+      "name": "Save recommendations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Variables a creer dans n8n:\n\nAGENCEFLOW_BASE_URL=https://agenceflow.vercel.app\nARTICLE_AGENT_API_KEY=la meme cle que dans ton env AgenceFlow\nOPENROUTER_API_KEY=ta cle OpenRouter\n\nRoutes AgenceFlow attendues par ce workflow:\nGET /api/articles/agent/context\nPOST /api/articles/agent/cycles\nPOST /api/articles/agent/recommendations",
+        "height": 260,
+        "width": 420
+      },
+      "id": "25c61d4e-05f8-4566-ae73-4744eeb60ed2",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -360
+      ]
+    }
+  ],
+  "connections": {
+    "Every 24 hours": {
+      "main": [
+        [
+          {
+            "node": "Get article context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get article context": {
+      "main": [
+        [
+          {
+            "node": "Analyse with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyse with AI": {
+      "main": [
+        [
+          {
+            "node": "Parse AI analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI analysis": {
+      "main": [
+        [
+          {
+            "node": "Save cycle in AgenceFlow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save cycle in AgenceFlow": {
+      "main": [
+        [
+          {
+            "node": "Save recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-05-17T00:00:00.000Z",
+  "versionId": "7f899fb2-0248-4cf2-b537-af62bcf73399"
+}

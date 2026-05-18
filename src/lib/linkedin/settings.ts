@@ -20,6 +20,8 @@ export interface LinkedInSettings {
   carouselContentModel: string;
   carouselImageModel: string;
   carouselSkillPrompt: string;
+  carouselLongFormatPrompt: string;
+  userWritingStylePrompt: string;
   language: string;
   prospectionBigModel: string;
   prospectionSmallModel: string;
@@ -114,6 +116,15 @@ Genere un carrousel coherent slide par slide en respectant strictement :
 - Assure une progression logique entre les slides
 - Evite les repetitions entre slides`;
 
+export const DEFAULT_CAROUSEL_LONG_FORMAT_PROMPT = `Transforme le carrousel en post LinkedIn format long.
+
+Objectif :
+- garder l'idee centrale du carrousel
+- developper les arguments avec plus de profondeur
+- conserver un rythme naturel LinkedIn avec des sauts de ligne
+- ne pas decrire les slides, mais ecrire un vrai post autonome
+- terminer par une question ou un CTA clair`;
+
 export const DEFAULT_BIG_PROMPT = `Analyse les donnees de prospection LinkedIn et cree 3 a 5 squelettes de messages optimises.
 
 Un squelette definit LA STRUCTURE d'un message (ordre des elements, ton, longueur), pas les mots exacts. Il doit capturer ce qui rend les messages performants dans les donnees.
@@ -160,6 +171,8 @@ export const DEFAULT_SETTINGS: LinkedInSettings = {
   carouselContentModel: "anthropic/claude-sonnet-4-6",
   carouselImageModel: "openai/gpt-image-1",
   carouselSkillPrompt: DEFAULT_CAROUSEL_SKILL_PROMPT,
+  carouselLongFormatPrompt: DEFAULT_CAROUSEL_LONG_FORMAT_PROMPT,
+  userWritingStylePrompt: "Ecris comme l'utilisateur: direct, concret, phrases courtes, sauts de ligne naturels, ton expert mais humain, sans formulation corporate.",
   language: "fr",
   prospectionBigModel: "anthropic/claude-sonnet-4-6",
   prospectionSmallModel: "google/gemini-2.0-flash-001",

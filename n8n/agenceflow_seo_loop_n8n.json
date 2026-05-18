@@ -1,0 +1,634 @@
+{
+  "meta": {
+    "instanceId": "agenceflow-seo-loop"
+  },
+  "workflows": [
+    {
+      "name": "WF-1 · Orchestrateur SEO Loop",
+      "nodes": [
+        {
+          "parameters": {
+            "rule": {
+              "interval": [
+                {
+                  "field": "cronExpression",
+                  "expression": "0 2 * * *"
+                }
+              ]
+            }
+          },
+          "id": "orch-cron",
+          "name": "Cron · chaque nuit à 2h",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1.1,
+          "position": [200, 100]
+        },
+        {
+          "parameters": {
+            "jsCode": "const now = new Date().toISOString();\nconst cycleId = 'cycle_' + Date.now();\nreturn [{ json: { cycleId, startedAt: now, status: 'running' } }];"
+          },
+          "id": "orch-init-cycle",
+          "name": "Initialiser cycle",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [420, 100]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_cycles",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "supabaseApi",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "Prefer", "value": "return=representation" }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                { "name": "cycle_id", "value": "={{$json.cycleId}}" },
+                { "name": "started_at", "value": "={{$json.startedAt}}" },
+                { "name": "status", "value": "running" }
+              ]
+            }
+          },
+          "id": "orch-save-cycle",
+          "name": "Sauvegarder cycle Supabase",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [640, 100]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.N8N_WEBHOOK_COLLECT}}",
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                { "name": "cycleId", "value": "={{$json[0].cycle_id}}" }
+              ]
+            }
+          },
+          "id": "orch-call-wf2",
+          "name": "Appeler WF-2 Collecte",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [860, 100]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.N8N_WEBHOOK_OPPS}}",
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                { "name": "cycleId", "value": "={{$('Initialiser cycle').item.json.cycleId}}" }
+              ]
+            }
+          },
+          "id": "orch-call-wf3",
+          "name": "Appeler WF-3 Opportunités",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1080, 100]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.N8N_WEBHOOK_GEN}}",
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                { "name": "cycleId", "value": "={{$('Initialiser cycle').item.json.cycleId}}" }
+              ]
+            }
+          },
+          "id": "orch-call-wf4",
+          "name": "Appeler WF-4 Génération",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1300, 100]
+        },
+        {
+          "parameters": {
+            "method": "PATCH",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_cycles?cycle_id=eq.={{$('Initialiser cycle').item.json.cycleId}}",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                { "name": "status", "value": "completed" },
+                { "name": "completed_at", "value": "={{new Date().toISOString()}}" }
+              ]
+            }
+          },
+          "id": "orch-close-cycle",
+          "name": "Fermer cycle",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1520, 100]
+        }
+      ],
+      "connections": {
+        "Cron · chaque nuit à 2h": { "main": [[{ "node": "Initialiser cycle", "type": "main", "index": 0 }]] },
+        "Initialiser cycle": { "main": [[{ "node": "Sauvegarder cycle Supabase", "type": "main", "index": 0 }]] },
+        "Sauvegarder cycle Supabase": { "main": [[{ "node": "Appeler WF-2 Collecte", "type": "main", "index": 0 }]] },
+        "Appeler WF-2 Collecte": { "main": [[{ "node": "Appeler WF-3 Opportunités", "type": "main", "index": 0 }]] },
+        "Appeler WF-3 Opportunités": { "main": [[{ "node": "Appeler WF-4 Génération", "type": "main", "index": 0 }]] },
+        "Appeler WF-4 Génération": { "main": [[{ "node": "Fermer cycle", "type": "main", "index": 0 }]] }
+      }
+    },
+
+    {
+      "name": "WF-2 · Collecte & Analyse",
+      "nodes": [
+        {
+          "parameters": { "path": "seo-collect", "responseMode": "responseNode" },
+          "id": "wf2-webhook",
+          "name": "Webhook · Collecte",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 2,
+          "position": [100, 200],
+          "webhookId": "seo-collect"
+        },
+        {
+          "parameters": {
+            "method": "GET",
+            "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/articles",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "x-api-key", "value": "={{$env.ARTICLE_AGENT_API_KEY}}" }
+              ]
+            }
+          },
+          "id": "wf2-get-articles",
+          "name": "GET articles AgenceFlow",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 200]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://analyticsdata.googleapis.com/v1beta/properties/={{$env.GA4_PROPERTY_ID}}:runReport",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "googleAnalyticsOAuth2Api",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "{\n  \"dateRanges\": [{\"startDate\": \"30daysAgo\", \"endDate\": \"today\"}],\n  \"dimensions\": [\n    {\"name\": \"pagePath\"},\n    {\"name\": \"pageTitle\"}\n  ],\n  \"metrics\": [\n    {\"name\": \"screenPageViews\"},\n    {\"name\": \"sessions\"},\n    {\"name\": \"activeUsers\"},\n    {\"name\": \"averageSessionDuration\"},\n    {\"name\": \"bounceRate\"},\n    {\"name\": \"engagementRate\"}\n  ],\n  \"orderBys\": [{\"metric\": {\"metricName\": \"screenPageViews\"}, \"desc\": true}],\n  \"limit\": 100\n}"
+          },
+          "id": "wf2-ga4",
+          "name": "GA4 · stats pages",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 360]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://searchconsole.googleapis.com/webmasters/v3/sites/={{$env.GSC_SITE_URL}}/searchAnalytics/query",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "googleOAuth2Api",
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "{\n  \"startDate\": \"2024-01-01\",\n  \"endDate\": \"today\",\n  \"dimensions\": [\"page\", \"query\"],\n  \"rowLimit\": 200,\n  \"startRow\": 0\n}"
+          },
+          "id": "wf2-gsc",
+          "name": "Search Console · mots-clés",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 500]
+        },
+        {
+          "parameters": {
+            "jsCode": "const articles = $('GET articles AgenceFlow').all().map(i => i.json);\nconst ga4 = $('GA4 · stats pages').item.json;\nconst gsc = $('Search Console · mots-clés').item.json;\n\nconst ga4Rows = ga4.rows || [];\nconst gscRows = gsc.rows || [];\n\nconst ga4Map = {};\nfor (const row of ga4Rows) {\n  const path = row.dimensionValues?.[0]?.value;\n  if (path) {\n    ga4Map[path] = {\n      views: parseInt(row.metricValues?.[0]?.value || 0),\n      sessions: parseInt(row.metricValues?.[1]?.value || 0),\n      users: parseInt(row.metricValues?.[2]?.value || 0),\n      avgDuration: parseFloat(row.metricValues?.[3]?.value || 0),\n      bounceRate: parseFloat(row.metricValues?.[4]?.value || 0),\n      engagementRate: parseFloat(row.metricValues?.[5]?.value || 0)\n    };\n  }\n}\n\nconst gscMap = {};\nfor (const row of gscRows) {\n  const page = row.keys?.[0];\n  const query = row.keys?.[1];\n  if (!gscMap[page]) gscMap[page] = [];\n  gscMap[page].push({\n    query,\n    clicks: row.clicks || 0,\n    impressions: row.impressions || 0,\n    ctr: row.ctr || 0,\n    position: row.position || 0\n  });\n}\n\nconst merged = articles.map(article => {\n  const path = article.slug || article.path || article.url || '';\n  const statsGA4 = ga4Map[path] || {};\n  const statsGSC = gscMap[path] || [];\n  return {\n    ...article,\n    stats: { ga4: statsGA4, gsc: statsGSC }\n  };\n});\n\nreturn [{ json: { articles: merged, collectedAt: new Date().toISOString() } }];"
+          },
+          "id": "wf2-merge",
+          "name": "Fusionner toutes les données",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [620, 360]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://openrouter.ai/api/v1/chat/completions",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "Authorization", "value": "=Bearer {{$env.OPENROUTER_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "HTTP-Referer", "value": "={{$env.AGENCEFLOW_BASE_URL}}" },
+                { "name": "X-Title", "value": "AgenceFlow SEO Loop" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={\n  \"model\": \"deepseek/deepseek-r1\",\n  \"max_tokens\": 4096,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es un expert SEO analyste. Tu dois analyser les performances des articles d'un site et produire une analyse structurée en JSON. Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Analyse ces articles et leurs stats. Pour chaque article, évalue : performance globale (score 0-100), points forts, points faibles, potentiel d'amélioration, actions prioritaires. Identifie aussi les patterns globaux du site. Voici les données : \" + JSON.stringify({{ $json.articles }}.slice(0, 20)) + \"\\n\\nRéponds avec ce JSON : { \\\"global_analysis\\\": { \\\"summary\\\": string, \\\"top_performers\\\": [slug], \\\"underperformers\\\": [slug], \\\"patterns\\\": [string] }, \\\"articles\\\": [ { \\\"id\\\": string, \\\"slug\\\": string, \\\"score\\\": number, \\\"strengths\\\": [string], \\\"weaknesses\\\": [string], \\\"potential\\\": string, \\\"priority_actions\\\": [string] } ], \\\"reasoning\\\": string }\"\n    }\n  ]\n}"
+          },
+          "id": "wf2-ai-analysis",
+          "name": "DeepSeek · Analyse performances",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [860, 360]
+        },
+        {
+          "parameters": {
+            "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet analysis;\ntry {\n  analysis = JSON.parse(raw);\n} catch(e) {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  analysis = match ? JSON.parse(match[0]) : { error: 'parse_failed', raw };\n}\n\nconst cycleId = $('Webhook · Collecte').item.json.body?.cycleId || $('Webhook · Collecte').item.json.cycleId;\n\nreturn [{ json: { analysis, cycleId, generatedAt: new Date().toISOString() } }];"
+          },
+          "id": "wf2-parse-analysis",
+          "name": "Parser réponse IA",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [1080, 360]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_analyses",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "Prefer", "value": "return=minimal" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $json.cycleId }}\", \"analysis\": {{ JSON.stringify($json.analysis) }}, \"generated_at\": \"{{ $json.generatedAt }}\", \"model_used\": \"deepseek/deepseek-r1\" }"
+          },
+          "id": "wf2-save-analysis",
+          "name": "Sauvegarder analyse Supabase",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1300, 360]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/analyses",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "x-api-key", "value": "={{$env.ARTICLE_AGENT_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $('Parser réponse IA').item.json.cycleId }}\", \"analysis\": {{ JSON.stringify($('Parser réponse IA').item.json.analysis) }} }"
+          },
+          "id": "wf2-push-agenceflow",
+          "name": "Pousser vers AgenceFlow",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1520, 360]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={ \"status\": \"ok\", \"cycleId\": \"{{ $('Parser réponse IA').item.json.cycleId }}\" }"
+          },
+          "id": "wf2-respond",
+          "name": "Réponse webhook",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1720, 360]
+        }
+      ],
+      "connections": {
+        "Webhook · Collecte": {
+          "main": [[
+            { "node": "GET articles AgenceFlow", "type": "main", "index": 0 },
+            { "node": "GA4 · stats pages", "type": "main", "index": 0 },
+            { "node": "Search Console · mots-clés", "type": "main", "index": 0 }
+          ]]
+        },
+        "GET articles AgenceFlow": { "main": [[{ "node": "Fusionner toutes les données", "type": "main", "index": 0 }]] },
+        "GA4 · stats pages": { "main": [[{ "node": "Fusionner toutes les données", "type": "main", "index": 0 }]] },
+        "Search Console · mots-clés": { "main": [[{ "node": "Fusionner toutes les données", "type": "main", "index": 0 }]] },
+        "Fusionner toutes les données": { "main": [[{ "node": "DeepSeek · Analyse performances", "type": "main", "index": 0 }]] },
+        "DeepSeek · Analyse performances": { "main": [[{ "node": "Parser réponse IA", "type": "main", "index": 0 }]] },
+        "Parser réponse IA": { "main": [[{ "node": "Sauvegarder analyse Supabase", "type": "main", "index": 0 }]] },
+        "Sauvegarder analyse Supabase": { "main": [[{ "node": "Pousser vers AgenceFlow", "type": "main", "index": 0 }]] },
+        "Pousser vers AgenceFlow": { "main": [[{ "node": "Réponse webhook", "type": "main", "index": 0 }]] }
+      }
+    },
+
+    {
+      "name": "WF-3 · Opportunités SEO",
+      "nodes": [
+        {
+          "parameters": { "path": "seo-opportunities", "responseMode": "responseNode" },
+          "id": "wf3-webhook",
+          "name": "Webhook · Opportunités",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 2,
+          "position": [100, 200],
+          "webhookId": "seo-opportunities"
+        },
+        {
+          "parameters": {
+            "method": "GET",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_analyses?order=generated_at.desc&limit=1",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" }
+              ]
+            }
+          },
+          "id": "wf3-get-last-analysis",
+          "name": "Récupérer dernière analyse",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 200]
+        },
+        {
+          "parameters": {
+            "method": "GET",
+            "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/articles",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "x-api-key", "value": "={{$env.ARTICLE_AGENT_API_KEY}}" }
+              ]
+            }
+          },
+          "id": "wf3-get-articles",
+          "name": "Articles existants",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 360]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://openrouter.ai/api/v1/chat/completions",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "Authorization", "value": "=Bearer {{$env.OPENROUTER_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "HTTP-Referer", "value": "={{$env.AGENCEFLOW_BASE_URL}}" },
+                { "name": "X-Title", "value": "AgenceFlow SEO Loop" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={\n  \"model\": \"deepseek/deepseek-r1\",\n  \"max_tokens\": 4096,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es un stratège SEO senior. Ton rôle est d'identifier des opportunités de contenu à fort potentiel. Réponds UNIQUEMENT en JSON valide, sans markdown.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Voici l'analyse de performance des articles existants et la liste des articles actuels.\\n\\nANALYSE : \" + JSON.stringify({{ $('Récupérer dernière analyse').item.json[0]?.analysis || {} }}) + \"\\n\\nARTICLES EXISTANTS (slugs) : \" + JSON.stringify({{ $('Articles existants').all().map(i => i.json.slug || i.json.title) }}) + \"\\n\\nIdentifie :\\n1. Les mots-clés manqués (opportunités non couverts par les articles existants)\\n2. Les articles à optimiser en priorité (quick wins)\\n3. Les 5 nouveaux sujets d'articles à créer, priorisés par potentiel SEO\\n\\nRéponds avec : { \\\"missing_keywords\\\": [{\\\"keyword\\\": string, \\\"volume_estimate\\\": string, \\\"intent\\\": string, \\\"difficulty\\\": string}], \\\"quick_wins\\\": [{\\\"slug\\\": string, \\\"action\\\": string, \\\"expected_impact\\\": string}], \\\"new_articles\\\": [{\\\"title\\\": string, \\\"slug_suggestion\\\": string, \\\"target_keyword\\\": string, \\\"search_intent\\\": string, \\\"priority_score\\\": number, \\\"rationale\\\": string}], \\\"reasoning\\\": string }\"\n    }\n  ]\n}"
+          },
+          "id": "wf3-ai-opps",
+          "name": "DeepSeek · Opportunités",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [620, 280]
+        },
+        {
+          "parameters": {
+            "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet opps;\ntry {\n  opps = JSON.parse(raw);\n} catch(e) {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  opps = match ? JSON.parse(match[0]) : { error: 'parse_failed', raw };\n}\nconst cycleId = $('Webhook · Opportunités').item.json.body?.cycleId || $('Webhook · Opportunités').item.json.cycleId;\nreturn [{ json: { opportunities: opps, cycleId, generatedAt: new Date().toISOString() } }];"
+          },
+          "id": "wf3-parse",
+          "name": "Parser opportunités",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [860, 280]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_opportunities",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "Prefer", "value": "return=minimal" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $json.cycleId }}\", \"opportunities\": {{ JSON.stringify($json.opportunities) }}, \"generated_at\": \"{{ $json.generatedAt }}\", \"model_used\": \"deepseek/deepseek-r1\" }"
+          },
+          "id": "wf3-save",
+          "name": "Sauvegarder Supabase",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1080, 280]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/recommendations",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "x-api-key", "value": "={{$env.ARTICLE_AGENT_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $('Parser opportunités').item.json.cycleId }}\", \"recommendations\": {{ JSON.stringify($('Parser opportunités').item.json.opportunities) }} }"
+          },
+          "id": "wf3-push",
+          "name": "Pousser vers AgenceFlow",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1300, 280]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={ \"status\": \"ok\", \"cycleId\": \"{{ $('Parser opportunités').item.json.cycleId }}\" }"
+          },
+          "id": "wf3-respond",
+          "name": "Réponse webhook",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1520, 280]
+        }
+      ],
+      "connections": {
+        "Webhook · Opportunités": {
+          "main": [[
+            { "node": "Récupérer dernière analyse", "type": "main", "index": 0 },
+            { "node": "Articles existants", "type": "main", "index": 0 }
+          ]]
+        },
+        "Récupérer dernière analyse": { "main": [[{ "node": "DeepSeek · Opportunités", "type": "main", "index": 0 }]] },
+        "Articles existants": { "main": [[{ "node": "DeepSeek · Opportunités", "type": "main", "index": 0 }]] },
+        "DeepSeek · Opportunités": { "main": [[{ "node": "Parser opportunités", "type": "main", "index": 0 }]] },
+        "Parser opportunités": { "main": [[{ "node": "Sauvegarder Supabase", "type": "main", "index": 0 }]] },
+        "Sauvegarder Supabase": { "main": [[{ "node": "Pousser vers AgenceFlow", "type": "main", "index": 0 }]] },
+        "Pousser vers AgenceFlow": { "main": [[{ "node": "Réponse webhook", "type": "main", "index": 0 }]] }
+      }
+    },
+
+    {
+      "name": "WF-4 · Génération de contenu",
+      "nodes": [
+        {
+          "parameters": { "path": "seo-generate", "responseMode": "responseNode" },
+          "id": "wf4-webhook",
+          "name": "Webhook · Génération",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 2,
+          "position": [100, 200],
+          "webhookId": "seo-generate"
+        },
+        {
+          "parameters": {
+            "method": "GET",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_opportunities?order=generated_at.desc&limit=1",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" }
+              ]
+            }
+          },
+          "id": "wf4-get-opps",
+          "name": "Récupérer opportunités",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [320, 200]
+        },
+        {
+          "parameters": {
+            "jsCode": "const opps = $json[0]?.opportunities;\nif (!opps || !opps.new_articles) return [];\nconst top3 = opps.new_articles.sort((a, b) => (b.priority_score || 0) - (a.priority_score || 0)).slice(0, 3);\nreturn top3.map(article => ({ json: article }));"
+          },
+          "id": "wf4-pick-top",
+          "name": "Sélectionner top 3 articles",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [540, 200]
+        },
+        {
+          "parameters": {},
+          "id": "wf4-split",
+          "name": "Split articles",
+          "type": "n8n-nodes-base.splitInBatches",
+          "typeVersion": 3,
+          "position": [740, 200]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "https://openrouter.ai/api/v1/chat/completions",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "Authorization", "value": "=Bearer {{$env.OPENROUTER_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "HTTP-Referer", "value": "={{$env.AGENCEFLOW_BASE_URL}}" },
+                { "name": "X-Title", "value": "AgenceFlow SEO Loop" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={\n  \"model\": \"deepseek/deepseek-r1\",\n  \"max_tokens\": 6000,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es un rédacteur SEO expert. Tu génères des briefs d'articles complets et structurés. Réponds UNIQUEMENT en JSON valide.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Génère un brief SEO complet pour cet article : \" + JSON.stringify({{ $json }}) + \"\\n\\nLe brief doit inclure :\\n- Un titre SEO optimisé (H1)\\n- La méta-description (150-160 chars)\\n- Le mot-clé principal et 5 mots-clés secondaires\\n- L'intention de recherche détaillée\\n- Le plan de l'article (H2/H3 avec description de chaque section)\\n- 3 angles différenciants vs la concurrence\\n- Les CTAs recommandés\\n- Les liens internes suggérés\\n- Un brouillon de l'introduction (200 mots)\\n- Estimation longueur cible (mots)\\n\\nRéponds avec : { \\\"h1\\\": string, \\\"meta_description\\\": string, \\\"primary_keyword\\\": string, \\\"secondary_keywords\\\": [string], \\\"search_intent\\\": string, \\\"plan\\\": [{\\\"h2\\\": string, \\\"h3s\\\": [string], \\\"description\\\": string}], \\\"differentiators\\\": [string], \\\"ctas\\\": [string], \\\"internal_links\\\": [string], \\\"introduction_draft\\\": string, \\\"target_word_count\\\": number, \\\"reasoning\\\": string }\"\n    }\n  ]\n}"
+          },
+          "id": "wf4-ai-brief",
+          "name": "DeepSeek · Générer brief",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [960, 200]
+        },
+        {
+          "parameters": {
+            "jsCode": "const raw = $json.choices?.[0]?.message?.content || '{}';\nlet brief;\ntry {\n  brief = JSON.parse(raw);\n} catch(e) {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  brief = match ? JSON.parse(match[0]) : { error: 'parse_failed', raw };\n}\n\nconst cycleId = $('Webhook · Génération').item.json.body?.cycleId || $('Webhook · Génération').item.json.cycleId;\nconst articleMeta = $('Sélectionner top 3 articles').item.json;\n\nreturn [{ json: {\n  brief,\n  cycleId,\n  articleMeta,\n  generatedAt: new Date().toISOString(),\n  status: 'draft'\n} }];"
+          },
+          "id": "wf4-parse-brief",
+          "name": "Parser brief",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [1180, 200]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.SUPABASE_URL}}/rest/v1/seo_briefs",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" },
+                { "name": "Prefer", "value": "return=minimal" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $json.cycleId }}\", \"article_meta\": {{ JSON.stringify($json.articleMeta) }}, \"brief\": {{ JSON.stringify($json.brief) }}, \"generated_at\": \"{{ $json.generatedAt }}\", \"status\": \"draft\", \"model_used\": \"deepseek/deepseek-r1\" }"
+          },
+          "id": "wf4-save-brief",
+          "name": "Sauvegarder brief Supabase",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1400, 200]
+        },
+        {
+          "parameters": {
+            "method": "POST",
+            "url": "={{$env.AGENCEFLOW_BASE_URL}}/api/briefs",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                { "name": "x-api-key", "value": "={{$env.ARTICLE_AGENT_API_KEY}}" },
+                { "name": "Content-Type", "value": "application/json" }
+              ]
+            },
+            "sendBody": true,
+            "specifyBody": "json",
+            "jsonBody": "={ \"cycle_id\": \"{{ $('Parser brief').item.json.cycleId }}\", \"brief\": {{ JSON.stringify($('Parser brief').item.json.brief) }}, \"article_meta\": {{ JSON.stringify($('Parser brief').item.json.articleMeta) }}, \"status\": \"draft\" }"
+          },
+          "id": "wf4-push-agenceflow",
+          "name": "Pousser vers AgenceFlow",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.2,
+          "position": [1620, 200]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={ \"status\": \"ok\", \"briefs_generated\": 3 }"
+          },
+          "id": "wf4-respond",
+          "name": "Réponse webhook",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [1820, 200]
+        }
+      ],
+      "connections": {
+        "Webhook · Génération": { "main": [[{ "node": "Récupérer opportunités", "type": "main", "index": 0 }]] },
+        "Récupérer opportunités": { "main": [[{ "node": "Sélectionner top 3 articles", "type": "main", "index": 0 }]] },
+        "Sélectionner top 3 articles": { "main": [[{ "node": "Split articles", "type": "main", "index": 0 }]] },
+        "Split articles": { "main": [[{ "node": "DeepSeek · Générer brief", "type": "main", "index": 0 }]] },
+        "DeepSeek · Générer brief": { "main": [[{ "node": "Parser brief", "type": "main", "index": 0 }]] },
+        "Parser brief": { "main": [[{ "node": "Sauvegarder brief Supabase", "type": "main", "index": 0 }]] },
+        "Sauvegarder brief Supabase": { "main": [[{ "node": "Pousser vers AgenceFlow", "type": "main", "index": 0 }]] },
+        "Pousser vers AgenceFlow": { "main": [[{ "node": "Réponse webhook", "type": "main", "index": 0 }]] }
+      }
+    }
+  ]
+}

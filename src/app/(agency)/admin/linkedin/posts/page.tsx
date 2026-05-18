@@ -488,10 +488,11 @@ export default function PostsPage() {
   const [draftMedia, setDraftMedia] = useState<{ url: string; kind: "image" | "pdf"; fileName: string; bytes: number } | null>(null);
   const [manualEditorStarted, setManualEditorStarted] = useState(false);
   const [editorHistory, setEditorHistory] = useState<Array<{ id: string; label: string; before: string; after: string; createdAt: string }>>([]);
-  const [editorChat, setEditorChat] = useState<Array<{ id: string; role: "user" | "assistant" | "system"; content: string; createdAt: string }>>([]);
+  const [editorChat, setEditorChat] = useState<Array<{ id: string; role: "user" | "assistant" | "system"; content: string; images?: Array<{ url: string; fileName: string }>; createdAt: string }>>([]);
   const [editorSnapshots, setEditorSnapshots] = useState<EditorSnapshot[]>([]);
   const [editorPanelMode, setEditorPanelMode] = useState<"conversation" | "history">("conversation");
   const [chatInput, setChatInput] = useState("");
+  const [chatImageAttachments, setChatImageAttachments] = useState<CarouselImageAsset[]>([]);
   const [editorChatLoading, setEditorChatLoading] = useState(false);
   const [editorApplyingEdit, setEditorApplyingEdit] = useState(false);
   const [selectedChatText, setSelectedChatText] = useState("");
@@ -505,6 +506,7 @@ export default function PostsPage() {
   const [autoRecycleDelayDays, setAutoRecycleDelayDays] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays);
   const [autoRecycleMinLikes, setAutoRecycleMinLikes] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes);
   const [autoRecyclePrompt, setAutoRecyclePrompt] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt);
+  const [userWritingStylePrompt, setUserWritingStylePrompt] = useState(DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.userWritingStylePrompt);
   const [autoRecycleVariantLoadingId, setAutoRecycleVariantLoadingId] = useState<string | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
@@ -571,6 +573,7 @@ export default function PostsPage() {
     setAutoRecycleDelayDays(cachedWorkspace.preferences.autoRecycleDelayDays);
     setAutoRecycleMinLikes(cachedWorkspace.preferences.autoRecycleMinLikes);
     setAutoRecyclePrompt(cachedWorkspace.preferences.autoRecyclePrompt);
+    setUserWritingStylePrompt(cachedWorkspace.preferences.userWritingStylePrompt);
     setSettings(loadLinkedInSettings());
 
     void (async () => {
@@ -598,6 +601,7 @@ export default function PostsPage() {
           setAutoRecycleDelayDays(remoteWorkspace.workspace.preferences.autoRecycleDelayDays);
           setAutoRecycleMinLikes(remoteWorkspace.workspace.preferences.autoRecycleMinLikes);
           setAutoRecyclePrompt(remoteWorkspace.workspace.preferences.autoRecyclePrompt);
+          setUserWritingStylePrompt(remoteWorkspace.workspace.preferences.userWritingStylePrompt);
         } else if (hasMeaningfulLinkedInWorkspaceData(cachedWorkspace)) {
           await patchRemoteLinkedInWorkspace(cachedWorkspace);
         }
@@ -722,6 +726,7 @@ export default function PostsPage() {
 
   const autoRecyclePosts = posts.filter((post) => Boolean(post.analytics?.autoRecycleSourcePostId));
   const filteredPosts = posts
+    .filter((post) => post.type !== "carousel")
     .filter((post) => postsView === "auto" ? Boolean(post.analytics?.autoRecycleSourcePostId) : post.status === postsView && !post.analytics?.autoRecycleSourcePostId)
     .sort((a, b) => {
       const dateA = a.scheduledAt ?? a.publishedAt ?? a.createdAt;
@@ -805,6 +810,7 @@ export default function PostsPage() {
           openrouterApiKey: currentSettings.openrouterApiKey || undefined, model: currentSettings.model,
           businessContext: currentSettings.businessContext,
           postSystemPrompt: currentSettings.postSystemPrompt,
+          userWritingStylePrompt: currentSettings.userWritingStylePrompt || userWritingStylePrompt,
         }),
       });
       const data = await res.json();
@@ -929,6 +935,60 @@ export default function PostsPage() {
       ...current,
       { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString() },
     ].slice(-80));
+  }
+
+  function upsertPostsAndSync(nextPosts: LinkedInPost[]) {
+    const normalized = normalizePosts(nextPosts);
+    setPosts(normalized);
+    saveLinkedInPosts(normalized);
+    void persistRemoteLinkedInPosts(normalized, true);
+    return normalized;
+  }
+
+  function createOrUpdateCarouselDraft(slides: string[], patch?: Partial<LinkedInPost>) {
+    if (slides.length === 0) return null;
+    const selectedStyle = styles.find((style) => style.id === carouselDraftCategory || style.id === selectedStyleId);
+    const postId = editingPostId ?? crypto.randomUUID();
+    const existingPost = posts.find((post) => post.id === postId);
+    const nextPost: LinkedInPost = {
+      ...(existingPost ?? {
+        id: postId,
+        createdAt: new Date().toISOString(),
+        likes: 0,
+        comments: 0,
+        impressions: 0,
+        status: "draft",
+        tags: selectedStyle ? [selectedStyle.name, selectedStyle.category] : [],
+        sourceType: "manual",
+        type: "carousel",
+        content: "",
+      }),
+      title: carouselDraftName.trim() || existingPost?.title || "Carrousel",
+      content: slides.join("\n\n---\n\n"),
+      type: "carousel",
+      slides,
+      sourceType: carouselSourceTab || existingPost?.sourceType || "manual",
+      sourceUrl: ["url", "youtube"].includes(carouselSourceTab) ? carouselSourceValue.trim() || existingPost?.sourceUrl : existingPost?.sourceUrl,
+      sourceTitle: carouselDraftName.trim() || existingPost?.sourceTitle || "Carrousel",
+      styleId: selectedStyle?.id || existingPost?.styleId,
+      styleName: selectedStyle?.name || existingPost?.styleName,
+      analytics: normalizeAnalytics({
+        ...existingPost?.analytics,
+        format: "carousel",
+      }),
+      editorHistory,
+      editorChat: carouselGenerationChat.map((entry) => ({
+        id: entry.id,
+        role: entry.role,
+        content: entry.content,
+        createdAt: "createdAt" in entry && typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+      })),
+      editorSnapshots,
+      ...patch,
+    };
+    upsertPostsAndSync(existingPost ? posts.map((post) => post.id === postId ? nextPost : post) : [nextPost, ...posts]);
+    if (!editingPostId) setEditingPostId(postId);
+    return nextPost;
   }
 
   function createEditorSnapshot() {
@@ -1445,6 +1505,7 @@ export default function PostsPage() {
       const slides = aiSlides?.length ? aiSlides : fallbackSlides;
       setGeneratedSlides(slides);
       setActiveSlide(0);
+      createOrUpdateCarouselDraft(slides, { editorChat: [] });
       setCarouselGenerationHistory([{ id: crypto.randomUUID(), label: "Version initiale", slides, createdAt: new Date().toISOString() }]);
       setCarouselGenerationChat([]);
       setCarouselChatTargetSlides([]);
@@ -1756,17 +1817,40 @@ export default function PostsPage() {
   function startCarouselManualEditing(template?: LinkedInCarouselTemplate) {
     const selected = template ?? carouselTemplates.find((entry) => entry.id === carouselGenerationTemplateId || entry.id === selectedCarouselTemplateId) ?? carouselTemplates[0];
     if (!selected || !carouselDraftName.trim() || !carouselDraftCategory) return;
+    const slides = buildCarouselSlidesFromTemplate(selected, "", {}, false);
     setCarouselStudioMode("generate");
     setCarouselStudioTab("editor");
     setPostType("carousel");
     setSelectedStyleId(carouselDraftCategory);
     setManualEditorStarted(true);
-    setEditingPostId(null);
     setCarouselGenerationTemplateId(selected.id);
     setSelectedCarouselTemplateId(selected.id);
-    setGeneratedSlides(buildCarouselSlidesFromTemplate(selected, "", {}, false));
+    setGeneratedSlides(slides);
+    createOrUpdateCarouselDraft(slides, { editorChat: [] });
     setActiveSlide(0);
     setShowCarouselTemplatePicker(false);
+    setCarouselGenerationChat([]);
+    setCarouselGenerationHistory([]);
+    setCarouselChatTargetSlides([]);
+    setCarouselChatTargetField("");
+  }
+
+  function startFreeCarouselManualEditing() {
+    if (!carouselDraftName.trim() || !carouselDraftCategory) return;
+    const slides = normalizeCarouselSlideCounters([
+      encodeCarouselSlide({ kind: "free", label: "Libre", body: "" }),
+    ]);
+    setCarouselStudioMode("generate");
+    setCarouselStudioTab("editor");
+    setPostType("carousel");
+    setSelectedStyleId(carouselDraftCategory);
+    setManualEditorStarted(true);
+    setGeneratedSlides(slides);
+    createOrUpdateCarouselDraft(slides, { editorChat: [] });
+    setActiveSlide(0);
+    setShowCarouselTemplatePicker(false);
+    setCarouselGenerationTemplateId("");
+    setSelectedCarouselTemplateId("");
     setCarouselGenerationChat([]);
     setCarouselGenerationHistory([]);
     setCarouselChatTargetSlides([]);
@@ -1817,6 +1901,21 @@ export default function PostsPage() {
     }));
     setCarouselImageAssets((current) => [...current, ...previews]);
     setCarouselAssetsDragActive(false);
+  }
+
+  async function addChatImageFiles(files: FileList | File[]) {
+    const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) return;
+    const previews = await Promise.all(images.slice(0, 4).map(async (file) => {
+      const preview = await fileToCompressedPreview(file);
+      return {
+        id: crypto.randomUUID(),
+        url: preview.url,
+        fileName: file.name,
+        description: "",
+      } satisfies CarouselImageAsset;
+    }));
+    setChatImageAttachments((current) => [...current, ...previews].slice(-4));
   }
 
   function updateCarouselImageAsset(assetId: string, patch: Partial<CarouselImageAsset>) {
@@ -2012,6 +2111,7 @@ export default function PostsPage() {
     const systemPrompt = [
       currentSettings.carouselSkillPrompt?.trim() ? `Skill carrousel:\n${currentSettings.carouselSkillPrompt.trim()}` : "",
       currentSettings.businessContext?.trim() ? `Contexte business:\n${currentSettings.businessContext.trim()}` : "",
+      (currentSettings.userWritingStylePrompt || userWritingStylePrompt)?.trim() ? `Style d'ecriture utilisateur:\n${(currentSettings.userWritingStylePrompt || userWritingStylePrompt).trim()}` : "",
       style ? `Style LinkedIn choisi: ${style.name}\n${style.prompt || ""}` : "",
       "Tu generes le contenu exact des slides d'un carrousel LinkedIn.",
       "Tu dois respecter strictement le schema des pages fourni.",
@@ -2227,6 +2327,7 @@ export default function PostsPage() {
     const instruction = carouselGenerationPrompt.trim();
     if (!instruction || generatedSlides.length === 0 || carouselChatLoading) return;
     const before = generatedSlides;
+    const attachedImages = chatImageAttachments.map((image) => ({ url: image.url, fileName: image.fileName }));
     const selectedIndexes = carouselChatTargetSlides.length > 0 ? carouselChatTargetSlides : [activeSlide];
     const selectedCommand = selectedChatCommandId
       ? smartSelectionCommands.find((command) => command.id === selectedChatCommandId)
@@ -2235,6 +2336,7 @@ export default function PostsPage() {
       ? `slide ${selectedIndexes[0] + 1}${carouselChatTargetField ? ` - ${String(carouselChatTargetField)}` : ""}`
       : `${selectedIndexes.length} slides`;
     setCarouselGenerationPrompt("");
+    setChatImageAttachments([]);
     setChatActionsOpen(false);
     setCarouselTargetPickerOpen(false);
     setCarouselFieldPickerOpen(false);
@@ -2262,6 +2364,7 @@ export default function PostsPage() {
             selectedStyle ? `Style selectionne: ${selectedStyle.name}\n${selectedStyle.prompt || ""}` : "",
           ].filter(Boolean).join("\n\n"),
           chatContext: carouselGenerationChat.slice(-10).map((entry) => `${entry.role}: ${entry.content}`).join("\n"),
+          imageInputs: attachedImages,
           responseMode: "carouselChat",
           prompt: settings?.carouselSkillPrompt,
           instruction: [
@@ -2352,6 +2455,8 @@ export default function PostsPage() {
           model: currentSettings.carouselContentModel || currentSettings.model,
           businessContext: currentSettings.businessContext,
           postSystemPrompt: currentSettings.postSystemPrompt,
+          userWritingStylePrompt: currentSettings.userWritingStylePrompt || userWritingStylePrompt,
+          carouselLongFormatPrompt: currentSettings.carouselLongFormatPrompt,
         }),
       });
       const data = await res.json();
@@ -2503,12 +2608,23 @@ export default function PostsPage() {
     const before = generatedContent;
     const selectedText = selectedChatText.trim();
     const targetText = selectedText || generatedContent;
+    const attachedImages = chatImageAttachments.map((image) => ({ url: image.url, fileName: image.fileName }));
     setChatInput("");
+    setChatImageAttachments([]);
     setChatActionsOpen(false);
     const selectedCommand = selectedChatCommandId
       ? smartSelectionCommands.find((command) => command.id === selectedChatCommandId)
       : null;
-    pushEditorChat("user", `${selectedText ? "Passage selectionne - " : ""}${selectedCommand ? `${selectedCommand.label} - ` : ""}${instruction}`);
+    setEditorChat((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "user" as const,
+        content: `${selectedText ? "Passage selectionne - " : ""}${selectedCommand ? `${selectedCommand.label} - ` : ""}${instruction}`,
+        images: attachedImages,
+        createdAt: new Date().toISOString(),
+      },
+    ].slice(-80));
     const slashCommand = selectedCommand || (instruction.startsWith("/")
       ? smartSelectionCommands.find((command) =>
           command.label.toLowerCase().includes(instruction.slice(1).trim().toLowerCase()) ||
@@ -2526,6 +2642,7 @@ export default function PostsPage() {
           text: targetText,
           fullText: generatedContent,
           chatContext: editorChat.slice(-8).map((entry) => `${entry.role}: ${entry.content}`).join("\n"),
+          imageInputs: attachedImages,
           responseMode: "chatWithOptionalTextEdit",
           instruction: slashCommand
             ? `${settings?.editActionGeneralPrompt || ""}\n\n${fillLinkedInEditActionPrompt(slashCommand.instruction, targetText)}\n\n${selectedText ? "Applique cette commande uniquement au passage selectionne, sans modifier le reste du post." : "Applique cette commande au post LinkedIn complet."}`
@@ -3701,7 +3818,7 @@ export default function PostsPage() {
           </button>
         ))}
       </div>
-      <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: "50%", bottom: generatedSlides.length > 1 ? 74 : 26, transform: "translateX(-50%)", zIndex: 10, display: "inline-flex", alignItems: "center", gap: 8, padding: 8, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: carouselPanelShadow }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: "50%", bottom: generatedSlides.length > 1 ? 74 : 26, transform: "translateX(-50%)", zIndex: 10, display: "none", alignItems: "center", gap: 8, padding: 8, borderRadius: 999, background: "#fff", border: "1px solid rgba(18,26,46,0.1)", boxShadow: carouselPanelShadow }}>
         <button type="button" onClick={() => setShowGeneratedSlidePagePicker((current) => !current)} style={{ minHeight: 36, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#f6f6f6", color: "#121a2e", padding: "0 13px", display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, fontWeight: 750, fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
           <Plus size={14} />
           Ajouter
@@ -3729,9 +3846,27 @@ export default function PostsPage() {
           </div>
         ) : null}
       </div>
-      {generatedSlides.length > 1 ? (
-        <div style={{ position: "absolute", left: "50%", bottom: 18, transform: "translateX(-50%)", display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", padding: "14px 18px", minWidth: 70, height: 44, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)" }}>
+      {generatedSlides.length > 0 ? (
+        <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: "50%", bottom: 18, transform: "translateX(-50%)", display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "center", padding: "8px 12px", minWidth: 70, height: 52, borderRadius: 122, background: "#3f3f3f", boxShadow: "0px 21px 8px rgba(0,0,0,0.01), 0px 12px 7px rgba(0,0,0,0.05), 0px 5px 5px rgba(0,0,0,0.09), 0px 1px 3px rgba(0,0,0,0.1)", zIndex: 11 }}>
           {generatedSlides.map((_, index) => <button key={index} type="button" onClick={() => scrollEditorToSlide(index)} style={{ width: 12, height: 12, padding: 0, border: 0, borderRadius: 999, background: activeSlide === index ? "#fff" : "rgba(255,255,255,0.19)", cursor: "pointer" }} />)}
+          <span style={{ width: 1, height: 24, background: "rgba(255,255,255,0.18)", margin: "0 4px" }} />
+          <button type="button" title="Ajouter une page" onClick={() => setShowGeneratedSlidePagePicker((current) => !current)} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.08)", color: "#fff", display: "grid", placeItems: "center", cursor: "pointer" }}><Plus size={14} /></button>
+          <button type="button" title="Deplacer vers la gauche" onClick={() => moveGeneratedCarouselSlide(activeSlide, -1)} disabled={activeSlide <= 0} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.08)", color: "#fff", display: "grid", placeItems: "center", cursor: activeSlide <= 0 ? "not-allowed" : "pointer", opacity: activeSlide <= 0 ? 0.35 : 1 }}><ArrowLeft size={14} /></button>
+          <button type="button" title="Deplacer vers la droite" onClick={() => moveGeneratedCarouselSlide(activeSlide, 1)} disabled={activeSlide >= generatedSlides.length - 1} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.08)", color: "#fff", display: "grid", placeItems: "center", cursor: activeSlide >= generatedSlides.length - 1 ? "not-allowed" : "pointer", opacity: activeSlide >= generatedSlides.length - 1 ? 0.35 : 1 }}><ArrowRight size={14} /></button>
+          <button type="button" title="Supprimer la page" onClick={() => removeGeneratedCarouselSlide(activeSlide)} disabled={generatedSlides.length <= 1} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,95,95,0.24)", background: "rgba(255,255,255,0.08)", color: "#ff9a9a", display: "grid", placeItems: "center", cursor: generatedSlides.length <= 1 ? "not-allowed" : "pointer", opacity: generatedSlides.length <= 1 ? 0.35 : 1 }}><Trash2 size={14} /></button>
+        </div>
+      ) : null}
+      {showGeneratedSlidePagePicker ? (
+        <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", left: "50%", bottom: 78, transform: "translateX(-50%)", width: 520, maxHeight: 390, overflowY: "auto", borderRadius: 22, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", boxShadow: "0 28px 70px rgba(18,26,46,0.18)", padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, zIndex: 12 }}>
+          {filteredCarouselPickerPages.map((page) => {
+            const previewPayload = getCarouselPreviewPayload(page, null);
+            return (
+              <button key={page.id} type="button" onClick={() => addGeneratedCarouselSlide(page.id)} style={{ border: "1px solid rgba(18,26,46,0.08)", borderRadius: 16, background: page.id === FREE_CAROUSEL_PAGE_ID ? "#fbfbfb" : "#fff", padding: 10, minHeight: 168, textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                {renderSlideMiniPreview(previewPayload, 92, 110, 12)}
+                <strong style={{ fontSize: 11, lineHeight: "15px", fontWeight: 750, color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>{page.name}</strong>
+              </button>
+            );
+          })}
         </div>
       ) : null}
       <div style={{ display: "none", position: "absolute", left: 46, right: 46, bottom: 45, height: 66, borderRadius: 62, border: "1px solid rgba(18,26,46,0.18)", background: "#fff", boxShadow: carouselPanelShadow, alignItems: "center", justifyContent: "space-between", padding: 12 }}>
@@ -3883,6 +4018,9 @@ export default function PostsPage() {
                   </ClientBlueButton>
                   {carouselUseTemplate && selectedCarouselTemplateForPicker ? <button type="button" onClick={() => startCarouselManualEditing(selectedCarouselTemplateForPicker)} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     Demarrer manuellement
+                  </button> : null}
+                  {!carouselUseTemplate ? <button type="button" onClick={startFreeCarouselManualEditing} disabled={!carouselDraftName.trim() || !carouselDraftCategory} style={{ width: "100%", minHeight: 44, borderRadius: 12, border: "1px solid rgba(18,26,46,0.12)", background: "#fff", color: "#121a2e", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    Creer librement
                   </button> : null}
                 </>
               ) : null}
@@ -4649,6 +4787,13 @@ export default function PostsPage() {
                       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "rgba(18,26,46,0.82)", whiteSpace: "pre-wrap" }}>
                         {entry.content}
                       </p>
+                      {entry.images?.length ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                          {entry.images.map((image) => (
+                            <img key={`${entry.id}-${image.fileName}`} src={image.url} alt={image.fileName} style={{ width: 76, height: 76, borderRadius: 14, objectFit: "cover", border: "1px solid rgba(18,26,46,0.08)" }} />
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -4703,8 +4848,21 @@ export default function PostsPage() {
                         })() : null}
                       </div>
                   </div>
+                  {chatImageAttachments.length > 0 ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {chatImageAttachments.map((image) => (
+                        <span key={image.id} style={{ position: "relative", width: 64, height: 64, borderRadius: 14, border: "1px solid rgba(18,26,46,0.1)", background: `url(${image.url}) center / cover`, boxShadow: "0 8px 18px rgba(18,26,46,0.08)" }}>
+                          <button type="button" onClick={() => setChatImageAttachments((current) => current.filter((entry) => entry.id !== image.id))} style={{ position: "absolute", right: -6, top: -6, width: 22, height: 22, borderRadius: 999, border: "1px solid rgba(18,26,46,0.1)", background: "#fff", color: "#121a2e", display: "grid", placeItems: "center", cursor: "pointer", boxShadow: "0 5px 12px rgba(18,26,46,0.12)" }}><X size={12} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px 12px", width: "100%", minWidth: 0 }}>
                     <button type="button" onClick={() => setChatActionsOpen((current) => !current)} style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}><Plus size={18} /></button>
+                    <label style={{ width: 40, height: 40, borderRadius: 34, border: 0, background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} onMouseEnter={(e) => { e.currentTarget.style.background = "#F6F6F6"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                      <ImageIcon size={18} />
+                      <input type="file" accept="image/*" multiple onChange={(event) => { if (event.target.files) void addChatImageFiles(event.target.files); event.currentTarget.value = ""; }} style={{ display: "none" }} />
+                    </label>
                     <div style={{ order: chatComposerExpanded ? -1 : 0, flex: chatComposerExpanded ? "0 0 100%" : 1, width: chatComposerExpanded ? "100%" : "auto", minWidth: 0, display: "flex", flexDirection: chatComposerExpanded ? "column" : "row", alignItems: chatComposerExpanded ? "stretch" : "center", gap: chatComposerExpanded ? 7 : 8, transition: "gap 0.18s ease, flex-basis 0.18s ease" }}>
                       <div style={{ display: !chatComposerExpanded && selectedChatCommand ? "flex" : "none", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         {selectedChatCommand ? (() => {
@@ -5400,7 +5558,7 @@ function LegacyCarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: Carou
         {leftBars}
         {rightBars}
         {logo}
-        <div style={{ position: "absolute", left: 86, top: 98, width: 403, marginBottom: 16 }}>
+        <div style={{ position: "absolute", left: 86, top: 98, width: 403, display: "flex", flexDirection: "column", alignItems: "stretch", overflow: "visible" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Case numero */}
             <span style={{
@@ -5446,14 +5604,19 @@ function LegacyCarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: Carou
           </div>
           <p style={{
             margin: "12px 0 0",
-            minHeight: 99,
+            height: "auto",
+            minHeight: 0,
+            maxHeight: "none",
+            overflow: "visible",
+            flex: "0 0 auto",
             fontFamily: '"Plus Jakarta Sans", sans-serif',
             fontSize: 21,
             lineHeight: 1.58,
             fontWeight: 700,
-            letterSpacing: "-0.02em",
+            letterSpacing: 0,
             color: "rgba(18,26,46,0.8)",
             textAlign: "left",
+            whiteSpace: "pre-line",
           }}>{data.subtitle}</p>
           <div style={{
             position: "relative",
@@ -5463,6 +5626,7 @@ function LegacyCarouselSlideCanvas({ payload, raw, scale = 1 }: { payload: Carou
             background: "#fff",
             border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)",
             overflow: data.showCheck === false ? "hidden" : "visible",
+            flex: "0 0 auto",
           }}>
             {data.imageUrl ? <img src={data.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
             {data.showCheck !== false && (

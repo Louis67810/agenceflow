@@ -33,6 +33,8 @@ interface GeneratePostRequest {
   model?: string;
   businessContext?: string;
   postSystemPrompt?: string;
+  userWritingStylePrompt?: string;
+  carouselLongFormatPrompt?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -53,6 +55,8 @@ export async function POST(req: NextRequest) {
       model = "openai/gpt-4o-mini",
       businessContext,
       postSystemPrompt,
+      userWritingStylePrompt,
+      carouselLongFormatPrompt,
     } = body;
 
     // Prefer client-provided key, fallback to server env
@@ -123,6 +127,12 @@ Key rules:
 
 Langue de generation : ${langLabel}.
 ${businessContext?.trim() ? `\n## Contexte business par defaut\n${businessContext.trim()}` : ""}`;
+    const writingStyleInstruction = userWritingStylePrompt?.trim()
+      ? `\n\n## Style d'ecriture utilisateur a respecter\n${userWritingStylePrompt.trim()}`
+      : "";
+    const longFormatInstruction = carouselLongFormatPrompt?.trim()
+      ? `\n\n## Prompt specifique format long\n${carouselLongFormatPrompt.trim()}`
+      : "";
 
     let userPrompt: string;
 
@@ -139,7 +149,7 @@ VISUEL: [1 phrase — description précise du visuel ou image idéale pour ce sl
       userPrompt = `Create a LinkedIn carousel with exactly ${carouselSlides} slides based on this content.
 
 ## Source (${sourceLabel}):
-${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
+${sourceContent}${styleInstruction}${writingStyleInstruction}${styleExamplesContext}${performanceContext}
 
 ## Template obligatoire pour chaque slide :
 ${template}
@@ -157,9 +167,10 @@ Génère les ${carouselSlides} slides en ${langLabel}, prêts à utiliser dans F
       userPrompt = `Create a LinkedIn post based on this content.
 
 ## Source (${sourceLabel}):
-${sourceContent}${styleInstruction}${styleExamplesContext}${performanceContext}
+${sourceContent}${styleInstruction}${writingStyleInstruction}${styleExamplesContext}${performanceContext}
 
 ## Instructions:
+${longFormatInstruction}
 - Treat the source as a brief/instruction, not as the final post.
 - Never copy the source verbatim as the post, especially when the source is "Texte libre".
 - Length: 150-300 words ideal

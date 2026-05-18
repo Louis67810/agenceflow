@@ -29,6 +29,7 @@ export const DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES: LinkedInWorkspacePreference
   autoRecycleDelayDays: 120,
   autoRecycleMinLikes: 20,
   autoRecyclePrompt: "Recree une version quasi identique du post LinkedIn. Garde le hook et les deux premieres phrases inchanges. Change seulement quelques synonymes dans le corps du texte pour eviter une copie exacte. Le CTA doit rester presque identique. Ne change ni le fond, ni la structure, ni le ton.",
+  userWritingStylePrompt: "Ecris comme l'utilisateur: direct, concret, avec des phrases courtes, des sauts de ligne naturels, un ton expert mais humain, et sans formulation corporate.",
 };
 
 export const DEFAULT_LINKEDIN_WORKSPACE: LinkedInWorkspaceData = {
@@ -192,6 +193,7 @@ function readLegacyWorkspace(): Partial<LinkedInWorkspaceData> {
       autoRecycleDelayDays: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays,
       autoRecycleMinLikes: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes,
       autoRecyclePrompt: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt,
+      userWritingStylePrompt: DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.userWritingStylePrompt,
     },
   };
 }
@@ -275,7 +277,8 @@ export function hasMeaningfulLinkedInWorkspaceData(data: LinkedInWorkspaceData):
     data.preferences.autoRecycleEnabled !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleEnabled ||
     data.preferences.autoRecycleDelayDays !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleDelayDays ||
     data.preferences.autoRecycleMinLikes !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecycleMinLikes ||
-    data.preferences.autoRecyclePrompt !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt
+    data.preferences.autoRecyclePrompt !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.autoRecyclePrompt ||
+    data.preferences.userWritingStylePrompt !== DEFAULT_LINKEDIN_WORKSPACE_PREFERENCES.userWritingStylePrompt
   );
 }
 

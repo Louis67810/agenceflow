@@ -14,6 +14,16 @@ export type ArticlePublishingSettings = {
   googleAnalyticsApiSecret: string;
   googleAnalyticsServiceAccountJson: string;
   analyticsSiteId: string;
+  agentCycleFrequencyHours: string;
+  agentPagesPerCycle: string;
+  agentResearchModel: string;
+  agentCreationModel: string;
+  agentAnalysisModel: string;
+  agentRecommendationModel: string;
+  agentResearchPrompt: string;
+  agentCreationPrompt: string;
+  agentAnalysisPrompt: string;
+  agentRecommendationPrompt: string;
 };
 
 export type ArticlePublishingConnection = {
@@ -43,6 +53,16 @@ export const DEFAULT_ARTICLE_SETTINGS: ArticlePublishingSettings = {
   googleAnalyticsApiSecret: "",
   googleAnalyticsServiceAccountJson: "",
   analyticsSiteId: "ruff-agency",
+  agentCycleFrequencyHours: "24",
+  agentPagesPerCycle: "3",
+  agentResearchModel: "perplexity/sonar-pro",
+  agentCreationModel: "anthropic/claude-sonnet-4",
+  agentAnalysisModel: "openai/gpt-4.1",
+  agentRecommendationModel: "anthropic/claude-sonnet-4",
+  agentResearchPrompt: "Trouve des opportunites d'articles SEO pour les pages ressources Ruff. Priorise les sujets proches de la conversion et indique la source, l'intention et la difficulte estimee.",
+  agentCreationPrompt: "Transforme une recommandation validee en brief d'article, plan H2/H3, angle de conversion et brouillon publiable dans Framer.",
+  agentAnalysisPrompt: "Analyse les pages ressources avec les donnees AgenceFlow et Google Analytics. Compare vues, visiteurs, temps moyen, scroll, signaux SEO et tire des conclusions actionnables.",
+  agentRecommendationPrompt: "A partir de l'analyse, propose les prochains tests: pages a creer, pages a ameliorer, angles a abandonner et priorites du cycle suivant.",
 };
 
 export const DEFAULT_ARTICLE_CONNECTION: ArticlePublishingConnection = {};

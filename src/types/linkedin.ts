@@ -70,6 +70,7 @@ export interface LinkedInPost {
     id: string;
     role: "user" | "assistant" | "system";
     content: string;
+    images?: Array<{ url: string; fileName: string }>;
     createdAt: string;
   }>;
   editorSnapshots?: Array<{
@@ -161,6 +162,7 @@ export interface LinkedInWorkspacePreferences {
   autoRecycleDelayDays: number;
   autoRecycleMinLikes: number;
   autoRecyclePrompt: string;
+  userWritingStylePrompt: string;
 }
 
 export interface LinkedInWorkspaceData {

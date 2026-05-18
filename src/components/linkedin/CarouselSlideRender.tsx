@@ -243,7 +243,7 @@ export function CarouselSlideCanvas({
         {leftBars}
         {rightBars}
         {logo}
-        <div style={{ position: "absolute", left: 86, top: 98, width: 403, marginBottom: 16 }}>
+        <div style={{ position: "absolute", left: 86, top: 98, width: 403, display: "flex", flexDirection: "column", alignItems: "stretch", overflow: "visible" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {showPointNumber && (
               <span style={{ width: 66, height: 65, borderRadius: 15, background: "#e5e5e5", border: "1px solid rgba(0,0,0,0.06)", display: "grid", placeItems: "center", flexShrink: 0 }}>
@@ -252,8 +252,8 @@ export function CarouselSlideCanvas({
             )}
             <span style={{ minHeight: 60, borderRadius: 14, background: gradient, color: "#fff", display: "inline-flex", alignItems: "center", padding: "0 20px", fontSize: 26, lineHeight: 1.06, fontWeight: 700, boxShadow: isRed ? "0 24px 9.38px rgba(150,13,13,0.02), 0 13.39px 8.04px rgba(150,13,13,0.08), 0 6.03px 6.03px rgba(150,13,13,0.13), 0 1.34px 3.35px rgba(150,13,13,0.15)" : "0 24px 9.38px rgba(1,71,255,0.02), 0 13.39px 8.04px rgba(1,71,255,0.08), 0 6.03px 6.03px rgba(1,71,255,0.13), 0 1.34px 3.35px rgba(1,71,255,0.15)", flex: showPointNumber ? "0 1 auto" : "1 1 auto", justifyContent: "flex-start", textAlign: "left" }}>{data.title || ""}</span>
           </div>
-          <p style={{ margin: "12px 0 0", minHeight: 99, fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 21, lineHeight: 1.58, fontWeight: 700, letterSpacing: "-0.02em", color: "rgba(18,26,46,0.8)", textAlign: "left" }}>{data.subtitle}</p>
-          <div style={{ position: "relative", marginTop: 12, height: 264, borderRadius: data.imageMode === "full" ? 0 : 16, background: "#fff", border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)", overflow: data.showCheck === false ? "hidden" : "visible" }}>
+          <p style={{ margin: "12px 0 0", fontFamily: '"Plus Jakarta Sans", sans-serif', fontSize: 21, lineHeight: 1.58, fontWeight: 700, letterSpacing: 0, color: "rgba(18,26,46,0.8)", textAlign: "left", whiteSpace: "pre-line", height: "auto", minHeight: 0, maxHeight: "none", overflow: "visible", flex: "0 0 auto" }}>{data.subtitle}</p>
+          <div style={{ position: "relative", marginTop: 12, height: 264, borderRadius: data.imageMode === "full" ? 0 : 16, background: "#fff", border: data.imageMode === "full" ? "none" : "1px solid rgba(0,0,0,0.1)", overflow: data.showCheck === false ? "hidden" : "visible", flex: "0 0 auto" }}>
             {data.imageUrl ? <img src={assetUrl(data.imageUrl, assetPrefix)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
             {data.showCheck !== false && (
               <img

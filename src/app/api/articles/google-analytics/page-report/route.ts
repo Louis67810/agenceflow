@@ -53,10 +53,45 @@ function normalizePath(value: string) {
   try {
     const url = value.startsWith("http") ? new URL(value) : null;
     const path = url ? url.pathname : value;
-    return path.replace(/\/$/, "") || "/";
+    return canonicalPath(path);
   } catch {
-    return value.replace(/\/$/, "") || "/";
+    return canonicalPath(value);
   }
+}
+
+function canonicalPath(value: string) {
+  let path = value.trim();
+  if (!path) return "/";
+  if (path.startsWith("http")) {
+    try {
+      path = new URL(path).pathname;
+    } catch {
+      // Normalize the raw value below.
+    }
+  }
+  path = path.split("#")[0].split("?")[0] || "/";
+  if (!path.startsWith("/")) path = `/${path}`;
+  path = path.replace(/\/index\.html?$/i, "");
+  path = path.replace(/\.html?$/i, "");
+  path = path.replace(/\/{2,}/g, "/");
+  path = path.replace(/\/(ressources|articles|blog)\/\1(?=\/|$)/gi, "/$1");
+  path = path.replace(/\/$/, "");
+  return path || "/";
+}
+
+function pathVariants(path: string) {
+  const canonical = canonicalPath(path);
+  const variants = new Set<string>([canonical]);
+  if (canonical !== "/") {
+    variants.add(`${canonical}/`);
+    variants.add(`${canonical}.html`);
+    variants.add(`${canonical}/index.html`);
+  }
+  if (canonical.startsWith("/ressources/")) {
+    variants.add(canonical.replace(/^\/ressources\//, "/ressources/ressources/"));
+    variants.add(`${canonical.replace(/^\/ressources\//, "/ressources/ressources/")}/`);
+  }
+  return Array.from(variants);
 }
 
 async function getAccessToken(serviceAccount: ServiceAccount) {
@@ -123,6 +158,7 @@ export async function POST(req: NextRequest) {
   const propertyId = body.propertyId?.trim();
   const serviceAccountJson = body.serviceAccountJson?.trim();
   const paths = Array.from(new Set((body.paths ?? []).filter(Boolean).map(normalizePath))).slice(0, 100);
+  const requestedPathVariants = Array.from(new Set(paths.flatMap(pathVariants))).slice(0, 300);
   const days = typeof body.days === "number" && Number.isFinite(body.days) ? Math.min(Math.max(Math.round(body.days), 7), 90) : 30;
 
   if (!propertyId || !serviceAccountJson) {
@@ -151,11 +187,11 @@ export async function POST(req: NextRequest) {
       limit: 10000,
     };
 
-    if (paths.length > 0) {
+    if (requestedPathVariants.length > 0) {
       bodyPayload.dimensionFilter = {
         filter: {
           fieldName: "pagePath",
-          inListFilter: { values: paths },
+          inListFilter: { values: requestedPathVariants },
         },
       };
     }
@@ -208,9 +244,17 @@ export async function POST(req: NextRequest) {
       stats.set(path, current);
     }
 
+    const matchedRows = Array.isArray(data.rows) ? data.rows.length : 0;
     return NextResponse.json({
       ok: true,
-      message: `${stats.size} page(s) GA4 analysee(s).`,
+      message: matchedRows > 0
+        ? `${stats.size} page(s) GA4 analysee(s), ${matchedRows} ligne(s) GA4 matchee(s).`
+        : `Google Analytics est connecte, mais aucune ligne GA4 ne matche les ${paths.length} chemin(s) demandes. Variantes testees: ${requestedPathVariants.slice(0, 8).join(", ")}${requestedPathVariants.length > 8 ? "..." : ""}`,
+      debug: {
+        requestedPaths: paths,
+        testedPathVariants: requestedPathVariants,
+        matchedRows,
+      },
       pages: Array.from(stats.values()),
     });
   } catch (error) {

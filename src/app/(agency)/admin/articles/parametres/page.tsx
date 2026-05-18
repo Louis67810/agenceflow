@@ -6,8 +6,10 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
+  Brain,
   Bug,
   CheckCircle2,
+  Clock3,
   Cloud,
   Code2,
   ExternalLink,
@@ -17,6 +19,7 @@ import {
   RefreshCw,
   Rocket,
   ShieldCheck,
+  Sparkles,
   UploadCloud,
   Workflow,
 } from "lucide-react";
@@ -608,6 +611,39 @@ export default function ArticleSettingsPage() {
                   ) : null}
                 </div>
               ) : null}
+            </div>
+          </SettingCard>
+
+          <SettingCard
+            title="Boucle IA articles"
+            description="Configure le cycle recherche -> creation -> stats -> analyse -> recommandations. Ces valeurs seront lues par la route d'automatisation quand le worker planifie sera branche."
+            icon={<Brain size={22} />}
+            badge={<span style={{ minHeight: 28, borderRadius: 999, padding: "0 10px", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, background: "#e8edff", color: "#0147ff", whiteSpace: "nowrap" }}><Clock3 size={13} /> Configurable</span>}
+          >
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <Field label="Frequence du cycle (heures)" value={settings.agentCycleFrequencyHours} onChange={(value) => updateSetting("agentCycleFrequencyHours", value)} placeholder="24" help="Exemple: 24 = un cycle par jour, 168 = un cycle par semaine." />
+                <Field label="Pages a creer par cycle" value={settings.agentPagesPerCycle} onChange={(value) => updateSetting("agentPagesPerCycle", value)} placeholder="3" help="Limite de production pour eviter que l'IA publie trop de pages d'un coup." />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
+                <Field label="Modele recherche" value={settings.agentResearchModel} onChange={(value) => updateSetting("agentResearchModel", value)} placeholder="perplexity/sonar-pro" />
+                <Field label="Modele creation" value={settings.agentCreationModel} onChange={(value) => updateSetting("agentCreationModel", value)} placeholder="anthropic/claude-sonnet-4" />
+                <Field label="Modele analyse" value={settings.agentAnalysisModel} onChange={(value) => updateSetting("agentAnalysisModel", value)} placeholder="openai/gpt-4.1" />
+                <Field label="Modele recommandations" value={settings.agentRecommendationModel} onChange={(value) => updateSetting("agentRecommendationModel", value)} placeholder="anthropic/claude-sonnet-4" />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <TextAreaField label="Prompt recherche" value={settings.agentResearchPrompt} onChange={(value) => updateSetting("agentResearchPrompt", value)} placeholder="Instructions pour la veille et la recherche..." />
+                <TextAreaField label="Prompt creation" value={settings.agentCreationPrompt} onChange={(value) => updateSetting("agentCreationPrompt", value)} placeholder="Instructions pour creer les pages..." />
+                <TextAreaField label="Prompt analyse" value={settings.agentAnalysisPrompt} onChange={(value) => updateSetting("agentAnalysisPrompt", value)} placeholder="Instructions pour analyser la data..." />
+                <TextAreaField label="Prompt recommandations" value={settings.agentRecommendationPrompt} onChange={(value) => updateSetting("agentRecommendationPrompt", value)} placeholder="Instructions pour choisir le prochain cycle..." />
+              </div>
+
+              <div style={{ borderRadius: 12, border: "1px solid rgba(1,71,255,0.12)", background: "linear-gradient(135deg, rgba(232,237,255,0.9), rgba(255,255,255,0.95))", padding: 14, display: "flex", gap: 10, color: "rgba(18,26,46,0.64)", fontSize: 12, lineHeight: "18px", fontFamily: "Inter, sans-serif" }}>
+                <Sparkles size={16} style={{ color: "#0147ff", flexShrink: 0, marginTop: 1 }} />
+                Le cycle automatique ne tourne pas encore en arriere-plan ici : cette section prepare les prompts, modeles et limites que le worker utilisera pour eviter une boite noire.
+              </div>
             </div>
           </SettingCard>
         </div>

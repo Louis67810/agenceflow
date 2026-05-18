@@ -10,6 +10,7 @@ interface TransformTextRequest {
   prompt?: string;
   responseMode?: "text" | "editWithMessage" | "chatWithOptionalTextEdit" | "carouselChat";
   chatContext?: string;
+  imageInputs?: Array<{ url: string; fileName?: string }>;
 }
 
 function parseJsonResponse(raw: string) {
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
       prompt,
       responseMode = "text",
       chatContext,
+      imageInputs = [],
     } = body;
 
     if (!text?.trim()) {
@@ -70,6 +72,19 @@ export async function POST(req: NextRequest) {
         : "Retourne uniquement le passage transforme, pret a remplacer la selection.",
     ].filter(Boolean).join("\n\n");
 
+    const userMessageContent = imageInputs.length > 0
+      ? [
+          { type: "text", text: userPrompt },
+          ...imageInputs
+            .filter((image) => image.url)
+            .slice(0, 4)
+            .map((image) => ({
+              type: "image_url",
+              image_url: { url: image.url },
+            })),
+        ]
+      : userPrompt;
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -82,7 +97,7 @@ export async function POST(req: NextRequest) {
         model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          { role: "user", content: userMessageContent },
         ],
         temperature: 0.6,
         max_tokens: responseMode === "carouselChat" ? 2600 : responseMode === "editWithMessage" || responseMode === "chatWithOptionalTextEdit" ? 1600 : 500,
