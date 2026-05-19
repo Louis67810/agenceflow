@@ -6,6 +6,7 @@
   var config = {
     siteId: script?.dataset.siteId || "",
     endpoint: script?.dataset.endpoint || (scriptUrl ? new URL("/api/analytics/collect", scriptUrl.origin).toString() : "/api/analytics/collect"),
+    n8nWebhook: script?.dataset.n8nWebhook || "",
     debug: script?.dataset.debug === "true",
     sampleRate: Number(script?.dataset.sampleRate || "1"),
     batchSize: Number(script?.dataset.batchSize || "12"),
@@ -112,11 +113,32 @@
     return Math.max(0, Math.min(100, Math.round((scrollTop / height) * 100)));
   }
 
+  function sendToN8n(payload, useBeacon) {
+    if (!config.n8nWebhook) return;
+
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon(config.n8nWebhook, new Blob([payload], { type: "application/json" }));
+      return;
+    }
+
+    fetch(config.n8nWebhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+      credentials: "omit"
+    }).catch(function (error) {
+      if (config.debug) console.warn("[AgenceFlow analytics] n8n webhook failed", error);
+    });
+  }
+
   function flush(useBeacon) {
     if (isFlushing || queue.length === 0) return;
     isFlushing = true;
     var events = queue.splice(0, config.batchSize);
     var payload = JSON.stringify({ siteId: config.siteId, events: events });
+
+    sendToN8n(payload, useBeacon);
 
     if (useBeacon && navigator.sendBeacon) {
       var sent = navigator.sendBeacon(config.endpoint, new Blob([payload], { type: "text/plain" }));
