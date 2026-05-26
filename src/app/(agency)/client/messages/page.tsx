@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { Send, Loader2, ExternalLink } from "lucide-react";
-import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 interface Message {
   id: string;
@@ -98,8 +97,6 @@ export default function ClientMessagesPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}

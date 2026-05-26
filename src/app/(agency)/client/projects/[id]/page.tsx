@@ -200,14 +200,14 @@ export default function ClientProjectDetailPage({
   ];
 
   return (
-    <div className="p-6 lg:p-10 max-w-5xl">
+    <div className="max-w-5xl px-4 py-5 sm:px-6 lg:p-10">
       {/* Back + title */}
-      <div className="flex items-start gap-4 mb-8">
+      <div className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-start sm:gap-4">
         <Link href="/client" className="mt-1 flex items-center gap-1.5 text-gray-400 hover:text-gray-700 text-sm transition-colors shrink-0">
           <ArrowLeft size={15} />Retour
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[project.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
               {STATUS_LABELS[project.status] ?? project.status}
@@ -222,7 +222,7 @@ export default function ClientProjectDetailPage({
       {/* Horizontal timeline */}
       {stages.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-sm font-semibold text-gray-700">Calendrier du projet</h2>
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">{doneCount}/{stages.length} étapes</span>

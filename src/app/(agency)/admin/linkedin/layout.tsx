@@ -87,8 +87,8 @@ export default function LinkedInLayout({
   }, []);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#fbfbfb]">
-      <div className="flex-1 overflow-hidden">
+    <div className="linkedin-responsive-shell flex h-[100dvh] flex-col overflow-hidden bg-[#fbfbfb] lg:h-screen">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {bootstrapped ? (
           children
         ) : (

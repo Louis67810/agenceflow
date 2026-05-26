@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { Loader2, Send, FolderOpen, ExternalLink, MessageSquare, Bell, CheckCircle2, ClipboardCheck, Mail, Phone, Hash, ChevronRight, HelpCircle, Sparkles, BarChart2, ArrowLeft } from "lucide-react";
-import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -277,7 +276,6 @@ export default function ClientDashboard() {
 
   if (!project) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
         <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.2)" }} />
         <p style={{ fontSize: 16, color: "rgba(18,26,46,0.5)" }}>Aucun projet en cours</p>
@@ -341,8 +339,6 @@ export default function ClientDashboard() {
   return (
     <>
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* ── Bannière projet (image fixe définie par l'admin) ───────────── */}

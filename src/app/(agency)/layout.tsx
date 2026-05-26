@@ -7,7 +7,7 @@ export default function AgencyLayout({ children }: { children: ReactNode }) {
     <AuthGuard>
       <div className="min-h-screen bg-gray-50">
         <RoleAwareSidebar />
-        <main className="ml-64 min-h-screen">{children}</main>
+        <main className="agency-main-responsive min-h-screen pb-24 lg:ml-64 lg:pb-0">{children}</main>
       </div>
     </AuthGuard>
   );

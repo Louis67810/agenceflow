@@ -6,7 +6,6 @@ import {
   Bell, ClipboardCheck, CheckCircle2, ExternalLink, Loader2,
   ChevronRight, Mail, Phone, Hash, ArrowLeft,
 } from "lucide-react";
-import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
 
@@ -99,7 +98,6 @@ export default function TachesPage() {
 
   if (!project) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <p style={{ color: "rgba(18,26,46,0.4)", ...jakartaSans }}>Aucun projet trouvé.</p>
       </div>
@@ -112,7 +110,6 @@ export default function TachesPage() {
   if (configuring) {
     return (
       <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-        <AgencySidebar role="client" userName={clientName} />
         <div style={{ flex: 1, padding: "32px 24px", ...jakartaSans }}>
           <button onClick={() => setConfiguring(null)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", marginBottom: 24, padding: 0 }}>
             <ArrowLeft size={14} />Retour
@@ -159,7 +156,6 @@ export default function TachesPage() {
   if (!notifMethod) {
     return (
       <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-        <AgencySidebar role="client" userName={clientName} />
         <div style={{ flex: 1, padding: "32px 24px", ...jakartaSans }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 6px" }}>Tâches à faire</h1>
           <p style={{ fontSize: 14, color: "rgba(18,26,46,0.45)", margin: "0 0 28px" }}>Suivez les actions à réaliser sur votre projet.</p>
@@ -203,7 +199,6 @@ export default function TachesPage() {
   // ── Vue principale : tâches ───────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, padding: "32px 24px", ...jakartaSans }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
           <div>

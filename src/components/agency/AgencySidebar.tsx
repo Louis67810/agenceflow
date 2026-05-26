@@ -74,6 +74,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/articles", label: "Articles", icon: <FileText size={18} /> },
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
+  { href: "/admin/audit", label: "Audit", icon: <ClipboardCheck size={18} /> },
   { href: "/admin/agenda", label: "Habits", icon: <CalendarDays size={18} /> },
   { href: "/admin/tests", label: "Tests Prestataires", icon: <ClipboardList size={18} /> },
   { href: "/admin/coach", label: "Coach IA", icon: <Bot size={18} /> },
@@ -116,6 +117,13 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
 
   const roleLabel =
     role === "admin" ? "Administration" : role === "client" ? "Espace Client" : "Espace Designer";
+  const mobileSubNav = role === "admin"
+    ? isOnLinkedIn
+      ? linkedInSubNav
+      : isOnAgenda
+        ? agendaSubNav
+        : adminNav
+    : null;
 
   // ── Client sidebar — design fidèle au Framer ────────────────────────────────
   if (role === "client") {
@@ -127,7 +135,8 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
     ];
 
     return (
-      <aside className="fixed left-0 top-0 h-screen w-64 flex flex-col z-30"
+      <>
+      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col lg:flex"
         style={{ background: "#121a2e", borderRight: "1px solid rgba(255,255,255,0.08)" }}>
 
         {/* Header — logo blanc + séparateur + "Espace Client" */}
@@ -238,11 +247,42 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
           </form>
         </div>
       </aside>
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#121a2e]/95 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_rgba(18,26,46,0.22)] backdrop-blur lg:hidden"
+        aria-label="Navigation client mobile"
+      >
+        <div className="mb-2 flex items-center justify-between px-1">
+          <span className="text-xs font-semibold text-white/70">Espace client</span>
+          <form action="/api/auth/signout" method="POST">
+            <button type="submit" className="text-xs font-semibold text-white/70">Sortir</button>
+          </form>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+          {clientLinks.map((item) => {
+            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex min-w-[78px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-semibold no-underline",
+                  active ? "bg-white text-[#121a2e]" : "bg-white/7 text-white/72"
+                )}
+              >
+                <span className="flex h-[18px] w-[18px] items-center justify-center">{item.icon}</span>
+                <span className="max-w-[92px] truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+      </>
     );
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 text-white flex flex-col z-30" style={{ background: "#121a2e" }}>
+    <>
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col text-white lg:flex" style={{ background: "#121a2e" }}>
       {/* Header — même design que la sidebar client */}
       <div className="flex items-center gap-3 px-5 py-4"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
@@ -427,5 +467,41 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
         </div>
       </div>
     </aside>
+    {mobileSubNav && (
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#121a2e]/95 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_rgba(18,26,46,0.22)] backdrop-blur lg:hidden"
+        aria-label={isOnLinkedIn ? "Navigation LinkedIn mobile" : "Navigation Habits mobile"}
+      >
+        <div className="mb-2 flex items-center justify-between px-1">
+          <Link href="/admin" className="text-xs font-semibold text-white/70 no-underline">
+            Admin
+          </Link>
+          <span className="text-xs font-semibold text-white">
+            {isOnLinkedIn ? "LinkedIn" : isOnAgenda ? "Habits" : "Admin"}
+          </span>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+          {mobileSubNav.map((sub) => {
+            const active = sub.href === "/admin" || sub.href === "/admin/linkedin/posts" || sub.href === "/admin/agenda"
+              ? pathname === sub.href
+              : pathname.startsWith(sub.href);
+            return (
+              <Link
+                key={sub.href}
+                href={sub.href}
+                className={cn(
+                  "flex min-w-[74px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-semibold no-underline",
+                  active ? "bg-white text-[#121a2e]" : "bg-white/7 text-white/72"
+                )}
+              >
+                <span className="flex h-[18px] w-[18px] items-center justify-center">{sub.icon}</span>
+                <span className="max-w-[86px] truncate">{sub.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    )}
+    </>
   );
 }

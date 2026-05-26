@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { Loader2, ExternalLink, FolderOpen, Upload, X } from "lucide-react";
-import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 interface Project {
   id: string;
@@ -96,7 +95,6 @@ export default function ClientRessourcesPage() {
 
   if (loading) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Loader2 size={28} style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} />
       </div>
@@ -121,8 +119,6 @@ export default function ClientRessourcesPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}

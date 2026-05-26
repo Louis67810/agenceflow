@@ -59,7 +59,7 @@ export default function ClientProjectsPage() {
   }, []);
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-8 lg:mx-0">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Mes projets</h1>
         <p className="text-gray-500 mt-1">Suivez l&apos;avancement de vos projets</p>
@@ -86,8 +86,8 @@ export default function ClientProjectsPage() {
             return (
               <Link key={project.id} href={`/client/projects/${project.id}`}>
                 <div className="bg-white rounded-xl border border-gray-200 p-6 hover:border-indigo-200 hover:shadow-sm transition-all group">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <h2 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
                         {project.name}
                       </h2>
@@ -95,7 +95,7 @@ export default function ClientProjectsPage() {
                         Créé le {new Date(project.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[project.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
                         {STATUS_LABELS[project.status] ?? project.status}
                       </span>

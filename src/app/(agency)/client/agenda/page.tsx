@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { Loader2, FolderOpen, CheckCircle2, Clock, AlertCircle } from "lucide-react";
-import { AgencySidebar } from "@/components/agency/AgencySidebar";
 
 interface Stage {
   id: string;
@@ -97,7 +96,6 @@ export default function ClientAgendaPage() {
 
   if (loading) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Loader2 size={28} style={{ color: "#121a2e", animation: "spin 1s linear infinite" }} />
       </div>
@@ -106,7 +104,6 @@ export default function ClientAgendaPage() {
 
   if (!project) return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
         <FolderOpen size={40} style={{ color: "rgba(18,26,46,0.2)" }} />
         <p style={{ fontSize: 16, color: "rgba(18,26,46,0.5)" }}>Aucun projet en cours</p>
@@ -123,8 +120,6 @@ export default function ClientAgendaPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
-      <AgencySidebar role="client" userName={clientName} />
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
