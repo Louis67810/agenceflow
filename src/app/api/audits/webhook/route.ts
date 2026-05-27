@@ -1,0 +1,119 @@
+import { NextRequest, NextResponse } from "next/server";
+import { normalizeWebsiteUrl } from "@/lib/audits/templates";
+import { createServiceClient } from "@/lib/supabase/service";
+import { createClient } from "@/lib/supabase/server";
+
+const NAME_KEYS = ["name", "nom", "full_name", "fullname", "prenom"];
+const EMAIL_KEYS = ["email", "mail", "e-mail"];
+const PHONE_KEYS = ["phone", "telephone", "tel", "mobile"];
+const WEBSITE_KEYS = ["website", "site", "site_url", "url", "lien", "website_url"];
+const DOMAIN_KEYS = ["domain", "domaine", "activity", "activite", "industry", "secteur"];
+const BUSINESS_KEYS = ["business", "entreprise", "description", "offer", "offre", "metier", "revenue", "ca"];
+const QUESTION_KEYS = ["question", "objectif", "problem", "probleme", "besoin"];
+
+const AUDIT_STATUSES = new Set(["pending", "accepted", "refused", "audit_ready", "sent"]);
+
+function findField(data: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = data[key] ?? data[key.toLowerCase()] ?? data[key.toUpperCase()];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+
+  for (const [key, value] of Object.entries(data)) {
+    if (
+      typeof value === "string" &&
+      value.trim() &&
+      keys.some((candidate) => key.toLowerCase().includes(candidate.toLowerCase()))
+    ) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function getWebhookPayload(body: unknown) {
+  if (!body || typeof body !== "object") return {};
+  return body as Record<string, unknown>;
+}
+
+/**
+ * POST /api/audits/webhook
+ *
+ * Body attendu:
+ * {
+ *   "status": "partial",
+ *   "step": "contact",
+ *   "source": "framer-agenceflow-mini-form",
+ *   "submittedAt": "2026-05-26T...",
+ *   "data": {
+ *     "name": "...",
+ *     "email": "...",
+ *     "phone": "...",
+ *     "revenue": "...",
+ *     "website": "https://..."
+ *   }
+ * }
+ *
+ * Si AUDITS_WEBHOOK_API_KEY est configure, envoyer:
+ *   Authorization: Bearer <AUDITS_WEBHOOK_API_KEY>
+ */
+export async function POST(req: NextRequest) {
+  const expectedKey = process.env.AUDITS_WEBHOOK_API_KEY;
+  if (expectedKey) {
+    const authHeader = req.headers.get("authorization") ?? "";
+    const apiKey = authHeader.replace("Bearer ", "").trim();
+
+    if (apiKey !== expectedKey) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
+  try {
+    const body = getWebhookPayload(await req.json());
+    const data = body.data && typeof body.data === "object"
+      ? body.data as Record<string, unknown>
+      : body;
+
+    const fullName = findField(data, NAME_KEYS);
+    const email = findField(data, EMAIL_KEYS);
+    const phone = findField(data, PHONE_KEYS);
+    const websiteUrl = normalizeWebsiteUrl(findField(data, WEBSITE_KEYS));
+    const businessDomain = findField(data, DOMAIN_KEYS);
+    const businessDescription = findField(data, BUSINESS_KEYS);
+    const mainQuestion = findField(data, QUESTION_KEYS);
+    const requestedStatus = typeof body.status === "string" && AUDIT_STATUSES.has(body.status)
+      ? body.status
+      : "pending";
+
+    if (!fullName || !email || !websiteUrl) {
+      return NextResponse.json(
+        { error: "name, email and website are required" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServiceClient() ?? await createClient();
+    const { data: audit, error } = await supabase
+      .from("audit_requests")
+      .insert({
+        full_name: fullName,
+        email,
+        phone,
+        website_url: websiteUrl,
+        business_domain: businessDomain,
+        business_description: businessDescription,
+        main_question: mainQuestion,
+        status: requestedStatus,
+        raw_answers: body,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ audit, received: true }, { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
