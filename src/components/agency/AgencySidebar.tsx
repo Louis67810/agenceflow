@@ -32,6 +32,8 @@ import {
   Timer,
   BarChart2,
   ArrowLeft,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
@@ -107,11 +109,27 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   const isOnAgenda = pathname.startsWith("/admin/agenda");
   const [linkedInOpen, setLinkedInOpen] = useState(isOnLinkedIn);
   const [agendaOpen, setAgendaOpen] = useState(isOnAgenda);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => {
     if (isOnLinkedIn) { setLinkedInOpen(true); setAgendaOpen(false); }
     if (isOnAgenda) { setAgendaOpen(true); setLinkedInOpen(false); }
   }, [isOnLinkedIn, isOnAgenda]);
+
+  useEffect(() => {
+    setMobileMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileMoreOpen]);
 
   const navItems = role === "admin" ? adminNav : role === "client" ? clientNav : designerNav;
 
@@ -124,6 +142,23 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
         ? agendaSubNav
         : adminNav
     : null;
+  const mobilePrimaryNav = mobileSubNav ?? navItems;
+  const mobileDrawerNav = role === "admin"
+    ? isOnLinkedIn
+      ? [
+          { href: "/admin", label: "Admin", icon: <LayoutDashboard size={18} /> },
+          ...linkedInSubNav,
+        ]
+      : isOnAgenda
+        ? [
+            { href: "/admin", label: "Admin", icon: <LayoutDashboard size={18} /> },
+            ...agendaSubNav,
+          ]
+        : [
+            { href: "/admin/linkedin/posts", label: "LinkedIn", icon: <span className="flex h-[18px] w-[18px] items-center justify-center rounded bg-[#0A66C2] text-[10px] font-black leading-none text-white">in</span> },
+            ...adminNav,
+          ]
+    : navItems;
 
   // ── Client sidebar — design fidèle au Framer ────────────────────────────────
   if (role === "client") {
@@ -247,33 +282,92 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
           </form>
         </div>
       </aside>
+      {mobileMoreOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu client mobile">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/45"
+            aria-label="Fermer le menu"
+            onClick={() => setMobileMoreOpen(false)}
+          />
+          <aside id="client-mobile-more-menu" className="relative flex h-[100dvh] w-[86vw] max-w-[360px] flex-col bg-white text-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Menu</p>
+                <p className="text-xl font-bold text-slate-950">Espace client</p>
+              </div>
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500"
+                aria-label="Fermer le menu"
+                onClick={() => setMobileMoreOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5" aria-label="Tous les onglets client">
+              {clientLinks.map((item) => {
+                const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-semibold no-underline transition-colors",
+                      active ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                    )}
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="border-t border-slate-200 p-4">
+              <form action="/api/auth/signout" method="POST">
+                <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">
+                  <LogOut size={17} />
+                  Déconnexion
+                </button>
+              </form>
+            </div>
+          </aside>
+        </div>
+      )}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#121a2e]/95 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_rgba(18,26,46,0.22)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] lg:hidden"
         aria-label="Navigation client mobile"
       >
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="text-xs font-semibold text-white/70">Espace client</span>
-          <form action="/api/auth/signout" method="POST">
-            <button type="submit" className="text-xs font-semibold text-white/70">Sortir</button>
-          </form>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
-          {clientLinks.map((item) => {
+        <div className="grid grid-cols-4 items-stretch gap-1">
+          {clientLinks.slice(0, 3).map((item) => {
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex min-w-[78px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-semibold no-underline",
-                  active ? "bg-white text-[#121a2e]" : "bg-white/7 text-white/72"
+                  "flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold no-underline transition-colors",
+                  active ? "text-slate-950" : "text-slate-500"
                 )}
               >
-                <span className="flex h-[18px] w-[18px] items-center justify-center">{item.icon}</span>
-                <span className="max-w-[92px] truncate">{item.label}</span>
+                <span className="flex h-6 w-6 items-center justify-center">{item.icon}</span>
+                <span className="max-w-full truncate">{item.label}</span>
               </Link>
             );
           })}
+          <button
+            type="button"
+            className={cn(
+              "flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold transition-colors",
+              mobileMoreOpen ? "text-slate-950" : "text-slate-500"
+            )}
+            aria-expanded={mobileMoreOpen}
+            aria-controls="client-mobile-more-menu"
+            onClick={() => setMobileMoreOpen(true)}
+          >
+            <Menu size={24} />
+            <span>Plus</span>
+          </button>
         </div>
       </nav>
       </>
@@ -467,41 +561,98 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
         </div>
       </div>
     </aside>
-    {mobileSubNav && (
-      <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#121a2e]/95 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_rgba(18,26,46,0.22)] backdrop-blur lg:hidden"
-        aria-label={isOnLinkedIn ? "Navigation LinkedIn mobile" : "Navigation Habits mobile"}
-      >
-        <div className="mb-2 flex items-center justify-between px-1">
-          <Link href="/admin" className="text-xs font-semibold text-white/70 no-underline">
-            Admin
-          </Link>
-          <span className="text-xs font-semibold text-white">
-            {isOnLinkedIn ? "LinkedIn" : isOnAgenda ? "Habits" : "Admin"}
-          </span>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
-          {mobileSubNav.map((sub) => {
-            const active = sub.href === "/admin" || sub.href === "/admin/linkedin/posts" || sub.href === "/admin/agenda"
-              ? pathname === sub.href
-              : pathname.startsWith(sub.href);
-            return (
-              <Link
-                key={sub.href}
-                href={sub.href}
-                className={cn(
-                  "flex min-w-[74px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-[11px] font-semibold no-underline",
-                  active ? "bg-white text-[#121a2e]" : "bg-white/7 text-white/72"
-                )}
-              >
-                <span className="flex h-[18px] w-[18px] items-center justify-center">{sub.icon}</span>
-                <span className="max-w-[86px] truncate">{sub.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+    {mobileMoreOpen && (
+      <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu mobile">
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-950/45"
+          aria-label="Fermer le menu"
+          onClick={() => setMobileMoreOpen(false)}
+        />
+        <aside id="agency-mobile-more-menu" className="relative flex h-[100dvh] w-[86vw] max-w-[360px] flex-col bg-white text-slate-950 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tous les onglets</p>
+              <p className="text-xl font-bold text-slate-950">{roleLabel}</p>
+            </div>
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500"
+              aria-label="Fermer le menu"
+              onClick={() => setMobileMoreOpen(false)}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5" aria-label="Tous les onglets">
+            {mobileDrawerNav.map((item) => {
+              const active = item.href === `/${role}` || item.href === "/admin/linkedin/posts" || item.href === "/admin/agenda"
+                ? pathname === item.href || (item.href === "/admin/linkedin/posts" && isOnLinkedIn)
+                : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl px-4 py-3 text-base font-semibold no-underline transition-colors",
+                    active ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                  )}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-slate-200 p-4">
+            <form action="/api/auth/signout" method="POST">
+              <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">
+                <LogOut size={17} />
+                Déconnexion
+              </button>
+            </form>
+          </div>
+        </aside>
+      </div>
     )}
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] lg:hidden"
+      aria-label={isOnLinkedIn ? "Navigation LinkedIn mobile" : isOnAgenda ? "Navigation Habits mobile" : "Navigation mobile"}
+    >
+      <div className="grid grid-cols-4 items-stretch gap-1">
+        {mobilePrimaryNav.slice(0, 3).map((sub) => {
+          const active = sub.href === `/${role}` || sub.href === "/admin/linkedin/posts" || sub.href === "/admin/agenda"
+            ? pathname === sub.href
+            : pathname.startsWith(sub.href);
+          return (
+            <Link
+              key={sub.href}
+              href={sub.href}
+              className={cn(
+                "flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold no-underline transition-colors",
+                active ? "text-slate-950" : "text-slate-500"
+              )}
+            >
+              <span className="flex h-6 w-6 items-center justify-center">{sub.icon}</span>
+              <span className="max-w-full truncate">{sub.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          className={cn(
+            "flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-semibold transition-colors",
+            mobileMoreOpen ? "text-slate-950" : "text-slate-500"
+          )}
+          aria-expanded={mobileMoreOpen}
+          aria-controls="agency-mobile-more-menu"
+          onClick={() => setMobileMoreOpen(true)}
+        >
+          <Menu size={24} />
+          <span>Plus</span>
+        </button>
+      </div>
+    </nav>
     </>
   );
 }
