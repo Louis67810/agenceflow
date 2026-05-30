@@ -13,6 +13,24 @@ const QUESTION_KEYS = ["question", "objectif", "problem", "probleme", "besoin"];
 
 const AUDIT_STATUSES = new Set(["pending", "accepted", "refused", "audit_ready", "sent"]);
 
+function getCorsHeaders(origin: string | null) {
+  const allowed = (process.env.AUDITS_WEBHOOK_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const allowOrigin = allowed.length === 0 || (origin && allowed.includes(origin))
+    ? origin ?? "*"
+    : allowed[0] ?? "*";
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
+
 function findField(data: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = data[key] ?? data[key.toLowerCase()] ?? data[key.toUpperCase()];
@@ -58,14 +76,22 @@ function getWebhookPayload(body: unknown) {
  * Si AUDITS_WEBHOOK_API_KEY est configure, envoyer:
  *   Authorization: Bearer <AUDITS_WEBHOOK_API_KEY>
  */
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, {
+    status: 204,
+    headers: getCorsHeaders(req.headers.get("origin")),
+  });
+}
+
 export async function POST(req: NextRequest) {
+  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
   const expectedKey = process.env.AUDITS_WEBHOOK_API_KEY;
   if (expectedKey) {
     const authHeader = req.headers.get("authorization") ?? "";
     const apiKey = authHeader.replace("Bearer ", "").trim();
 
     if (apiKey !== expectedKey) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders });
     }
   }
 
@@ -89,7 +115,7 @@ export async function POST(req: NextRequest) {
     if (!fullName || !email || !websiteUrl) {
       return NextResponse.json(
         { error: "name, email and website are required" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -112,8 +138,8 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ audit, received: true }, { status: 201 });
+    return NextResponse.json({ audit, received: true }, { status: 201, headers: corsHeaders });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: String(e) }, { status: 500, headers: corsHeaders });
   }
 }
