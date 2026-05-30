@@ -3,13 +3,13 @@ import { normalizeWebsiteUrl } from "@/lib/audits/templates";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 
-const NAME_KEYS = ["name", "nom", "full_name", "fullname", "prenom"];
+const NAME_KEYS = ["name", "nom", "full_name", "fullname", "prenom", "first_name", "last_name"];
 const EMAIL_KEYS = ["email", "mail", "e-mail"];
 const PHONE_KEYS = ["phone", "telephone", "tel", "mobile"];
 const WEBSITE_KEYS = ["website", "site", "site_url", "url", "lien", "website_url"];
-const DOMAIN_KEYS = ["domain", "domaine", "activity", "activite", "industry", "secteur"];
-const BUSINESS_KEYS = ["business", "entreprise", "description", "offer", "offre", "metier", "revenue", "ca"];
-const QUESTION_KEYS = ["question", "objectif", "problem", "probleme", "besoin"];
+const DOMAIN_KEYS: string[] = [];
+const BUSINESS_KEYS = ["business", "revenue", "ca", "chiffre_affaires", "chiffre d'affaires", "tranche", "salary", "salaire"];
+const QUESTION_KEYS: string[] = [];
 
 const AUDIT_STATUSES = new Set(["pending", "accepted", "refused", "audit_ready", "sent"]);
 
@@ -39,9 +39,9 @@ function findField(data: Record<string, unknown>, keys: string[]) {
 
   for (const [key, value] of Object.entries(data)) {
     if (
-      typeof value === "string" &&
-      value.trim() &&
-      keys.some((candidate) => key.toLowerCase().includes(candidate.toLowerCase()))
+      typeof value === "string"
+      && value.trim()
+      && keys.some((candidate) => key.toLowerCase().includes(candidate.toLowerCase()))
     ) {
       return value.trim();
     }
@@ -55,27 +55,6 @@ function getWebhookPayload(body: unknown) {
   return body as Record<string, unknown>;
 }
 
-/**
- * POST /api/audits/webhook
- *
- * Body attendu:
- * {
- *   "status": "partial",
- *   "step": "contact",
- *   "source": "framer-agenceflow-mini-form",
- *   "submittedAt": "2026-05-26T...",
- *   "data": {
- *     "name": "...",
- *     "email": "...",
- *     "phone": "...",
- *     "revenue": "...",
- *     "website": "https://..."
- *   }
- * }
- *
- * Si AUDITS_WEBHOOK_API_KEY est configure, envoyer:
- *   Authorization: Bearer <AUDITS_WEBHOOK_API_KEY>
- */
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,

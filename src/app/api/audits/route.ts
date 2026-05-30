@@ -3,13 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { normalizeWebsiteUrl } from "@/lib/audits/templates";
 
-const NAME_KEYS = ["name", "nom", "full_name", "fullname", "prenom", "prénom"];
+const NAME_KEYS = ["name", "nom", "full_name", "fullname", "prenom", "first_name", "last_name"];
 const EMAIL_KEYS = ["email", "mail", "e-mail"];
-const PHONE_KEYS = ["phone", "telephone", "téléphone", "tel", "mobile"];
+const PHONE_KEYS = ["phone", "telephone", "tel", "mobile"];
 const WEBSITE_KEYS = ["website", "site", "site_url", "url", "lien", "website_url"];
-const DOMAIN_KEYS = ["domain", "domaine", "activity", "activite", "activité", "industry", "secteur"];
-const BUSINESS_KEYS = ["business", "entreprise", "description", "offer", "offre", "metier", "métier"];
-const QUESTION_KEYS = ["question", "objectif", "problem", "probleme", "problème", "besoin"];
+const DOMAIN_KEYS: string[] = [];
+const BUSINESS_KEYS = ["business", "revenue", "ca", "chiffre_affaires", "chiffre d'affaires", "tranche", "salary", "salaire"];
+const QUESTION_KEYS: string[] = [];
 
 function findField(data: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
@@ -19,9 +19,9 @@ function findField(data: Record<string, unknown>, keys: string[]) {
 
   for (const [key, value] of Object.entries(data)) {
     if (
-      typeof value === "string" &&
-      value.trim() &&
-      keys.some((candidate) => key.toLowerCase().includes(candidate.toLowerCase()))
+      typeof value === "string"
+      && value.trim()
+      && keys.some((candidate) => key.toLowerCase().includes(candidate.toLowerCase()))
     ) {
       return value.trim();
     }
@@ -87,4 +87,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
-

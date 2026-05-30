@@ -16,18 +16,16 @@ export function generateAuditAccessKey() {
 }
 
 export function buildAuditMessage(audit: AuditRequest) {
-  const firstName = audit.full_name?.trim().split(/\s+/)[0] || "bonjour";
+  const firstName = audit.full_name?.trim().split(/\s+/)[0] || "";
   const auditUrl = audit.audit_url?.trim() || "";
-  const accessKey = audit.access_key || "";
+  const greeting = firstName ? `Hello ${firstName},` : "Hello,";
 
   return [
-    `Bonjour ${firstName},`,
+    greeting,
     "",
-    "J'ai prepare l'audit de votre site.",
-    auditUrl ? `Voici le lien pour le consulter : ${auditUrl}` : "Je vous envoie le lien de l'audit juste apres validation.",
-    accessKey ? `Code d'acces : ${accessKey}` : "",
-    "",
-    "Dites-moi quand vous l'avez regarde, je vous dirai les 2-3 actions les plus prioritaires a lancer.",
+    auditUrl
+      ? `Voici ton audit de ton site : ${auditUrl}`
+      : "Voici ton audit de ton site. Je t'envoie le lien juste apres validation.",
+    "Dis-moi ce que tu en penses.",
   ].filter(Boolean).join("\n");
 }
-
