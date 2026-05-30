@@ -43,17 +43,42 @@ CREATE POLICY "Admin peut modifier les profils"
 -- (à personnaliser selon votre flow d'invitation)
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  raw_role TEXT;
+  profile_role TEXT;
 BEGIN
-  INSERT INTO agency_profiles (id, email, name, role)
+  raw_role := COALESCE(
+    NULLIF(NEW.raw_user_meta_data->>'role', ''),
+    NULLIF(NEW.raw_app_meta_data->>'role', ''),
+    'client'
+  );
+
+  profile_role := CASE
+    WHEN raw_role = 'admin' THEN 'admin'
+    WHEN raw_role IN ('designer', 'developer') THEN 'designer'
+    ELSE 'client'
+  END;
+
+  INSERT INTO public.agency_profiles (id, email, name, role)
   VALUES (
     NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'client')
-  );
+    COALESCE(NEW.email, ''),
+    COALESCE(
+      NULLIF(NEW.raw_user_meta_data->>'name', ''),
+      NULLIF(NEW.raw_user_meta_data->>'full_name', ''),
+      NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
+      'Utilisateur'
+    ),
+    profile_role
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    name = EXCLUDED.name,
+    role = EXCLUDED.role;
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
