@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  House,
   FolderKanban,
   Users,
   Palette,
@@ -36,6 +35,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { House } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
 
