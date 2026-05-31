@@ -16,6 +16,8 @@ interface Project {
   notif_whatsapp_phone: string | null;
   notif_whatsapp_group: string | null;
   notif_whatsapp_enabled: boolean;
+  whatsapp_group_jid: string | null;
+  whatsapp_group_name: string | null;
   notif_slack_webhook: string | null;
   notif_slack_enabled: boolean;
 }
@@ -56,7 +58,7 @@ export default function TachesPage() {
       setProject(proj);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
       if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
-      if (proj.notif_whatsapp_enabled) setNotifMethod("whatsapp");
+      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.whatsapp_group_jid || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
       else if (proj.notif_email_enabled) setNotifMethod("email");
       else if (proj.notif_slack_enabled) setNotifMethod("slack");
       const rr = await fetch(`/api/reviews?project_id=${proj.id}`);
@@ -75,7 +77,12 @@ export default function TachesPage() {
       body: JSON.stringify(updates),
     });
     const d = await r.json();
-    if (r.ok) setProject(d.project);
+    if (r.ok) {
+      setProject(d.project);
+      if (d.project?.notif_whatsapp_enabled || d.project?.notif_whatsapp_phone || d.project?.whatsapp_group_jid || d.project?.notif_whatsapp_group) {
+        setNotifMethod("whatsapp");
+      }
+    }
     setSavingNotif(false);
   }
 

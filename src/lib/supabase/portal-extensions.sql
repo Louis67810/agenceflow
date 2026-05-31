@@ -11,6 +11,9 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_email_enabled   BOOLEAN DEFA
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_whatsapp_phone  TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_whatsapp_group  TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_whatsapp_enabled BOOLEAN DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS whatsapp_group_jid TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS whatsapp_group_name TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS whatsapp_group_profile_url TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_slack_webhook   TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_slack_team_id   TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS notif_slack_channel_id TEXT;

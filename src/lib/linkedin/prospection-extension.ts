@@ -54,28 +54,53 @@ export function authenticateExtensionRequest(req: Request) {
   const receivedKey = getExtensionBearer(req);
 
   if (!expectedKey || !workspaceUserId) {
+    console.error("[linkedin-extension] server configuration missing", {
+      hasExtensionKey: Boolean(expectedKey),
+      hasWorkspaceUserId: Boolean(workspaceUserId),
+    });
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "Extension LinkedIn non configuree cote serveur." },
+        {
+          error: "Extension LinkedIn non configuree cote serveur.",
+          code: "LINKEDIN_EXTENSION_SERVER_CONFIG_MISSING",
+          missing: {
+            AGENCEFLOW_EXTENSION_KEY: !expectedKey,
+            AGENCEFLOW_EXTENSION_USER_ID: !workspaceUserId,
+          },
+        },
         { status: 500 }
       ),
     };
   }
 
   if (!receivedKey || receivedKey !== expectedKey) {
+    console.warn("[linkedin-extension] unauthorized request", {
+      hasAuthorizationHeader: Boolean(receivedKey),
+      receivedLength: receivedKey.length,
+    });
     return {
       ok: false as const,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      response: NextResponse.json(
+        {
+          error: "Cle d'extension invalide ou manquante.",
+          code: "LINKEDIN_EXTENSION_UNAUTHORIZED",
+        },
+        { status: 401 }
+      ),
     };
   }
 
   const supabase = createServiceClient();
   if (!supabase) {
+    console.error("[linkedin-extension] Supabase service role missing");
     return {
       ok: false as const,
       response: NextResponse.json(
-        { error: "SUPABASE_SERVICE_ROLE_KEY manquante cote serveur." },
+        {
+          error: "SUPABASE_SERVICE_ROLE_KEY manquante cote serveur.",
+          code: "SUPABASE_SERVICE_ROLE_KEY_MISSING",
+        },
         { status: 500 }
       ),
     };

@@ -5,6 +5,8 @@ import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 type AccessKeyListRow = Record<string, unknown> & {
   service_type_id?: string | null;
   banner_url?: string | null;
+  whatsapp_group_name?: string | null;
+  whatsapp_group_profile_url?: string | null;
 };
 
 function admin() {
@@ -16,7 +18,7 @@ function admin() {
 }
 
 const BASE_KEY_COLUMNS = ["id", "key", "name", "role", "form_fields", "used_at", "form_data", "created_at"] as const;
-const OPTIONAL_KEY_COLUMNS = ["service_type_id", "banner_url"] as const;
+const OPTIONAL_KEY_COLUMNS = ["service_type_id", "banner_url", "whatsapp_group_name", "whatsapp_group_profile_url"] as const;
 
 async function listAccessKeys() {
   let columns = [...BASE_KEY_COLUMNS, ...OPTIONAL_KEY_COLUMNS];
@@ -35,6 +37,8 @@ async function listAccessKeys() {
             ...keyRow,
             service_type_id: keyRow.service_type_id ?? null,
             banner_url: keyRow.banner_url ?? null,
+            whatsapp_group_name: keyRow.whatsapp_group_name ?? null,
+            whatsapp_group_profile_url: keyRow.whatsapp_group_profile_url ?? null,
           };
         }),
         error: null,
@@ -66,6 +70,8 @@ async function insertAccessKey(payload: Record<string, unknown>) {
         data: {
           ...createdKey,
           banner_url: createdKey.banner_url ?? null,
+          whatsapp_group_name: createdKey.whatsapp_group_name ?? null,
+          whatsapp_group_profile_url: createdKey.whatsapp_group_profile_url ?? null,
         },
         error: null,
       };
@@ -89,7 +95,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, role, formFields, formPages, serviceTypeId, bannerUrl } = await request.json();
+    const { name, role, formFields, formPages, serviceTypeId, bannerUrl, whatsappGroupName, whatsappGroupProfileUrl } = await request.json();
     if (!name || !role) return NextResponse.json({ error: "Champs manquants" }, { status: 400 });
 
     const key = crypto.randomUUID().replace(/-/g, "");
@@ -106,6 +112,8 @@ export async function POST(request: NextRequest) {
       form_pages: formPages ?? [],
       service_type_id: serviceTypeId ?? null,
       banner_url: bannerUrl ?? null,
+      whatsapp_group_name: whatsappGroupName ?? null,
+      whatsapp_group_profile_url: whatsappGroupProfileUrl ?? null,
     });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

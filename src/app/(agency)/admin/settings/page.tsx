@@ -24,6 +24,8 @@ interface AccessKey {
   id: string; key: string; name: string; role: "client" | "designer" | "developer";
   form_fields: { id: string; label: string; required?: boolean }[];
   banner_url?: string | null;
+  whatsapp_group_name?: string | null;
+  whatsapp_group_profile_url?: string | null;
   used_at: string | null; created_at: string;
 }
 
@@ -83,6 +85,8 @@ export default function SettingsPage() {
   const [serviceTypes, setServiceTypes]     = useState<ServiceType[]>([]);
   const [selectedServiceTypeId, setSelectedServiceTypeId] = useState("");
   const [newBannerUrl, setNewBannerUrl]           = useState("");
+  const [newWhatsappGroupName, setNewWhatsappGroupName] = useState("");
+  const [newWhatsappGroupProfileUrl, setNewWhatsappGroupProfileUrl] = useState("");
   const [creating, setCreating]             = useState(false);
   const [createError, setCreateError]       = useState<string | null>(null);
   const [createdKey, setCreatedKey]         = useState<AccessKey | null>(null);
@@ -145,12 +149,14 @@ export default function SettingsPage() {
         formPages: selectedForm.pages ?? [],
         serviceTypeId: selectedServiceTypeId || null,
         bannerUrl: newBannerUrl.trim() || null,
+        whatsappGroupName: newWhatsappGroupName.trim() || null,
+        whatsappGroupProfileUrl: newWhatsappGroupProfileUrl.trim() || null,
       }),
     });
     const data = await res.json();
     if (!res.ok) { setCreateError(data.error ?? "Erreur"); setCreating(false); return; }
     setCreatedKey(data.key);
-    setNewName(""); setNewRole("client"); setNewBannerUrl(""); setShowCreate(false); setCreating(false);
+    setNewName(""); setNewRole("client"); setNewBannerUrl(""); setNewWhatsappGroupName(""); setNewWhatsappGroupProfileUrl(""); setShowCreate(false); setCreating(false);
     loadKeys();
   }
 
@@ -707,6 +713,20 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Nom du groupe WhatsApp <span style={{ color: "rgba(18,26,46,0.4)", fontWeight: 400 }}>(optionnel)</span></label>
+                    <input type="text" value={newWhatsappGroupName} onChange={e => setNewWhatsappGroupName(e.target.value)} placeholder="Ex : Projet {{client}}" style={inp} />
+                    <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginTop: 6, marginBottom: 0 }}>
+                      Tu peux utiliser {"{{client}}"} et {"{{project}}"}.
+                    </p>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Photo du groupe WhatsApp <span style={{ color: "rgba(18,26,46,0.4)", fontWeight: 400 }}>(optionnel)</span></label>
+                    <input type="url" value={newWhatsappGroupProfileUrl} onChange={e => setNewWhatsappGroupProfileUrl(e.target.value)} placeholder="https://... image de profil" style={inp} />
+                  </div>
+                </div>
+
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Formulaire d&apos;onboarding</label>
                   {forms.length === 0 ? (
@@ -756,7 +776,7 @@ export default function SettingsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#f9f9f9" }}>
-                    {["Nom", "Type", "Bannière", "Statut", "Créé le", ""].map(h => (
+                    {["Nom", "Type", "Bannière", "Groupe WhatsApp", "Statut", "Créé le", ""].map(h => (
                       <th key={h} style={{ padding: "10px 20px", textAlign: h === "" ? "right" : "left", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.45)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                     ))}
                   </tr>
@@ -774,6 +794,15 @@ export default function SettingsPage() {
                         {k.banner_url ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#0147ff", fontWeight: 500 }}>
                             <ImageIcon size={12} />Définie
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 20px", fontSize: 12, color: "rgba(18,26,46,0.55)" }}>
+                        {k.whatsapp_group_name ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 500, color: "#168b64" }}>
+                            <MessageSquare size={12} />{k.whatsapp_group_name}
                           </span>
                         ) : (
                           "—"

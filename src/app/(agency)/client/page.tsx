@@ -29,6 +29,8 @@ interface Project {
   notif_whatsapp_phone: string | null;
   notif_whatsapp_group: string | null;
   notif_whatsapp_enabled: boolean;
+  whatsapp_group_jid: string | null;
+  whatsapp_group_name: string | null;
   notif_slack_webhook: string | null;
   notif_slack_enabled: boolean;
 }
@@ -142,7 +144,7 @@ export default function ClientDashboard() {
       setUserId(session.user.id);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
       if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
-      if (proj.notif_whatsapp_enabled) setNotifMethod("whatsapp");
+      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.whatsapp_group_jid || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
       else if (proj.notif_email_enabled) setNotifMethod("email");
       else if (proj.notif_slack_enabled) setNotifMethod("slack");
 
@@ -200,7 +202,13 @@ export default function ClientDashboard() {
       body: JSON.stringify({ action: "advance_stage" }),
     });
     const d = await r.json();
-    if (r.ok) setProject(d.project);
+    if (r.ok) {
+      setProject(d.project);
+      if (d.project?.notif_whatsapp_enabled || d.project?.notif_whatsapp_phone || d.project?.whatsapp_group_jid || d.project?.notif_whatsapp_group) {
+        setNotifMethod("whatsapp");
+        setWaPhone(d.project.notif_whatsapp_phone ?? waPhone);
+      }
+    }
     setAdvancing(false);
     setShowConfirm(false);
     setHoldPct(0);
@@ -726,7 +734,7 @@ export default function ClientDashboard() {
               <span style={{ ...jakartaSans, fontSize: 17, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
                 Notifications
               </span>
-              {notifMethod && (
+              {notifMethod && !(notifMethod === "whatsapp" && (project.whatsapp_group_jid || project.notif_whatsapp_group || project.notif_whatsapp_phone)) && (
                 <button
                   onClick={() => setNotifMethod(null)}
                   style={{
@@ -809,32 +817,37 @@ export default function ClientDashboard() {
                     <div style={{ flex: 1 }}>
                       <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>WhatsApp</p>
                       <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>
-                        {project.notif_whatsapp_group ? "Groupe actif" : "Non configuré"}
+                        {project.whatsapp_group_jid || project.notif_whatsapp_group ? "Groupe actif" : "Non configuré"}
                       </p>
                     </div>
                     <button
                       onClick={() => saveNotification({ notif_whatsapp_enabled: !project.notif_whatsapp_enabled })}
-                      disabled={!project.notif_whatsapp_group || savingNotif}
+                      disabled={!(project.whatsapp_group_jid || project.notif_whatsapp_group) || savingNotif}
                       style={{
-                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.notif_whatsapp_group ? "pointer" : "not-allowed",
-                        background: project.notif_whatsapp_enabled && project.notif_whatsapp_group ? "#0147ff" : "#e5e7eb",
+                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.whatsapp_group_jid || project.notif_whatsapp_group ? "pointer" : "not-allowed",
+                        background: project.notif_whatsapp_enabled && (project.whatsapp_group_jid || project.notif_whatsapp_group) ? "#0147ff" : "#e5e7eb",
                         position: "relative", transition: "background 0.2s", flexShrink: 0,
-                        opacity: !project.notif_whatsapp_group ? 0.5 : 1,
+                        opacity: !(project.whatsapp_group_jid || project.notif_whatsapp_group) ? 0.5 : 1,
                       }}>
                       <span style={{
                         position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
-                        left: project.notif_whatsapp_enabled && project.notif_whatsapp_group ? 23 : 3,
+                        left: project.notif_whatsapp_enabled && (project.whatsapp_group_jid || project.notif_whatsapp_group) ? 23 : 3,
                       }} />
                     </button>
                   </div>
-                  {project.notif_whatsapp_group ? (
+                  {project.whatsapp_group_jid || project.notif_whatsapp_group ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0 }}>Votre groupe WhatsApp est prêt :</p>
-                      <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#16a34a" }}>
-                        <ChevronRight size={14} />Rejoindre le groupe
-                      </a>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 10, fontSize: 13, fontWeight: 500, color: "#16a34a" }}>
+                        <CheckCircle2 size={14} />{project.whatsapp_group_name ?? "Groupe WhatsApp"}
+                      </div>
+                      {project.notif_whatsapp_group && (
+                        <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#121a2e" }}>
+                          <ChevronRight size={14} />Ouvrir l'invitation
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -845,7 +858,7 @@ export default function ClientDashboard() {
                           <input type="tel" value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="+33 6 00 00 00 00"
                             style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#121a2e" }} />
                         </div>
-                        <button onClick={() => saveNotification({ notif_whatsapp_phone: waPhone })} disabled={!waPhone.trim() || savingNotif}
+                        <button onClick={() => saveNotification({ notif_whatsapp_phone: waPhone, notif_whatsapp_enabled: true })} disabled={!waPhone.trim() || savingNotif}
                           style={{ padding: "0 14px", background: "#121a2e", color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: !waPhone.trim() ? "not-allowed" : "pointer", opacity: !waPhone.trim() ? 0.5 : 1 }}>
                           {savingNotif ? "..." : "Envoyer"}
                         </button>

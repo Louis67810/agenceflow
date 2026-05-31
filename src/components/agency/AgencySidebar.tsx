@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
+  Home,
   FolderKanban,
   Users,
   Palette,
@@ -85,7 +86,7 @@ const adminNav: NavItem[] = [
 ];
 
 const clientNav: NavItem[] = [
-  { href: "/client", label: "Mon Projet", icon: <LayoutDashboard size={18} /> },
+  { href: "/client", label: "Mon Projet", icon: <Home size={18} /> },
   { href: "/client/messages", label: "Conversation", icon: <MessageSquare size={18} /> },
   { href: "/client/projects", label: "Ressources", icon: <FolderKanban size={18} /> },
 ];
@@ -163,7 +164,7 @@ export function AgencySidebar({ role, userName = "Utilisateur" }: AgencySidebarP
   // ── Client sidebar — design fidèle au Framer ────────────────────────────────
   if (role === "client") {
     const clientLinks = [
-      { href: "/client", label: "Mon projet", icon: <LayoutDashboard size={18} />, exact: true },
+      { href: "/client", label: "Mon projet", icon: <Home size={18} />, exact: true },
       { href: "/client/taches", label: "Tâches", icon: <ClipboardCheck size={18} />, exact: false },
       { href: "/client/ressources", label: "Ressources", icon: <FolderOpen size={18} />, exact: false },
       { href: "/client/agenda", label: "Agenda", icon: <CalendarDays size={18} />, exact: false },

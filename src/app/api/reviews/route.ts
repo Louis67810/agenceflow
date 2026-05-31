@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { sendWasenderGroupMessage } from "@/lib/whatsapp/wasender";
 
 function admin() {
   return createClient(
@@ -51,7 +52,27 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ review: data });
+
+    const { data: project } = await admin()
+      .from("projects")
+      .select("name, notif_whatsapp_enabled, whatsapp_group_jid")
+      .eq("id", project_id)
+      .maybeSingle();
+
+    let notification: { ok: boolean; error?: string } | null = null;
+    if (project?.notif_whatsapp_enabled && project.whatsapp_group_jid) {
+      const text = [
+        `Nouvelle demande a valider sur ${project.name ?? "votre projet"}.`,
+        `Etape : ${stage_label}`,
+        message ? `Message : ${message}` : null,
+        link_url ? `Lien : ${link_url}` : null,
+      ].filter(Boolean).join("\n\n");
+
+      const sent = await sendWasenderGroupMessage(project.whatsapp_group_jid, text);
+      notification = sent.ok ? { ok: true } : { ok: false, error: sent.error };
+    }
+
+    return NextResponse.json({ review: data, notification });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

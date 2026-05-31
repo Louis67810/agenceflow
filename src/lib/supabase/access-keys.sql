@@ -12,12 +12,16 @@ CREATE TABLE IF NOT EXISTS access_keys (
   used_at     TIMESTAMPTZ,
   form_data   JSONB,
   banner_url  TEXT,
+  whatsapp_group_name TEXT,
+  whatsapp_group_profile_url TEXT,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS form_pages JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS service_type_id UUID;
 ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS banner_url TEXT;
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS whatsapp_group_name TEXT;
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS whatsapp_group_profile_url TEXT;
 
 ALTER TABLE access_keys ENABLE ROW LEVEL SECURITY;
 

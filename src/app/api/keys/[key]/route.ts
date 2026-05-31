@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
+import { createWasenderGroup } from "@/lib/whatsapp/wasender";
 
 type AccessKeyRow = {
   name?: string | null;
@@ -10,6 +11,8 @@ type AccessKeyRow = {
   used_at?: string | null;
   service_type_id?: string | null;
   banner_url?: string | null;
+  whatsapp_group_name?: string | null;
+  whatsapp_group_profile_url?: string | null;
 };
 
 function admin() {
@@ -43,7 +46,7 @@ async function selectAccessKeyByKey(key: string, columns: string[]) {
   }
 }
 
-async function insertProjectWithOptionalBanner(payload: Record<string, unknown>) {
+async function insertProjectWithOptionalColumns(payload: Record<string, unknown>) {
   const insertPayload = { ...payload };
 
   while (true) {
@@ -129,6 +132,8 @@ export async function POST(
       "name",
       "role",
       "banner_url",
+      "whatsapp_group_name",
+      "whatsapp_group_profile_url",
     ]);
 
     if (keyError || !rawKeyRow || typeof rawKeyRow !== "object") {
@@ -180,7 +185,11 @@ export async function POST(
     const projectName = projectNameFromForm
       || (serviceTypeName ? `${serviceTypeName} - ${_client_name ?? "Client"}` : `Projet de ${_client_name ?? "Client"}`);
 
-    const { data: newProject, error: projError } = await insertProjectWithOptionalBanner({
+    const whatsappGroupName = (keyRow.whatsapp_group_name?.trim() || projectName)
+      .replaceAll("{{client}}", _client_name ?? "Client")
+      .replaceAll("{{project}}", projectName);
+
+    const { data: newProject, error: projError } = await insertProjectWithOptionalColumns({
       name: projectName,
       client_name: _client_name ?? null,
       client_email: _client_email ?? null,
@@ -189,6 +198,8 @@ export async function POST(
       form_data: formData,
       service_type_id: keyRow.service_type_id ?? null,
       banner_url: keyRow.banner_url ?? null,
+      whatsapp_group_name: whatsappGroupName,
+      whatsapp_group_profile_url: keyRow.whatsapp_group_profile_url ?? null,
       stages,
       current_stage_index: 0,
       start_date: new Date().toISOString().split("T")[0],
@@ -201,6 +212,25 @@ export async function POST(
         },
         { status: 500 }
       );
+    }
+
+    if (newProject?.id) {
+      const createdGroup = await createWasenderGroup({
+        name: whatsappGroupName,
+        profilePicUrl: keyRow.whatsapp_group_profile_url ?? null,
+      });
+
+      if (createdGroup.ok && createdGroup.data?.id) {
+        await admin()
+          .from("projects")
+          .update({
+            whatsapp_group_jid: createdGroup.data.id,
+            whatsapp_group_name: createdGroup.data.subject ?? whatsappGroupName,
+            whatsapp_group_profile_url: keyRow.whatsapp_group_profile_url ?? null,
+            notif_whatsapp_group: createdGroup.data.inviteLink ?? null,
+          })
+          .eq("id", newProject.id);
+      }
     }
 
     return NextResponse.json({ success: true, project_id: newProject?.id ?? null });

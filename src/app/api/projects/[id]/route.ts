@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  addWasenderGroupParticipants,
+  createWasenderGroup,
+  getWasenderGroupInviteLink,
+  normalizeWhatsappPhone,
+} from "@/lib/whatsapp/wasender";
 
 function admin() {
   return createClient(
@@ -72,6 +78,67 @@ export async function PUT(
 
     // Generic update
     const { action: _action, ...updates } = body;
+
+    if ("notif_whatsapp_phone" in updates && typeof updates.notif_whatsapp_phone === "string") {
+      const phone = normalizeWhatsappPhone(updates.notif_whatsapp_phone);
+      if (!phone) return NextResponse.json({ error: "Numero WhatsApp invalide" }, { status: 400 });
+
+      const { data: project, error: projectError } = await admin()
+        .from("projects")
+        .select("id, name, client_name, whatsapp_group_jid, whatsapp_group_name, whatsapp_group_profile_url, notif_whatsapp_group")
+        .eq("id", id)
+        .single();
+
+      if (projectError || !project) return NextResponse.json({ error: "Projet introuvable" }, { status: 404 });
+
+      let groupJid = project.whatsapp_group_jid as string | null;
+      let inviteLink = project.notif_whatsapp_group as string | null;
+      let groupName = (project.whatsapp_group_name as string | null) || (project.name as string) || "Groupe projet";
+
+      if (!groupJid) {
+        const createdGroup = await createWasenderGroup({
+          name: groupName,
+          participants: [phone],
+          profilePicUrl: project.whatsapp_group_profile_url as string | null,
+        });
+
+        if (!createdGroup.ok) {
+          return NextResponse.json({ error: createdGroup.error ?? "Creation du groupe WhatsApp impossible" }, { status: 502 });
+        }
+        if (!createdGroup.data?.id) {
+          return NextResponse.json({ error: "Creation du groupe WhatsApp impossible" }, { status: 502 });
+        }
+
+        groupJid = createdGroup.data.id;
+        groupName = createdGroup.data.subject ?? groupName;
+        inviteLink = createdGroup.data.inviteLink ?? inviteLink;
+      } else {
+        const added = await addWasenderGroupParticipants(groupJid, [phone]);
+        if (!added.ok) return NextResponse.json({ error: added.error ?? "Ajout WhatsApp impossible" }, { status: 502 });
+
+        if (!inviteLink) {
+          const invite = await getWasenderGroupInviteLink(groupJid);
+          if (invite.ok) inviteLink = invite.inviteLink ?? inviteLink;
+        }
+      }
+
+      const { data, error } = await admin()
+        .from("projects")
+        .update({
+          notif_whatsapp_phone: phone,
+          notif_whatsapp_enabled: true,
+          whatsapp_group_jid: groupJid,
+          whatsapp_group_name: groupName,
+          notif_whatsapp_group: inviteLink,
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ project: data });
+    }
+
     const { data, error } = await admin()
       .from("projects")
       .update(updates)

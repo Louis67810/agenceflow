@@ -29,7 +29,66 @@ function setConfigured(configured) {
 }
 
 function normalizeAgencyUrl(value) {
-  return value.trim().replace(/\/$/, "");
+  const trimmed = String(value || "").trim().replace(/\/$/, "");
+  if (!trimmed) return "";
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    return url.origin;
+  } catch {
+    return withProtocol;
+  }
+}
+
+async function fetchAgenceFlowJson(pathOrUrl, options = {}) {
+  const settings = options.settings || await chrome.storage.local.get(["agencyUrl", "extensionKey"]);
+  if (!settings.agencyUrl || !settings.extensionKey) {
+    throw new Error("Configurez l'URL AgenceFlow et la cle d'extension.");
+  }
+
+  const agencyUrl = normalizeAgencyUrl(settings.agencyUrl);
+  if (!agencyUrl) {
+    throw new Error("URL AgenceFlow invalide.");
+  }
+
+  const url = pathOrUrl instanceof URL
+    ? pathOrUrl.toString()
+    : `${agencyUrl}${pathOrUrl}`;
+
+  const { settings: _settings, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: {
+        ...(fetchOptions.headers || {}),
+        Authorization: `Bearer ${settings.extensionKey}`,
+      },
+    });
+  } catch (error) {
+    const reason = error?.name === "AbortError" ? "delai depasse" : "requete bloquee";
+    throw new Error(`Impossible de joindre AgenceFlow (${reason}). Verifiez l'URL, rechargez l'extension Chrome et confirmez que le site est accessible.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`Reponse AgenceFlow illisible (${response.status}). Verifiez l'URL configuree.`);
+  }
+
+  if (!response.ok || data?.ok === false) {
+    throw new Error(data?.error || `Erreur AgenceFlow ${response.status}`);
+  }
+
+  return data || {};
 }
 
 async function getSavedSettings() {
@@ -376,9 +435,19 @@ async function saveSettings() {
   await persistSettings({ agencyUrl, extensionKey });
   agencyUrlInput.value = agencyUrl;
   setConfigured(Boolean(agencyUrl && extensionKey));
-  importStatus.textContent = "Configuration enregistree";
   if (agencyUrl && extensionKey) {
+    try {
+      await fetchAgenceFlowJson("/api/linkedin/prospection/health", {
+        settings: { agencyUrl, extensionKey },
+      });
+      importStatus.textContent = "Connexion AgenceFlow valide";
+    } catch (error) {
+      importStatus.textContent = error instanceof Error ? error.message : "Connexion AgenceFlow impossible";
+      return;
+    }
     await loadProspects();
+  } else {
+    importStatus.textContent = "Configuration enregistree";
   }
 }
 
@@ -392,11 +461,7 @@ async function loadProspects() {
       throw new Error("Configurez l'URL AgenceFlow et la cle d'extension.");
     }
 
-    const response = await fetch(`${normalizeAgencyUrl(settings.agencyUrl)}/api/linkedin/prospection/prospects`, {
-      headers: { Authorization: `Bearer ${settings.extensionKey}` },
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || "Prospects indisponibles.");
+    const data = await fetchAgenceFlowJson("/api/linkedin/prospection/prospects", { settings });
 
     prospects = Array.isArray(data.prospects) ? data.prospects : [];
     selectedProspectId = settings.selectedProspectId || selectedProspectId || "";
@@ -434,19 +499,17 @@ async function importConversation() {
     conversationStatus.textContent = `${extracted.payload.messages.length} message(s) - ${detectedProspect.name}`;
     importStatus.textContent = "Envoi vers AgenceFlow...";
 
-    const response = await fetch(`${normalizeAgencyUrl(settings.agencyUrl)}/api/linkedin/prospection/import-conversation`, {
+    const data = await fetchAgenceFlowJson("/api/linkedin/prospection/import-conversation", {
+      settings,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.extensionKey}`,
       },
       body: JSON.stringify({
         ...extracted.payload,
         selectedProspectId: selectedProspectIdForImport || undefined,
       }),
     });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || "Import impossible.");
 
     importStatus.textContent = `${data.importedCount} importe(s), ${data.skippedDuplicates} doublon(s)`;
     setPendingMessage(data.pendingMessage);
@@ -475,11 +538,8 @@ async function importConversation() {
     if (!selectedProspectIdForImport && !data.pendingMessage && extracted.payload.prospect.profileUrl) {
       const pendingUrl = new URL(`${normalizeAgencyUrl(settings.agencyUrl)}/api/linkedin/prospection/pending-message`);
       pendingUrl.searchParams.set("profileUrl", extracted.payload.prospect.profileUrl);
-      const pendingResponse = await fetch(pendingUrl, {
-        headers: { Authorization: `Bearer ${settings.extensionKey}` },
-      });
-      const pendingData = await pendingResponse.json();
-      if (pendingResponse.ok) setPendingMessage(pendingData.pendingMessage);
+      const pendingData = await fetchAgenceFlowJson(pendingUrl, { settings });
+      setPendingMessage(pendingData.pendingMessage);
     }
   } catch (error) {
     importStatus.textContent = error instanceof Error ? error.message : "Erreur inconnue";
