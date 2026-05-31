@@ -263,3 +263,234 @@ input[type="file"] {
     min-height: 44px;
   }
 }
+
+/* Habits / Agenda mobile responsiveness */
+@media (max-width: 1023px) {
+  .agenda-responsive-shell {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+
+  .agenda-responsive-shell > div {
+    overflow-x: hidden !important;
+  }
+
+  .agenda-dashboard-page {
+    padding: 24px 18px calc(112px + env(safe-area-inset-bottom)) !important;
+    overflow-x: hidden;
+  }
+
+  .agenda-dashboard-container {
+    max-width: 100% !important;
+  }
+
+  .agenda-dashboard-header,
+  .agenda-dashboard-card-header,
+  .agenda-panel-title-row {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+  }
+
+  .agenda-dashboard-header a,
+  .agenda-page-actions,
+  .agenda-page-actions > *,
+  .agenda-page-actions button,
+  .agenda-page-actions span,
+  .agenda-objectives-page header > span,
+  .agenda-objectives-page header button {
+    width: 100% !important;
+  }
+
+  .agenda-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .agenda-dashboard-main-grid,
+  .agenda-dashboard-secondary-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .agenda-dashboard-card {
+    min-height: 0 !important;
+    padding: 18px !important;
+  }
+
+  .agenda-dashboard-chart-card {
+    padding-top: 18px !important;
+  }
+
+  .agenda-dashboard-filters {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .agenda-filter-tag {
+    max-width: 100%;
+    flex: 1 1 150px;
+    justify-content: space-between !important;
+  }
+
+  .agenda-dropdown {
+    left: 0 !important;
+    right: auto !important;
+    max-width: 100% !important;
+    min-width: min(220px, 100%) !important;
+  }
+
+  .agenda-score-chart {
+    height: 250px !important;
+  }
+
+  .agenda-responsive-shell [style*="grid-template-columns: repeat(4"],
+  .agenda-responsive-shell [style*="gridTemplateColumns: repeat(4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .agenda-responsive-shell [style*="grid-template-columns: minmax(0, 1fr) 304px"],
+  .agenda-responsive-shell [style*="gridTemplateColumns: minmax(0, 1fr) 304px"],
+  .agenda-responsive-shell [style*="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)"],
+  .agenda-responsive-shell [style*="gridTemplateColumns: minmax(0, 1fr) minmax(0, 1fr)"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .agenda-tasks-page,
+  .agenda-objectives-page,
+  .agenda-calendar-page {
+    max-width: 100vw;
+    overflow-x: hidden;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .agenda-tasks-page form,
+  .agenda-tasks-page input,
+  .agenda-tasks-page select,
+  .agenda-tasks-page textarea,
+  .agenda-objectives-page input,
+  .agenda-objectives-page select,
+  .agenda-objectives-page textarea {
+    max-width: 100%;
+  }
+
+  .agenda-calendar-grid {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .agenda-calendar-page {
+    --agenda-time-col: 44px;
+  }
+
+  .agenda-calendar-days {
+    grid-template-columns: var(--agenda-time-col, 44px) repeat(7, minmax(0, 1fr)) !important;
+  }
+
+  .agenda-calendar-time {
+    width: var(--agenda-time-col, 44px) !important;
+    padding-right: 6px !important;
+    font-size: 10px !important;
+  }
+
+  .agenda-calendar-scroll {
+    max-height: 68dvh !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .agenda-calendar-page [style*="grid-template-columns: repeat(7, 1fr)"],
+  .agenda-calendar-page [style*="gridTemplateColumns: repeat(7, 1fr)"] {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  }
+
+  .agenda-context-menu {
+    left: 12px !important;
+    right: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .agenda-dashboard-page {
+    padding: 18px 14px calc(118px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .agenda-dashboard-header {
+    gap: 16px !important;
+    padding-bottom: 20px !important;
+  }
+
+  .agenda-dashboard-header h1,
+  .agenda-objectives-page h1 {
+    font-size: 24px !important;
+    line-height: 1.16 !important;
+  }
+
+  .agenda-dashboard-metrics {
+    grid-template-columns: minmax(0, 1fr) !important;
+    margin-top: 20px !important;
+  }
+
+  .agenda-dashboard-card {
+    border-radius: 16px !important;
+    padding: 16px !important;
+  }
+
+  .agenda-dashboard-card-header h2,
+  .agenda-panel-title-row h2 {
+    font-size: 15px !important;
+  }
+
+  .agenda-filter-tag {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .agenda-score-chart {
+    height: 220px !important;
+    margin-top: 8px !important;
+  }
+
+  .agenda-score-chart span {
+    font-size: 11px !important;
+  }
+
+  .agenda-tasks-page .rounded-xl,
+  .agenda-objectives-page .rounded-\[21px\] {
+    border-radius: 16px;
+  }
+
+  .agenda-calendar-page {
+    --agenda-time-col: 38px;
+  }
+
+  .agenda-calendar-days {
+    grid-template-columns: var(--agenda-time-col, 38px) repeat(7, minmax(0, 1fr)) !important;
+  }
+
+  .agenda-calendar-days .p-2 {
+    padding: 6px 2px !important;
+  }
+
+  .agenda-calendar-days p {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .agenda-calendar-time {
+    width: var(--agenda-time-col, 38px) !important;
+    padding-right: 4px !important;
+  }
+
+  .agenda-calendar-canvas {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .agenda-dashboard-header a > div,
+  .agenda-objectives-page header > div,
+  .agenda-page-actions > div {
+    width: 100% !important;
+  }
+}

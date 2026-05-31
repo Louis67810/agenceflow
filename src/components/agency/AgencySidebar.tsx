@@ -36,6 +36,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { House } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgencyRole } from "@/types/agency";
 
@@ -46,7 +47,7 @@ interface NavItem {
 }
 
 const agendaSubNav: NavItem[] = [
-  { href: "/admin/agenda", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { href: "/admin/agenda", label: "Dashboard", icon: <House size={18} /> },
   { href: "/admin/agenda/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/agenda/tasks", label: "Tâches", icon: <CheckSquare size={18} /> },
   { href: "/admin/agenda/objectives", label: "Objectifs", icon: <Target size={18} /> },
@@ -78,7 +79,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/calendar", label: "Calendrier", icon: <Calendar size={18} /> },
   { href: "/admin/leads", label: "Leads", icon: <UserCheck size={18} /> },
   { href: "/admin/audit", label: "Audit", icon: <ClipboardCheck size={18} /> },
-  { href: "/admin/agenda", label: "Habits", icon: <CalendarDays size={18} /> },
+  { href: "/admin/agenda", label: "Habits", icon: <House size={18} /> },
   { href: "/admin/tests", label: "Tests Prestataires", icon: <ClipboardList size={18} /> },
   { href: "/admin/coach", label: "Coach IA", icon: <Bot size={18} /> },
   { href: "/admin/forms", label: "Formulaires", icon: <FileText size={18} /> },
