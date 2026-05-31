@@ -222,9 +222,9 @@ export default function ObjectivesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#fbfbfb] px-10 py-8">
+    <main className="agenda-objectives-page min-h-screen bg-[#fbfbfb] px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
       <div className="mx-auto max-w-[1230px]">
-        <header className="mb-8 flex items-center justify-between border-b border-black/[0.06] pb-8">
+        <header className="mb-6 flex flex-col gap-4 border-b border-black/[0.06] pb-6 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:pb-8">
           <h1
             className="text-[28px] font-bold tracking-[-0.02em] text-[#121A2E]"
             style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
@@ -242,8 +242,8 @@ export default function ObjectivesPage() {
           </ClientBlueButton>
         </header>
 
-        <div className="mb-6 flex items-center gap-6">
-          <div className="relative flex-1">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <div className="relative w-full flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#121A2E]/45" size={18} />
             <input
               value={search}
@@ -252,17 +252,17 @@ export default function ObjectivesPage() {
               className="h-12 w-full rounded-[7px] border border-black/10 bg-[#f2f2f2] pl-12 pr-4 text-sm font-medium text-[#121A2E] outline-none transition focus:border-black/10 focus:bg-[#f2f2f2]"
             />
           </div>
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setFilterOpen((current) => !current)}
-              className="flex h-10 min-w-[140px] items-center justify-between gap-5 rounded-[7px] border border-black/10 bg-white px-4 text-sm font-medium text-slate-600 shadow-[0_8px_18px_rgba(18,26,46,0.06)]"
+              className="flex h-11 w-full items-center justify-between gap-5 rounded-[7px] border border-black/10 bg-white px-4 text-sm font-medium text-slate-600 shadow-[0_8px_18px_rgba(18,26,46,0.06)] sm:h-10 sm:min-w-[140px]"
             >
               {filterLabels[filter]}
               <ChevronDown size={16} />
             </button>
             {filterOpen && (
-              <div className="absolute right-0 top-12 z-20 w-48 overflow-hidden rounded-xl border border-black/10 bg-white p-1 shadow-[0_18px_40px_rgba(18,26,46,0.12)]">
+              <div className="absolute left-0 right-0 top-12 z-20 w-full overflow-hidden rounded-xl border border-black/10 bg-white p-1 shadow-[0_18px_40px_rgba(18,26,46,0.12)] sm:left-auto sm:w-48">
                 {(Object.keys(filterLabels) as ObjectiveFilter[]).map((key) => (
                   <button
                     key={key}
@@ -406,7 +406,7 @@ function ObjectiveFormOverlay({
             />
           </label>
         </div>
-        <div className="mt-5 flex justify-end gap-3">
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button type="button" onClick={onCancel} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-[#f6f6f6]">
             Annuler
           </button>
@@ -521,7 +521,7 @@ function ObjectiveDetailsPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20" onClick={onClose}>
       <aside
-        className="h-full w-full max-w-[420px] overflow-y-auto border-l border-black/10 bg-[#fbfbfb] p-6 shadow-[-24px_0_50px_rgba(18,26,46,0.14)]"
+        className="h-full w-full max-w-[420px] overflow-y-auto border-l border-black/10 bg-[#fbfbfb] p-4 shadow-[-24px_0_50px_rgba(18,26,46,0.14)] sm:p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -816,7 +816,7 @@ function ObjectiveTextModal({
           autoFocus
           className="h-12 w-full rounded-xl border border-black/10 bg-[#fbfbfb] px-4 text-sm font-medium text-[#121A2E] outline-none focus:border-black/20"
         />
-        <div className="mt-5 flex justify-end gap-3">
+        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium text-slate-500 hover:bg-[#f6f6f6]">
             Annuler
           </button>

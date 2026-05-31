@@ -126,14 +126,14 @@ export default function TasksPage() {
   if (loading) return <div className="p-8 text-gray-400">Chargement...</div>;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-[#fbfbfb] min-h-screen">
+    <div className="agenda-tasks-page p-4 sm:p-6 max-w-4xl mx-auto bg-[#fbfbfb] min-h-screen">
       {pageError && <SqlMissingBanner error={pageError} />}
-      <div className="flex items-center justify-between mb-6">
+      <div className="agenda-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Tâches</h1>
-        <div className="flex items-center gap-2">
+        <div className="agenda-page-actions flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <button
             onClick={handleAutoSchedule}
-            className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors sm:w-auto"
           >
             <span className="inline-flex items-center gap-2"><Sparkles size={14} /> Auto-planifier aujourd&apos;hui</span>
           </button>
@@ -150,11 +150,11 @@ export default function TasksPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="agenda-task-filters flex items-stretch gap-3 mb-4 flex-col sm:flex-row sm:items-center sm:flex-wrap">
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white sm:w-auto"
         >
           <option value="all">Tous les statuts</option>
           <option value="todo">À faire</option>
@@ -165,21 +165,21 @@ export default function TasksPage() {
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value as SortBy)}
-          className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white sm:w-auto"
         >
           <option value="date">Trier par date</option>
           <option value="importance">Trier par importance</option>
           <option value="status">Trier par statut</option>
         </select>
-        <span className="text-sm text-gray-400 ml-auto">{filtered.length} tâche(s)</span>
+        <span className="text-sm text-gray-400 sm:ml-auto">{filtered.length} tâche(s)</span>
       </div>
 
       {/* Form */}
       {showForm && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5 shadow-sm">
           <h3 className="font-semibold text-gray-800 mb-4">Nouvelle tâche</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Titre *</label>
               <input
                 value={form.title}
@@ -298,7 +298,7 @@ export default function TasksPage() {
                 <option value="monthly">Mensuelle</option>
               </select>
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs text-gray-500 mb-1">Description</label>
               <textarea
                 value={form.description}
@@ -308,7 +308,7 @@ export default function TasksPage() {
               />
             </div>
           </div>
-          <div className="flex items-center justify-end gap-3 mt-4">
+          <div className="flex flex-col-reverse gap-3 mt-4 sm:flex-row sm:items-center sm:justify-end">
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
               Annuler
             </button>
@@ -355,7 +355,7 @@ export default function TasksPage() {
                   importanceLabels={IMPORTANCE_LABELS}
                 />
                 {isExpanded && subtasks.length > 0 && (
-                  <ul className="ml-8 mt-1 space-y-1">
+                  <ul className="ml-3 mt-1 space-y-1 sm:ml-8">
                     {subtasks.map(sub => (
                       <TaskRow
                         key={sub.id}
@@ -401,7 +401,7 @@ function TaskRow({
   const taskColor = resolveTaskColor(task, objective?.color);
   return (
     <div
-      className={`flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-300 transition-colors ${
+      className={`flex flex-col items-start gap-3 p-3 rounded-xl border border-gray-100 bg-white hover:border-gray-300 transition-colors sm:flex-row sm:items-center ${
         task.status === "done" ? "opacity-60" : ""
       } ${isSubtask ? "border-l-2 border-l-gray-200" : ""}`}
       style={{ borderLeftWidth: 4, borderLeftColor: taskColor }}
@@ -414,7 +414,7 @@ function TaskRow({
       </button>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {subtasks.length > 0 && (
             <button onClick={onToggleExpand} className="text-gray-400 hover:text-gray-600">
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -432,14 +432,14 @@ function TaskRow({
             <span key={tag} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{tag}</span>
           ))}
         </div>
-        <div className="flex items-center gap-3 mt-0.5">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
           {task.date && <span className="text-xs text-gray-400">{new Date(task.date).toLocaleDateString("fr-FR")}</span>}
           {task.start_time && <span className="text-xs text-gray-400 inline-flex items-center gap-1"><Clock size={10} /> {task.start_time.slice(0,5)}{task.end_time ? ` - ${task.end_time.slice(0,5)}` : ""}</span>}
           {subtasks.length > 0 && <span className="text-xs text-gray-400">{subtasks.filter(s => s.status === "done").length}/{subtasks.length} sous-tâches</span>}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex w-full items-center justify-between gap-2 shrink-0 sm:w-auto sm:justify-start">
         <div className="flex items-center gap-0.5">
           {Array.from({ length: task.importance }).map((_, i) => (
             <Star key={i} size={10} className={`fill-current ${importanceColors[task.importance]}`} />

@@ -200,9 +200,9 @@ export default function AgendaDashboard() {
   }
 
   return (
-    <main style={pageStyle} onClick={() => setOpenMenu(null)}>
-      <div style={{ maxWidth: 1110, margin: "0 auto" }}>
-        <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, paddingBottom: 28, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+    <main className="agenda-dashboard-page" style={pageStyle} onClick={() => setOpenMenu(null)}>
+      <div className="agenda-dashboard-container" style={{ maxWidth: 1110, margin: "0 auto" }}>
+        <header className="agenda-dashboard-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, paddingBottom: 28, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
           <h1 style={{ margin: 0, fontFamily: jk, fontSize: 26, lineHeight: "32px", fontWeight: 700, letterSpacing: "-0.45px" }}>
             Centre d&apos;activit&eacute;
           </h1>
@@ -213,20 +213,20 @@ export default function AgendaDashboard() {
           </Link>
         </header>
 
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 28 }}>
+        <section className="agenda-dashboard-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginTop: 28 }}>
           <DashboardMetricCard icon={<CheckSquare size={17} />} value={`${doneTasks}/${totalTasks}`} label="Taches realisees" />
           <DashboardMetricCard icon={<Timer size={17} />} value={`${doneHabits}/${totalHabits}`} label="Habitudes completees" />
           <DashboardMetricCard icon={<Star size={17} />} value={`${currentDayScore}/100`} label="Score de journee" />
           <DashboardMetricCard icon={<Target size={17} />} value={`${bestStreak}j`} label="Meilleure serie" />
         </section>
 
-        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 304px", gap: 16, marginTop: 18 }}>
-          <article style={{ ...panelStyle, minHeight: 388, padding: "18px 24px 24px", boxSizing: "border-box" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
+        <section className="agenda-dashboard-main-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 304px", gap: 16, marginTop: 18 }}>
+          <article className="agenda-dashboard-card agenda-dashboard-chart-card" style={{ ...panelStyle, minHeight: 388, padding: "18px 24px 24px", boxSizing: "border-box" }}>
+            <div className="agenda-dashboard-card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
               <h2 style={{ margin: 0, fontFamily: jk, fontSize: 16, lineHeight: "22px", fontWeight: 700, letterSpacing: "-0.25px" }}>
                 Evolution du score par habitude
               </h2>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }} onClick={(event) => event.stopPropagation()}>
+              <div className="agenda-dashboard-filters" style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }} onClick={(event) => event.stopPropagation()}>
                 <FilterTag icon={<Calendar size={15} />} label={selectedPeriodLabel} active={openMenu === "period"} onClick={() => setOpenMenu(openMenu === "period" ? null : "period")} />
                 <FilterTag label={selectedHabitLabel} active={openMenu === "habit"} onClick={() => setOpenMenu(openMenu === "habit" ? null : "habit")} />
                 {openMenu === "period" ? (
@@ -253,18 +253,18 @@ export default function AgendaDashboard() {
             <ScoreAreaChart data={periodSeries} />
           </article>
 
-          <article style={{ ...panelStyle, minHeight: 388, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+          <article className="agenda-dashboard-card" style={{ ...panelStyle, minHeight: 388, padding: "24px 24px 22px", boxSizing: "border-box" }}>
             <PanelTitleWithMonth title="Niveau d'humeur" month={moodMonth} onPrev={() => setMoodMonth((current) => addMonths(current, -1))} onNext={() => setMoodMonth((current) => addMonths(current, 1))} />
             <MoodHeatmap month={moodMonth} stats={stats} />
           </article>
         </section>
 
-        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginTop: 18 }}>
-          <article style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+        <section className="agenda-dashboard-secondary-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginTop: 18 }}>
+          <article className="agenda-dashboard-card" style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
             <PanelTitleWithMonth title="Evolution du score" month={scoreMonth} onPrev={() => setScoreMonth((current) => addMonths(current, -1))} onNext={() => setScoreMonth((current) => addMonths(current, 1))} />
             <MiniScoreChart month={scoreMonth} stats={stats} currentDayScore={currentDayScore} />
           </article>
-          <article style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
+          <article className="agenda-dashboard-card" style={{ ...panelStyle, minHeight: 304, padding: "24px 24px 22px", boxSizing: "border-box" }}>
             <PanelTitleWithMonth title="Completion des taches" month={completionMonth} onPrev={() => setCompletionMonth((current) => addMonths(current, -1))} onNext={() => setCompletionMonth((current) => addMonths(current, 1))} />
             <TaskCompletionBars month={completionMonth} stats={stats} />
           </article>
@@ -293,6 +293,7 @@ function DashboardMetricCard({ icon, value, label }: { icon: ReactNode; value: s
 function FilterTag({ icon, label, active, onClick }: { icon?: ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
+      className="agenda-filter-tag"
       type="button"
       onClick={onClick}
       style={{
@@ -321,7 +322,7 @@ function FilterTag({ icon, label, active, onClick }: { icon?: ReactNode; label: 
 
 function Dropdown({ children, right }: { children: ReactNode; right: number }) {
   return (
-    <div style={{ position: "absolute", top: 44, right, zIndex: 10, minWidth: 190, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6 }}>
+    <div className="agenda-dropdown" style={{ position: "absolute", top: 44, right, zIndex: 10, minWidth: 190, border: "1px solid rgba(18,26,46,0.12)", borderRadius: 14, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(14px)", boxShadow: "0 18px 38px rgba(18,26,46,0.12)", padding: 6 }}>
       {children}
     </div>
   );
@@ -354,7 +355,7 @@ function ScoreAreaChart({ data }: { data: Array<{ date: Date; key: string; score
   const toPercentY = (y: number) => `${(y / 285) * 100}%`;
 
   return (
-    <div style={{ position: "relative", width: "100%", height: 300, marginTop: 12 }}>
+    <div className="agenda-score-chart" style={{ position: "relative", width: "100%", height: 300, marginTop: 12 }}>
       <svg viewBox={`0 0 ${width} 285`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}>
         <defs>
           <linearGradient id="agendaScoreFill" x1="0" y1="0" x2="0" y2="1">
@@ -392,7 +393,7 @@ function ScoreAreaChart({ data }: { data: Array<{ date: Date; key: string; score
 
 function PanelTitleWithMonth({ title, month, onPrev, onNext }: { title: string; month: Date; onPrev: () => void; onNext: () => void }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 16, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
+    <div className="agenda-panel-title-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 16, borderBottom: "1px solid rgba(18,26,46,0.08)" }}>
       <h2 style={{ margin: 0, fontFamily: jk, fontSize: 16, lineHeight: "22px", fontWeight: 700, letterSpacing: "-0.25px" }}>{title}</h2>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "#121a2e", textTransform: "capitalize" }}>

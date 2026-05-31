@@ -395,16 +395,16 @@ export default function CalendarPage() {
   const weekLabel = `${weekDates[0].toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} – ${weekDates[6].toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}`;
 
   return (
-    <div className="p-4 select-none" style={{ background: "#fbfbfb", minHeight: "100vh" }}>
+    <div className="agenda-calendar-page p-3 sm:p-4 select-none" style={{ background: "#fbfbfb", minHeight: "100vh" }}>
       {error && <SqlMissingBanner error={error} />}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="agenda-calendar-header flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setCurrentDate(d => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; })} className="p-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors">
             <ChevronLeft size={16} />
           </button>
-          <h2 className="text-base font-semibold" style={{ color: "#121A2E" }}>{weekLabel}</h2>
+          <h2 className="min-w-0 text-sm font-semibold sm:text-base" style={{ color: "#121A2E" }}>{weekLabel}</h2>
           <button onClick={() => setCurrentDate(d => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; })} className="p-1.5 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors">
             <ChevronRight size={16} />
           </button>
@@ -424,9 +424,9 @@ export default function CalendarPage() {
       )}
 
       {/* Calendar grid */}
-      <div ref={gridRef} className="bg-white rounded-xl border overflow-hidden relative" style={{ borderColor: "rgba(18,26,46,0.1)" }}>
+      <div ref={gridRef} className="agenda-calendar-grid bg-white rounded-xl border overflow-hidden relative" style={{ borderColor: "rgba(18,26,46,0.1)" }}>
         {/* Day headers */}
-        <div className="grid sticky top-0 z-10 bg-white border-b" style={{ gridTemplateColumns: "56px repeat(7, 1fr)", borderColor: "rgba(18,26,46,0.06)" }}>
+        <div className="agenda-calendar-days grid sticky top-0 z-10 bg-white border-b" style={{ gridTemplateColumns: "var(--agenda-time-col, 56px) repeat(7, minmax(0, 1fr))", borderColor: "rgba(18,26,46,0.06)" }}>
           <div />
           {weekDates.map((date, i) => {
             const isToday = toDateStr(date) === today;
@@ -440,12 +440,12 @@ export default function CalendarPage() {
         </div>
 
         {/* Time grid */}
-        <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "65vh" }}>
-          <div className="relative" style={{ height: totalHeight }}>
+        <div ref={scrollRef} className="agenda-calendar-scroll overflow-y-auto" style={{ maxHeight: "65vh" }}>
+          <div className="agenda-calendar-canvas relative" style={{ height: totalHeight }}>
             {/* Hour lines */}
             {HOURS.map(hour => (
               <div key={hour} className="absolute left-0 right-0 border-t flex" style={{ top: (hour - WORK_START) * PX_PER_HOUR, height: PX_PER_HOUR, borderColor: "rgba(18,26,46,0.06)" }}>
-                <div className="w-14 shrink-0 text-xs text-right pr-2 pt-0.5 leading-none" style={{ color: "rgba(18,26,46,0.4)" }}>
+                <div className="agenda-calendar-time w-14 shrink-0 text-xs text-right pr-2 pt-0.5 leading-none" style={{ color: "rgba(18,26,46,0.4)" }}>
                   {String(hour).padStart(2, "0")}:00
                 </div>
                 <div className="flex-1 grid" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
@@ -469,8 +469,8 @@ export default function CalendarPage() {
               const endMins = timeToMinutes(slot.end_time);
               const top = minutesToPx(startMins);
               const height = Math.max(20, ((endMins - startMins) / 60) * PX_PER_HOUR);
-              const colWidth = `calc((100% - 56px) / 7)`;
-              const left = `calc(56px + ${colIndex} * (100% - 56px) / 7 + 2px)`;
+              const colWidth = `calc((100% - var(--agenda-time-col, 56px)) / 7)`;
+              const left = `calc(var(--agenda-time-col, 56px) + ${colIndex} * (100% - var(--agenda-time-col, 56px)) / 7 + 2px)`;
               return (
                 <div key={slot.id} className="absolute rounded-md text-xs px-1.5 py-0.5 flex items-start justify-between group/slot overflow-hidden"
                   style={{ top, height, left, width: `calc(${colWidth} - 4px)`, background: `repeating-linear-gradient(45deg, #e5e5e5, #e5e5e5 4px, #f0f0f0 4px, #f0f0f0 8px)`, borderLeft: `2px solid #9ca3af` }}
@@ -495,8 +495,8 @@ export default function CalendarPage() {
               }
               const top = minutesToPx(startMins);
               const height = Math.max(24, (dur / 60) * PX_PER_HOUR);
-              const left = `calc(56px + ${displayColIndex} * (100% - 56px) / 7 + 4px)`;
-              const width = `calc((100% - 56px) / 7 - 8px)`;
+              const left = `calc(var(--agenda-time-col, 56px) + ${displayColIndex} * (100% - var(--agenda-time-col, 56px)) / 7 + 4px)`;
+              const width = `calc((100% - var(--agenda-time-col, 56px)) / 7 - 8px)`;
               const imp = IMPORTANCE_LEVELS[(task.importance ?? 3) - 1] ?? IMPORTANCE_LEVELS[2];
 
               return (
@@ -544,8 +544,8 @@ export default function CalendarPage() {
               if (colIndex === -1) return null;
               const top = minutesToPx(startMins);
               const height = Math.max(24, (dragging.duration / 60) * PX_PER_HOUR);
-              const left = `calc(56px + ${colIndex} * (100% - 56px) / 7 + 4px)`;
-              const width = `calc((100% - 56px) / 7 - 8px)`;
+              const left = `calc(var(--agenda-time-col, 56px) + ${colIndex} * (100% - var(--agenda-time-col, 56px)) / 7 + 4px)`;
+              const width = `calc((100% - var(--agenda-time-col, 56px)) / 7 - 8px)`;
               return (
                 <div key="drop-preview" className="absolute rounded-lg border-2 border-dashed pointer-events-none"
                   style={{ top, height, left, width, borderColor: "#0147FF", background: "rgba(1,71,255,0.05)" }} />
@@ -557,7 +557,7 @@ export default function CalendarPage() {
 
       {/* Context Menu */}
       {ctxMenu && (
-        <div className="fixed z-50 rounded-2xl border bg-white shadow-2xl overflow-hidden"
+        <div className="agenda-context-menu fixed z-50 rounded-2xl border bg-white shadow-2xl overflow-hidden"
           style={{ left: ctxMenu.x, top: ctxMenu.y, minWidth: 200, borderColor: "rgba(18,26,46,0.1)" }}
           onClick={e => e.stopPropagation()}>
           {ctxMenu.type === "empty" && (
@@ -603,7 +603,7 @@ export default function CalendarPage() {
       {/* Task Form Modal */}
       {taskForm.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.3)" }} onClick={() => setTaskForm(f => ({ ...f, open: false }))}>
-          <div className="bg-white rounded-[22px] shadow-2xl p-6 w-full max-w-md" style={{ border: "1px solid rgba(18,26,46,0.1)" }} onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-[22px] shadow-2xl p-4 sm:p-6 w-full max-w-md" style={{ border: "1px solid rgba(18,26,46,0.1)" }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold" style={{ color: "#121A2E" }}>{taskForm.mode === "create" ? "Nouvelle tâche" : "Modifier la tâche"}</h3>
               <button onClick={() => setTaskForm(f => ({ ...f, open: false }))} className="p-1 rounded-full hover:bg-gray-100 transition-colors"><X size={16} style={{ color: "rgba(18,26,46,0.5)" }} /></button>
@@ -615,7 +615,7 @@ export default function CalendarPage() {
                   className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-gray-400 transition-colors"
                   style={{ borderColor: "rgba(18,26,46,0.12)" }} placeholder="Nom de la tâche" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(18,26,46,0.5)" }}>Date</label>
                   <input type="date" value={taskForm.date} onChange={e => setTaskForm(f => ({ ...f, date: e.target.value }))}
@@ -639,7 +639,7 @@ export default function CalendarPage() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(18,26,46,0.5)" }}>Début</label>
                   <input type="time" value={taskForm.startTime} onChange={e => {
@@ -680,7 +680,7 @@ export default function CalendarPage() {
       {/* Slot Form Modal */}
       {slotForm.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.3)" }} onClick={() => setSlotForm(f => ({ ...f, open: false }))}>
-          <div className="bg-white rounded-[22px] shadow-2xl p-6 w-full max-w-md" style={{ border: "1px solid rgba(18,26,46,0.1)" }} onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-[22px] shadow-2xl p-4 sm:p-6 w-full max-w-md" style={{ border: "1px solid rgba(18,26,46,0.1)" }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold" style={{ color: "#121A2E" }}>{slotForm.mode === "create" ? "Bloquer un créneau" : "Modifier le blocage"}</h3>
               <button onClick={() => setSlotForm(f => ({ ...f, open: false }))} className="p-1 rounded-full hover:bg-gray-100 transition-colors"><X size={16} style={{ color: "rgba(18,26,46,0.5)" }} /></button>
