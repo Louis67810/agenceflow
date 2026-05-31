@@ -366,10 +366,186 @@ function scrapeLinkedInConversationFromPage() {
   };
 }
 
+function scrapeLinkedInConversationFromPageV2() {
+  const visibleText = (element) => (element?.innerText || element?.textContent || "").replace(/\s+/g, " ").trim();
+  const normalizeText = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const normalizeMessageText = (value) =>
+    String(value || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+  const absoluteUrl = (value) => {
+    if (!value) return undefined;
+    try {
+      return new URL(value, window.location.origin).toString();
+    } catch {
+      return undefined;
+    }
+  };
+  const simpleHash = (value) => {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `fnv_${(hash >>> 0).toString(16)}`;
+  };
+
+  const root =
+    document.querySelector(".scaffold-layout__detail .msg-convo-wrapper") ||
+    document.querySelector(".msg-convo-wrapper") ||
+    document.querySelector(".scaffold-layout__detail") ||
+    document;
+  const activeConversation = document.querySelector(".msg-conversations-container__convo-item-link--active");
+  const profileLink = root.querySelector(".msg-thread__link-to-profile[href], .profile-card-one-to-one__profile-link[href]");
+  const prospectName =
+    visibleText(root.querySelector(".msg-entity-lockup__entity-title, .msg-title-bar h2")) ||
+    visibleText(root.querySelector(".profile-card-one-to-one__profile-link .truncate")) ||
+    visibleText(activeConversation?.querySelector(".msg-conversation-listitem__participant-names, .msg-conversation-card__participant-names")) ||
+    visibleText(profileLink).split(/\s{2,}|Le statut est|Mobile|En ligne|joignable/i)[0]?.trim() ||
+    "Prospect LinkedIn";
+  const avatar =
+    root.querySelector(".msg-thread__link-to-profile img, .msg-s-profile-card img.presence-entity__image") ||
+    activeConversation?.querySelector("img.presence-entity__image, img.EntityPhoto-circle-4");
+
+  const nodes = [
+    ...root.querySelectorAll(".msg-s-event-listitem[data-event-urn], [data-view-name='message-list-item'][data-event-urn]"),
+  ];
+  const fallbackNodes = nodes.length ? nodes : [...root.querySelectorAll(".msg-s-event-listitem")];
+  const messages = [];
+  const seen = new Set();
+  let currentDate = "";
+
+  const eventContainer = (node) => node.closest(".msg-s-message-list__event") || node.closest("li");
+  const getEventDate = (node) => {
+    const heading = visibleText(eventContainer(node)?.querySelector(".msg-s-message-list__time-heading"));
+    if (heading) currentDate = heading;
+    return heading || currentDate || "";
+  };
+  const parseA11yHeading = (node) => {
+    const heading = visibleText(eventContainer(node)?.querySelector(".msg-s-event-listitem--group-a11y-heading"));
+    const match = heading.match(/^(.+?)\s+a envoy[ée].*?\s+à\s+(.+)$/i);
+    return { senderName: match?.[1]?.trim(), time: match?.[2]?.trim(), raw: heading };
+  };
+  const extractText = (node) => {
+    const body = node.querySelector(".msg-s-event-listitem__body");
+    if (!body) return "";
+    const clone = body.cloneNode(true);
+    clone.querySelectorAll(".pl1, .t-14.t-black--light.t-normal.pl1, .msg-s-event-listitem__actions-container").forEach((element) => element.remove());
+    clone.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+    return normalizeMessageText(clone.textContent)
+      .replace(/\s+\((Modifie|Modifié|Edited)\)$/i, "")
+      .trim();
+  };
+  const extractAttachments = (node) => {
+    const attachments = [];
+    node.querySelectorAll(".msg-s-event-listitem__attachment-item, .ui-attachment").forEach((attachment) => {
+      const filename = visibleText(attachment.querySelector(".ui-attachment__filename"));
+      const filesize = visibleText(attachment.querySelector(".ui-attachment__filesize"));
+      const typeClass = String(attachment.querySelector(".ui-attachment")?.className || attachment.className || "");
+      const type = typeClass.match(/ui-attachment--([a-z0-9-]+)/i)?.[1] || "file";
+      if (!filename && !filesize) return;
+      const key = [filename, filesize, type].join("|");
+      if (!attachments.some((item) => item.key === key)) {
+        attachments.push({ key, filename: filename || "Fichier joint", filesize, type });
+      }
+    });
+    return attachments;
+  };
+  const extractImages = (node) => [...node.querySelectorAll(".msg-s-event-listitem__message-bubble img, .msg-s-event-listitem__attachment-item img")]
+    .filter((img) => {
+      const src = img.getAttribute("src") || "";
+      const label = `${img.className || ""} ${img.closest("[class]")?.className || ""} ${img.getAttribute("alt") || ""}`;
+      if (!src) return false;
+      return !/profile-picture|seen-receipt|EntityPhoto|presence-entity|emoji|reaction|linkedin-bug|static\.licdn\.com/i.test(`${label} ${src}`);
+    })
+    .map((img) => ({ url: absoluteUrl(img.getAttribute("src")), alt: img.getAttribute("alt") || undefined }))
+    .filter((image) => image.url);
+
+  for (const node of fallbackNodes) {
+    if (node.querySelector(".msg-s-event-listitem__body--recalled")) continue;
+    const dateHeading = getEventDate(node);
+    const a11y = parseA11yHeading(node);
+    const bodyText = extractText(node);
+    const attachments = extractAttachments(node);
+    const images = extractImages(node);
+    const attachmentLines = attachments.map((attachment) =>
+      `[Fichier joint: ${attachment.filename}${attachment.filesize ? ` - ${attachment.filesize}` : ""}${attachment.type ? ` - ${attachment.type}` : ""}]`
+    );
+    const text = [bodyText, ...attachmentLines].filter(Boolean).join("\n");
+    const links = [
+      ...new Set([
+        ...[...node.querySelectorAll(".msg-s-event-listitem__body a[href], .msg-s-event-listitem__attachment-item a[href], .msg-s-event-listitem__message-bubble a[href]")]
+          .map((link) => absoluteUrl(link.getAttribute("href")))
+          .filter(Boolean),
+        ...(bodyText.match(/https?:\/\/[^\s)]+/g) || []),
+      ]),
+    ];
+    if (!text && !links.length && !images.length) continue;
+
+    const ariaHeading = a11y.raw || "";
+    const senderName =
+      visibleText(node.querySelector(".msg-s-message-group__name")) ||
+      a11y.senderName ||
+      ariaHeading.replace(/\s+a envoy[eéée].*$/i, "").trim() ||
+      (node.classList.contains("msg-s-event-listitem--other") ? prospectName : "Louis Staub");
+    const sender = normalizeText(senderName) === "louis staub" || !node.classList.contains("msg-s-event-listitem--other") ? "me" : "them";
+    const timeStamp = visibleText(node.querySelector(".msg-s-message-group__timestamp")) || a11y.time;
+    const sentAt = [dateHeading, timeStamp].filter(Boolean).join(" ");
+    const externalId = node.getAttribute("data-event-urn") || `linkedin_visible_${messages.length + 1}`;
+    const rawHash = simpleHash([externalId, senderName, text, sentAt, links.join("|"), images.map((image) => image.url).join("|")].join("\n"));
+
+    if (seen.has(rawHash)) continue;
+    seen.add(rawHash);
+    messages.push({
+      externalId,
+      sender,
+      senderName: senderName || (sender === "me" ? "Louis Staub" : prospectName),
+      text,
+      sentAt: sentAt || undefined,
+      links,
+      images,
+      rawHash,
+      metadata: {
+        dateHeading,
+        attachments: attachments.map(({ key, ...attachment }) => attachment),
+        seenReceipt: visibleText(node.querySelector(".msg-s-event-listitem__seen-receipts")) || undefined,
+      },
+    });
+  }
+
+  return {
+    source: "linkedin_chrome_extension",
+    importedAt: new Date().toISOString(),
+    prospect: {
+      name: prospectName,
+      profileUrl: absoluteUrl(profileLink?.getAttribute("href")),
+      avatarUrl: absoluteUrl(avatar?.getAttribute("src")),
+      headline: visibleText(root.querySelector(".artdeco-entity-lockup__subtitle div")) || undefined,
+    },
+    thread: {
+      linkedinThreadKey: absoluteUrl(profileLink?.getAttribute("href")) || window.location.href,
+      pageUrl: window.location.href,
+    },
+    messages,
+    debug: {
+      events: document.querySelectorAll(".msg-s-event-listitem").length,
+      bodies: document.querySelectorAll(".msg-s-event-listitem__body").length,
+      attachments: document.querySelectorAll(".ui-attachment__filename").length,
+      images: document.querySelectorAll(".msg-s-event-listitem__message-bubble img").length,
+      names: document.querySelectorAll(".msg-s-message-group__name").length,
+      prospectName,
+    },
+  };
+}
+
 async function extractConversation(tabId) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: scrapeLinkedInConversationFromPage,
+    func: scrapeLinkedInConversationFromPageV2,
   });
 
   if (result?.messages?.length) {
