@@ -234,16 +234,20 @@ async function selectProspect(prospect) {
 
 async function getActiveLinkedInTab() {
   const tabs = await chrome.tabs.query({ url: "https://www.linkedin.com/*" });
-  const candidates = tabs
-    .filter((tab) => tab.id && tab.url?.startsWith("https://www.linkedin.com/"))
-    .sort((a, b) => {
-      const aScore = (a.active ? 10_000_000_000_000 : 0) + (a.url?.includes("/messaging") ? 1_000_000_000 : 0) + (a.lastAccessed || 0);
-      const bScore = (b.active ? 10_000_000_000_000 : 0) + (b.url?.includes("/messaging") ? 1_000_000_000 : 0) + (b.lastAccessed || 0);
-      return bScore - aScore;
-    });
-  const tab = candidates[0];
+  const candidates = tabs.filter((tab) => tab.id && tab.url?.startsWith("https://www.linkedin.com/"));
+  const messagingTabs = candidates.filter((tab) =>
+    /linkedin\.com\/(messaging|sales\/inbox|sales\/messaging)/i.test(tab.url || "")
+  );
+  const activeMessagingTab = messagingTabs.find((tab) => tab.active);
+  const mostRecentMessagingTab = messagingTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+  const activeLinkedInTab = candidates.find((tab) => tab.active);
+  const tab = activeMessagingTab || mostRecentMessagingTab || activeLinkedInTab || candidates.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+
   if (!tab?.id) {
     throw new Error("Ouvrez une conversation LinkedIn dans un onglet Chrome.");
+  }
+  if (!/linkedin\.com\/(messaging|sales\/inbox|sales\/messaging)/i.test(tab.url || "")) {
+    throw new Error(`Onglet LinkedIn detecte, mais ce n'est pas une conversation: ${tab.url || "URL inconnue"}`);
   }
   return tab;
 }
@@ -543,10 +547,15 @@ function scrapeLinkedInConversationFromPageV2() {
 }
 
 async function extractConversation(tabId) {
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId },
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const frameResults = await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
     func: scrapeLinkedInConversationFromPageV2,
   });
+  const result = frameResults
+    .map((item) => item.result)
+    .filter(Boolean)
+    .sort((a, b) => (b.messages?.length || 0) - (a.messages?.length || 0))[0];
 
   if (result?.messages?.length) {
     return { ok: true, payload: result };
@@ -570,7 +579,7 @@ async function extractConversation(tabId) {
   }
 
   const debug = result?.debug
-    ? `${result.debug.events} event(s) / ${result.debug.bodies} body / ${result.debug.names} name / prospect: ${result.debug.prospectName}`
+    ? `${result.debug.events} event(s) / ${result.debug.bodies} body / ${result.debug.names} name / prospect: ${result.debug.prospectName} / url: ${tab?.url || "inconnue"}`
     : "debug indisponible";
   return { ok: false, error: `Conversation non detectee (${debug}).` };
 }
