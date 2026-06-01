@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 import {
   addWasenderGroupParticipants,
   createWasenderGroup,
@@ -13,6 +14,53 @@ function admin() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+}
+
+async function selectProjectWithOptionalColumns(id: string, columns: string[]) {
+  let currentColumns = [...columns];
+
+  while (true) {
+    if (currentColumns.length === 0) {
+      return { data: {}, error: null, columns: currentColumns };
+    }
+
+    const { data, error } = await admin()
+      .from("projects")
+      .select(currentColumns.join(", "))
+      .eq("id", id)
+      .single();
+
+    if (!error) return { data, error: null, columns: currentColumns };
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !currentColumns.includes(missingColumn)) {
+      return { data: null, error, columns: currentColumns };
+    }
+
+    currentColumns = currentColumns.filter((column) => column !== missingColumn);
+  }
+}
+
+async function updateProjectWithOptionalColumns(id: string, payload: Record<string, unknown>) {
+  const updatePayload = { ...payload };
+
+  while (true) {
+    const { data, error } = await admin()
+      .from("projects")
+      .update(updatePayload)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (!error) return { data, error: null };
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !(missingColumn in updatePayload)) {
+      return { data: null, error };
+    }
+
+    delete updatePayload[missingColumn];
+  }
 }
 
 export async function GET(
@@ -76,30 +124,35 @@ export async function PUT(
       return NextResponse.json({ project: data });
     }
 
-    // Generic update
+    // WhatsApp activation: create or reuse the group only after the client submits a phone number.
     const { action: _action, ...updates } = body;
 
     if ("notif_whatsapp_phone" in updates && typeof updates.notif_whatsapp_phone === "string") {
       const phone = normalizeWhatsappPhone(updates.notif_whatsapp_phone);
       if (!phone) return NextResponse.json({ error: "Numero WhatsApp invalide" }, { status: 400 });
 
-      const { data: project, error: projectError } = await admin()
-        .from("projects")
-        .select("id, name, client_name, whatsapp_group_jid, whatsapp_group_name, whatsapp_group_profile_url, notif_whatsapp_group")
-        .eq("id", id)
-        .single();
+      const { data: project, error: projectError } = await selectProjectWithOptionalColumns(id, [
+        "id",
+        "name",
+        "client_name",
+        "whatsapp_group_jid",
+        "whatsapp_group_name",
+        "whatsapp_group_profile_url",
+        "notif_whatsapp_group",
+      ]);
 
       if (projectError || !project) return NextResponse.json({ error: "Projet introuvable" }, { status: 404 });
 
-      let groupJid = project.whatsapp_group_jid as string | null;
-      let inviteLink = project.notif_whatsapp_group as string | null;
-      let groupName = (project.whatsapp_group_name as string | null) || (project.name as string) || "Groupe projet";
+      const projectRow = project as unknown as Record<string, unknown>;
+      let groupJid = projectRow.whatsapp_group_jid as string | null;
+      let inviteLink = projectRow.notif_whatsapp_group as string | null;
+      let groupName = (projectRow.whatsapp_group_name as string | null) || (projectRow.name as string) || "Groupe projet";
 
       if (!groupJid) {
         const createdGroup = await createWasenderGroup({
           name: groupName,
           participants: [phone],
-          profilePicUrl: project.whatsapp_group_profile_url as string | null,
+          profilePicUrl: projectRow.whatsapp_group_profile_url as string | null,
         });
 
         if (!createdGroup.ok) {
@@ -122,18 +175,15 @@ export async function PUT(
         }
       }
 
-      const { data, error } = await admin()
-        .from("projects")
-        .update({
-          notif_whatsapp_phone: phone,
-          notif_whatsapp_enabled: true,
-          whatsapp_group_jid: groupJid,
-          whatsapp_group_name: groupName,
-          notif_whatsapp_group: inviteLink,
-        })
-        .eq("id", id)
-        .select()
-        .single();
+      const { data, error } = await updateProjectWithOptionalColumns(id, {
+        notif_whatsapp_phone: phone,
+        notif_whatsapp_enabled: true,
+        notif_email_enabled: false,
+        notif_slack_enabled: false,
+        whatsapp_group_jid: groupJid,
+        whatsapp_group_name: groupName,
+        notif_whatsapp_group: inviteLink,
+      });
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ project: data });

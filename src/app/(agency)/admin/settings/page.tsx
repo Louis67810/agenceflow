@@ -77,6 +77,7 @@ export default function SettingsPage() {
 
   const [accessKeys, setAccessKeys]         = useState<AccessKey[]>([]);
   const [keysLoading, setKeysLoading]       = useState(false);
+  const [keysError, setKeysError]           = useState<string | null>(null);
   const [showCreate, setShowCreate]         = useState(false);
   const [newName, setNewName]               = useState("");
   const [newRole, setNewRole]               = useState<"client" | "designer" | "developer">("client");
@@ -130,10 +131,22 @@ export default function SettingsPage() {
 
   async function loadKeys() {
     setKeysLoading(true);
-    const r = await fetch("/api/keys");
-    const d = await r.json();
-    setAccessKeys(d.keys ?? []);
-    setKeysLoading(false);
+    setKeysError(null);
+    try {
+      const r = await fetch("/api/keys");
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setAccessKeys([]);
+        setKeysError(d.error ?? `Erreur API /api/keys (${r.status})`);
+        return;
+      }
+      setAccessKeys(d.keys ?? []);
+    } catch (error) {
+      setAccessKeys([]);
+      setKeysError(error instanceof Error ? error.message : "Erreur de chargement des cles.");
+    } finally {
+      setKeysLoading(false);
+    }
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -718,7 +731,7 @@ export default function SettingsPage() {
                     <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#121a2e", marginBottom: 6 }}>Nom du groupe WhatsApp <span style={{ color: "rgba(18,26,46,0.4)", fontWeight: 400 }}>(optionnel)</span></label>
                     <input type="text" value={newWhatsappGroupName} onChange={e => setNewWhatsappGroupName(e.target.value)} placeholder="Ex : Projet {{client}}" style={inp} />
                     <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", marginTop: 6, marginBottom: 0 }}>
-                      Tu peux utiliser {"{{client}}"} et {"{{project}}"}.
+                      Stocké seulement pour une future activation WhatsApp. Tu peux utiliser {"{{client}}"} et {"{{project}}"}.
                     </p>
                   </div>
                   <div>
@@ -766,6 +779,14 @@ export default function SettingsPage() {
 
           {keysLoading ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 48 }}><Loader2 size={24} style={{ color: "rgba(18,26,46,0.3)", animation: "spin 1s linear infinite" }} /></div>
+          ) : keysError ? (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 16, background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 13, color: "#b91c1c", fontSize: 13 }}>
+              <AlertCircle size={16} style={{ marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <p style={{ margin: "0 0 4px", fontWeight: 700 }}>Erreur de chargement des cles</p>
+                <p style={{ margin: 0 }}>{keysError}</p>
+              </div>
+            </div>
           ) : accessKeys.length === 0 ? (
             <div style={{ textAlign: "center", padding: "64px 24px", ...card }}>
               <Key size={32} style={{ color: "rgba(18,26,46,0.15)", margin: "0 auto 12px" }} />
@@ -776,7 +797,7 @@ export default function SettingsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#f9f9f9" }}>
-                    {["Nom", "Type", "Bannière", "Groupe WhatsApp", "Statut", "Créé le", ""].map(h => (
+                    {["Nom", "Type", "Bannière", "WhatsApp", "Statut", "Créé le", ""].map(h => (
                       <th key={h} style={{ padding: "10px 20px", textAlign: h === "" ? "right" : "left", fontSize: 11, fontWeight: 600, color: "rgba(18,26,46,0.45)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                     ))}
                   </tr>

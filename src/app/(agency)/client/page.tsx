@@ -29,8 +29,8 @@ interface Project {
   notif_whatsapp_phone: string | null;
   notif_whatsapp_group: string | null;
   notif_whatsapp_enabled: boolean;
-  whatsapp_group_jid: string | null;
-  whatsapp_group_name: string | null;
+  whatsapp_group_jid?: string | null;
+  whatsapp_group_name?: string | null;
   notif_slack_webhook: string | null;
   notif_slack_enabled: boolean;
 }
@@ -108,6 +108,7 @@ export default function ClientDashboard() {
   const [notifMethod, setNotifMethod] = useState<"whatsapp" | "email" | "slack" | null>(null);
   const [waPhone, setWaPhone]         = useState("");
   const [savingNotif, setSavingNotif] = useState(false);
+  const [notifError, setNotifError]   = useState<string | null>(null);
   // Tutorial
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -144,7 +145,7 @@ export default function ClientDashboard() {
       setUserId(session.user.id);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
       if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
-      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.whatsapp_group_jid || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
+      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
       else if (proj.notif_email_enabled) setNotifMethod("email");
       else if (proj.notif_slack_enabled) setNotifMethod("slack");
 
@@ -202,13 +203,7 @@ export default function ClientDashboard() {
       body: JSON.stringify({ action: "advance_stage" }),
     });
     const d = await r.json();
-    if (r.ok) {
-      setProject(d.project);
-      if (d.project?.notif_whatsapp_enabled || d.project?.notif_whatsapp_phone || d.project?.whatsapp_group_jid || d.project?.notif_whatsapp_group) {
-        setNotifMethod("whatsapp");
-        setWaPhone(d.project.notif_whatsapp_phone ?? waPhone);
-      }
-    }
+    if (r.ok) setProject(d.project);
     setAdvancing(false);
     setShowConfirm(false);
     setHoldPct(0);
@@ -264,8 +259,9 @@ export default function ClientDashboard() {
   }
 
   async function saveNotification(updates: Record<string, unknown>) {
-    if (!project) return;
+    if (!project) return false;
     setSavingNotif(true);
+    setNotifError(null);
     const r = await fetch(`/api/projects/${project.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -273,7 +269,9 @@ export default function ClientDashboard() {
     });
     const d = await r.json();
     if (r.ok) setProject(d.project);
+    else setNotifError(d.error ?? "Impossible de configurer les notifications.");
     setSavingNotif(false);
+    return r.ok;
   }
 
   if (loading) return (
@@ -734,7 +732,7 @@ export default function ClientDashboard() {
               <span style={{ ...jakartaSans, fontSize: 17, fontWeight: 600, letterSpacing: "-0.45px", color: "#121a2e" }}>
                 Notifications
               </span>
-              {notifMethod && !(notifMethod === "whatsapp" && (project.whatsapp_group_jid || project.notif_whatsapp_group || project.notif_whatsapp_phone)) && (
+              {notifMethod && !project.notif_whatsapp_phone && !project.notif_email_enabled && !project.notif_slack_enabled && (
                 <button
                   onClick={() => setNotifMethod(null)}
                   style={{
@@ -810,6 +808,11 @@ export default function ClientDashboard() {
               {/* ── WhatsApp config ── */}
               {notifMethod === "whatsapp" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {notifError && (
+                    <div style={{ padding: "10px 12px", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 9, fontSize: 12, color: "#c53030" }}>
+                      {notifError}
+                    </div>
+                  )}
                   <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f7f7f9", borderRadius: 12 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: "#25D366", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
@@ -817,37 +820,20 @@ export default function ClientDashboard() {
                     <div style={{ flex: 1 }}>
                       <p style={{ ...jakartaSans, fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0 }}>WhatsApp</p>
                       <p style={{ ...jakartaSans, fontSize: 11, color: "rgba(18,26,46,0.45)", margin: "2px 0 0" }}>
-                        {project.whatsapp_group_jid || project.notif_whatsapp_group ? "Groupe actif" : "Non configuré"}
+                        {project.notif_whatsapp_group ? "Groupe actif" : "Non configuré"}
                       </p>
                     </div>
-                    <button
-                      onClick={() => saveNotification({ notif_whatsapp_enabled: !project.notif_whatsapp_enabled })}
-                      disabled={!(project.whatsapp_group_jid || project.notif_whatsapp_group) || savingNotif}
-                      style={{
-                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: project.whatsapp_group_jid || project.notif_whatsapp_group ? "pointer" : "not-allowed",
-                        background: project.notif_whatsapp_enabled && (project.whatsapp_group_jid || project.notif_whatsapp_group) ? "#0147ff" : "#e5e7eb",
-                        position: "relative", transition: "background 0.2s", flexShrink: 0,
-                        opacity: !(project.whatsapp_group_jid || project.notif_whatsapp_group) ? 0.5 : 1,
-                      }}>
-                      <span style={{
-                        position: "absolute", top: 3, width: 18, height: 18, borderRadius: "50%", background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
-                        left: project.notif_whatsapp_enabled && (project.whatsapp_group_jid || project.notif_whatsapp_group) ? 23 : 3,
-                      }} />
-                    </button>
+                    {project.notif_whatsapp_group && (
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#168b64" }}>Configuré</span>
+                    )}
                   </div>
-                  {project.whatsapp_group_jid || project.notif_whatsapp_group ? (
+                  {project.notif_whatsapp_group ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <p style={{ ...jakartaSans, fontSize: 12, color: "rgba(18,26,46,0.5)", margin: 0 }}>Votre groupe WhatsApp est prêt :</p>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 10, fontSize: 13, fontWeight: 500, color: "#16a34a" }}>
-                        <CheckCircle2 size={14} />{project.whatsapp_group_name ?? "Groupe WhatsApp"}
-                      </div>
-                      {project.notif_whatsapp_group && (
-                        <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#121a2e" }}>
-                          <ChevronRight size={14} />Ouvrir l'invitation
-                        </a>
-                      )}
+                      <a href={project.notif_whatsapp_group} target="_blank" rel="noopener noreferrer"
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f0faf4", border: "1px solid rgba(37,211,102,0.2)", borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 500, color: "#16a34a" }}>
+                        <ChevronRight size={14} />Rejoindre le groupe
+                      </a>
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -858,7 +844,7 @@ export default function ClientDashboard() {
                           <input type="tel" value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="+33 6 00 00 00 00"
                             style={{ flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#121a2e" }} />
                         </div>
-                        <button onClick={() => saveNotification({ notif_whatsapp_phone: waPhone, notif_whatsapp_enabled: true })} disabled={!waPhone.trim() || savingNotif}
+                        <button onClick={() => saveNotification({ notif_whatsapp_phone: waPhone })} disabled={!waPhone.trim() || savingNotif}
                           style={{ padding: "0 14px", background: "#121a2e", color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: !waPhone.trim() ? "not-allowed" : "pointer", opacity: !waPhone.trim() ? 0.5 : 1 }}>
                           {savingNotif ? "..." : "Envoyer"}
                         </button>

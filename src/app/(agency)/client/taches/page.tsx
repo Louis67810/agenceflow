@@ -16,8 +16,8 @@ interface Project {
   notif_whatsapp_phone: string | null;
   notif_whatsapp_group: string | null;
   notif_whatsapp_enabled: boolean;
-  whatsapp_group_jid: string | null;
-  whatsapp_group_name: string | null;
+  whatsapp_group_jid?: string | null;
+  whatsapp_group_name?: string | null;
   notif_slack_webhook: string | null;
   notif_slack_enabled: boolean;
 }
@@ -39,6 +39,7 @@ export default function TachesPage() {
   const [configuring, setConfiguring] = useState<"whatsapp" | "slack" | null>(null);
   const [waPhone, setWaPhone]         = useState("");
   const [savingNotif, setSavingNotif] = useState(false);
+  const [notifError, setNotifError]   = useState<string | null>(null);
   const [validating, setValidating]   = useState<string | null>(null);
 
   const supabase = createBrowserClient(
@@ -58,7 +59,7 @@ export default function TachesPage() {
       setProject(proj);
       setClientName(proj.client_name ?? session.user.email?.split("@")[0] ?? "Moi");
       if (proj.notif_whatsapp_phone) setWaPhone(proj.notif_whatsapp_phone);
-      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.whatsapp_group_jid || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
+      if (proj.notif_whatsapp_enabled || proj.notif_whatsapp_phone || proj.notif_whatsapp_group) setNotifMethod("whatsapp");
       else if (proj.notif_email_enabled) setNotifMethod("email");
       else if (proj.notif_slack_enabled) setNotifMethod("slack");
       const rr = await fetch(`/api/reviews?project_id=${proj.id}`);
@@ -70,20 +71,18 @@ export default function TachesPage() {
   }, []);
 
   async function saveNotification(updates: Record<string, unknown>) {
-    if (!project) return;
+    if (!project) return false;
     setSavingNotif(true);
+    setNotifError(null);
     const r = await fetch(`/api/projects/${project.id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
     });
     const d = await r.json();
-    if (r.ok) {
-      setProject(d.project);
-      if (d.project?.notif_whatsapp_enabled || d.project?.notif_whatsapp_phone || d.project?.whatsapp_group_jid || d.project?.notif_whatsapp_group) {
-        setNotifMethod("whatsapp");
-      }
-    }
+    if (r.ok) setProject(d.project);
+    else setNotifError(d.error ?? "Impossible de configurer les notifications.");
     setSavingNotif(false);
+    return r.ok;
   }
 
   async function handleAction(reviewId: string, status: "validated" | "refused") {
@@ -118,13 +117,18 @@ export default function TachesPage() {
     return (
       <div style={{ display: "flex", minHeight: "100vh", background: "#fbfbfb" }}>
         <div style={{ flex: 1, padding: "32px 24px", ...jakartaSans }}>
-          <button onClick={() => setConfiguring(null)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", marginBottom: 24, padding: 0 }}>
+          <button onClick={() => { setNotifError(null); setConfiguring(null); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "rgba(18,26,46,0.5)", background: "none", border: "none", cursor: "pointer", marginBottom: 24, padding: 0 }}>
             <ArrowLeft size={14} />Retour
           </button>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", letterSpacing: "-0.45px", margin: "0 0 24px" }}>
             {configuring === "whatsapp" ? "Configurer WhatsApp" : "Configurer Slack"}
           </h1>
           <div style={{ maxWidth: 480, display: "flex", flexDirection: "column", gap: 14 }}>
+            {notifError && (
+              <div style={{ padding: "10px 12px", background: "#fff0f0", border: "1px solid #fcc", borderRadius: 9, fontSize: 12, color: "#c53030" }}>
+                {notifError}
+              </div>
+            )}
             {configuring === "whatsapp" && (
               <>
                 <label style={{ fontSize: 13, fontWeight: 600, color: "rgba(18,26,46,0.5)", letterSpacing: "-0.3px" }}>Votre numéro WhatsApp</label>
@@ -135,7 +139,10 @@ export default function TachesPage() {
                       style={{ flex: 1, border: "none", outline: "none", fontSize: 14, background: "transparent", color: "#121a2e", fontFamily: '"Plus Jakarta Sans", sans-serif' }} />
                   </div>
                   <button
-                    onClick={async () => { await saveNotification({ notif_whatsapp_phone: waPhone, notif_whatsapp_enabled: true }); setNotifMethod("whatsapp"); setConfiguring(null); }}
+                    onClick={async () => {
+                      const ok = await saveNotification({ notif_whatsapp_phone: waPhone, notif_whatsapp_enabled: true });
+                      if (ok) { setNotifMethod("whatsapp"); setConfiguring(null); }
+                    }}
                     disabled={!waPhone.trim() || savingNotif}
                     style={{ padding: "0 20px", background: "linear-gradient(121deg,rgb(78,126,250) 10%,rgb(1,71,255) 82%)", color: "#fff", border: "1px solid #2f4d9d", borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: !waPhone.trim() ? 0.5 : 1 }}>
                     {savingNotif ? "..." : "Enregistrer"}
@@ -219,7 +226,6 @@ export default function TachesPage() {
             <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(18,26,46,0.6)" }}>
               {notifMethod === "whatsapp" ? "WhatsApp" : notifMethod === "email" ? "Email" : "Slack"} activé
             </span>
-            <button onClick={() => setNotifMethod(null)} style={{ fontSize: 11, color: "rgba(18,26,46,0.35)", background: "none", border: "none", cursor: "pointer", marginLeft: 4 }}>Changer</button>
           </div>
         </div>
 

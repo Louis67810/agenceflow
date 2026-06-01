@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
-import { createWasenderGroup } from "@/lib/whatsapp/wasender";
 
 type AccessKeyRow = {
   name?: string | null;
@@ -27,6 +26,10 @@ async function selectAccessKeyByKey(key: string, columns: string[]) {
   let currentColumns = [...columns];
 
   while (true) {
+    if (currentColumns.length === 0) {
+      return { data: {}, error: null, columns: currentColumns };
+    }
+
     const { data, error } = await admin()
       .from("access_keys")
       .select(currentColumns.join(", "))
@@ -66,6 +69,24 @@ async function insertProjectWithOptionalColumns(payload: Record<string, unknown>
     }
 
     delete insertPayload[missingColumn];
+  }
+}
+
+async function updateProjectWithOptionalColumns(id: string, payload: Record<string, unknown>) {
+  const updatePayload = { ...payload };
+
+  while (true) {
+    const { error } = await admin()
+      .from("projects")
+      .update(updatePayload)
+      .eq("id", id);
+
+    if (!error) return;
+
+    const missingColumn = getMissingSchemaColumn(error);
+    if (!missingColumn || !(missingColumn in updatePayload)) return;
+
+    delete updatePayload[missingColumn];
   }
 }
 
@@ -132,8 +153,6 @@ export async function POST(
       "name",
       "role",
       "banner_url",
-      "whatsapp_group_name",
-      "whatsapp_group_profile_url",
     ]);
 
     if (keyError || !rawKeyRow || typeof rawKeyRow !== "object") {
@@ -185,10 +204,6 @@ export async function POST(
     const projectName = projectNameFromForm
       || (serviceTypeName ? `${serviceTypeName} - ${_client_name ?? "Client"}` : `Projet de ${_client_name ?? "Client"}`);
 
-    const whatsappGroupName = (keyRow.whatsapp_group_name?.trim() || projectName)
-      .replaceAll("{{client}}", _client_name ?? "Client")
-      .replaceAll("{{project}}", projectName);
-
     const { data: newProject, error: projError } = await insertProjectWithOptionalColumns({
       name: projectName,
       client_name: _client_name ?? null,
@@ -198,8 +213,6 @@ export async function POST(
       form_data: formData,
       service_type_id: keyRow.service_type_id ?? null,
       banner_url: keyRow.banner_url ?? null,
-      whatsapp_group_name: whatsappGroupName,
-      whatsapp_group_profile_url: keyRow.whatsapp_group_profile_url ?? null,
       stages,
       current_stage_index: 0,
       start_date: new Date().toISOString().split("T")[0],
@@ -214,23 +227,19 @@ export async function POST(
       );
     }
 
-    if (newProject?.id) {
-      const createdGroup = await createWasenderGroup({
-        name: whatsappGroupName,
-        profilePicUrl: keyRow.whatsapp_group_profile_url ?? null,
-      });
+    const { data: rawWhatsappConfig } = await selectAccessKeyByKey(key, [
+      "whatsapp_group_name",
+      "whatsapp_group_profile_url",
+    ]);
+    const whatsappConfig = rawWhatsappConfig as unknown as AccessKeyRow | null;
 
-      if (createdGroup.ok && createdGroup.data?.id) {
-        await admin()
-          .from("projects")
-          .update({
-            whatsapp_group_jid: createdGroup.data.id,
-            whatsapp_group_name: createdGroup.data.subject ?? whatsappGroupName,
-            whatsapp_group_profile_url: keyRow.whatsapp_group_profile_url ?? null,
-            notif_whatsapp_group: createdGroup.data.inviteLink ?? null,
-          })
-          .eq("id", newProject.id);
-      }
+    if (newProject?.id && (whatsappConfig?.whatsapp_group_name || whatsappConfig?.whatsapp_group_profile_url)) {
+      await updateProjectWithOptionalColumns(newProject.id, {
+        whatsapp_group_name: (whatsappConfig.whatsapp_group_name?.trim() || projectName)
+          .replaceAll("{{client}}", _client_name ?? "Client")
+          .replaceAll("{{project}}", projectName),
+        whatsapp_group_profile_url: whatsappConfig.whatsapp_group_profile_url ?? null,
+      });
     }
 
     return NextResponse.json({ success: true, project_id: newProject?.id ?? null });

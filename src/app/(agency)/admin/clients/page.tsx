@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  Search, UserCheck, Clock, ChevronRight, X, Loader2, Key, ExternalLink,
+  Search, UserCheck, Clock, ChevronRight, X, Loader2, Key, ExternalLink, AlertCircle,
 } from "lucide-react";
 
 const jakartaSans = { fontFamily: '"Plus Jakarta Sans", sans-serif' } as const;
@@ -22,15 +22,23 @@ const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
 export default function ClientsPage() {
   const [keys, setKeys]         = useState<AccessKey[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [keysError, setKeysError] = useState<string | null>(null);
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState<"all" | "connected" | "pending">("all");
   const [selected, setSelected] = useState<AccessKey | null>(null);
 
   useEffect(() => {
     fetch("/api/keys")
-      .then((r) => r.json())
-      .then((d) => { setKeys(d.keys ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error ?? `Erreur API /api/keys (${r.status})`);
+        setKeys(d.keys ?? []);
+      })
+      .catch((error) => {
+        setKeys([]);
+        setKeysError(error instanceof Error ? error.message : "Erreur de chargement des clients.");
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = keys.filter((k) => {
@@ -103,6 +111,14 @@ export default function ClientsPage() {
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
           <Loader2 size={28} style={{ color: "rgba(18,26,46,0.25)", animation: "spin 1s linear infinite" }} />
+        </div>
+      ) : keysError ? (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 16, background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 13, color: "#b91c1c", fontSize: 13 }}>
+          <AlertCircle size={16} style={{ marginTop: 1, flexShrink: 0 }} />
+          <div>
+            <p style={{ margin: "0 0 4px", fontWeight: 700 }}>Erreur de chargement des clients</p>
+            <p style={{ margin: 0 }}>{keysError}</p>
+          </div>
         </div>
       ) : keys.length === 0 ? (
         <div style={{ textAlign: "center", padding: "64px 24px", background: "#fff", borderRadius: 13, border: "1px solid rgba(0,0,0,0.08)" }}>
