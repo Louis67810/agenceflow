@@ -23,8 +23,12 @@ interface Notification {
   id: string; title: string; message: string; type: string; read: boolean; created_at: string; project_id?: string;
 }
 interface Project {
-  id: string; name: string; status: string; deadline?: string; current_stage?: string;
-  clients?: { name: string };
+  id: string; name: string; status: string; deadline?: string | null; current_stage?: string | null;
+  client_name?: string | null; client_email?: string | null;
+  clients?: { name: string } | null;
+}
+interface AccessKey {
+  id: string; role: "client" | "designer" | string; used_at: string | null;
 }
 
 export default function AdminDashboard() {
@@ -32,7 +36,7 @@ export default function AdminDashboard() {
   const [todayTasks, setTodayTasks] = useState<AgendaTask[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [stats, setStats] = useState({ projects: 0, clients: 0, tasks: 0 });
+  const [stats, setStats] = useState({ projects: 0, clients: 0, connectedClients: 0, tasks: 0 });
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toISOString().split("T")[0];
@@ -42,18 +46,33 @@ export default function AdminDashboard() {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
-      const [projectsRes, clientsRes, tasksRes, notifsRes, agendaRes] = await Promise.all([
-        supabase.from("projects").select("id, name, status, deadline, current_stage, clients(name)").eq("status", "active").order("deadline").limit(5),
-        supabase.from("clients").select("id", { count: "exact", head: true }),
+      const [projectsRes, keysRes, tasksRes, notifsRes, agendaRes] = await Promise.all([
+        fetch("/api/projects").then(r => r.json()).catch(() => ({ projects: [] })),
+        fetch("/api/keys").then(r => r.json()).catch(() => ({ keys: [] })),
         supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "in_progress"),
         userId ? supabase.from("notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10) : Promise.resolve({ data: [], count: 0 }),
         agendaFetch(`/api/agenda/tasks?date=${today}`).then(r => r.json()).catch(() => ({ tasks: [] })),
       ]);
 
-      setProjects((projectsRes.data ?? []) as unknown as Project[]);
+      const allProjects = ((projectsRes.projects ?? []) as Project[]);
+      const activeProjects = allProjects.filter((project) => project.status !== "completed");
+      const clientKeys = ((keysRes.keys ?? []) as AccessKey[]).filter((key) => key.role === "client");
+
+      setProjects(
+        activeProjects
+          .slice()
+          .sort((a, b) => {
+            if (!a.deadline && !b.deadline) return 0;
+            if (!a.deadline) return 1;
+            if (!b.deadline) return -1;
+            return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+          })
+          .slice(0, 5)
+      );
       setStats({
-        projects: projectsRes.data?.length ?? 0,
-        clients: clientsRes.count ?? 0,
+        projects: activeProjects.length,
+        clients: clientKeys.length,
+        connectedClients: clientKeys.filter((key) => Boolean(key.used_at)).length,
         tasks: tasksRes.count ?? 0,
       });
       setNotifications((notifsRes.data ?? []) as Notification[]);
@@ -74,6 +93,7 @@ export default function AdminDashboard() {
     const days = Math.ceil((new Date(p.deadline).getTime() - Date.now()) / 86400000);
     return days <= 10;
   });
+  const getClientName = (project: Project) => project.client_name ?? project.clients?.name ?? "Client non renseigné";
 
   if (loading) {
     return (
@@ -91,16 +111,16 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div style={{ padding: 32, background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
+    <div className="admin-dashboard-root" style={{ padding: 32, background: "#fbfbfb", minHeight: "100vh", ...jakartaSans }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
+      <div className="admin-dashboard-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.45px" }}>Dashboard</h1>
           <p style={{ color: "rgba(18,26,46,0.5)", marginTop: 4, fontSize: 14, margin: "4px 0 0" }}>
             {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
         </div>
-        <Link href="/admin/projects/new" style={{
+        <Link href="/admin/projects/new" className="admin-dashboard-new-project" style={{
           display: "flex", alignItems: "center", gap: 8,
           background: "linear-gradient(121deg, rgb(78,126,250) 9.99%, rgb(1,71,255) 82.49%)",
           color: "#fff", padding: "11px 16px", borderRadius: 10,
@@ -114,15 +134,15 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+      <div className="admin-dashboard-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
         {[
-          { label: "Projets actifs", value: stats.projects, icon: FolderKanban, bg: "#e8edff", color: "#0147ff", href: "/admin/projects", onClick: undefined },
-          { label: "Clients", value: stats.clients, icon: Users, bg: "#d5eeff", color: "#073e63", href: "/admin/clients", onClick: undefined },
-          { label: "Tâches en cours", value: stats.tasks, icon: CheckSquare, bg: "#fee6d0", color: "#663b12", href: "/admin/projects", onClick: undefined },
-          { label: "Notifications", value: unread, icon: Bell, bg: "#E1D1FA", color: "#6236AA", href: "#", onClick: () => setActiveTab("notifications") },
+          { label: "Projets actifs", value: stats.projects, helper: "hors terminés", icon: FolderKanban, bg: "#e8edff", color: "#0147ff", href: "/admin/projects", onClick: undefined },
+          { label: "Clients", value: stats.clients, helper: `${stats.connectedClients} connecté${stats.connectedClients !== 1 ? "s" : ""}`, icon: Users, bg: "#d5eeff", color: "#073e63", href: "/admin/clients", onClick: undefined },
+          { label: "Tâches en cours", value: stats.tasks, helper: "projets", icon: CheckSquare, bg: "#fee6d0", color: "#663b12", href: "/admin/projects", onClick: undefined },
+          { label: "Notifications", value: unread, helper: "non lues", icon: Bell, bg: "#E1D1FA", color: "#6236AA", href: "#", onClick: () => setActiveTab("notifications") },
         ].map((stat) => (
           <Link key={stat.label} href={stat.href} onClick={stat.onClick} style={{ textDecoration: "none" }}>
-            <div style={{ ...cardStyle, padding: 20 }}>
+            <div className="admin-dashboard-card" style={{ ...cardStyle, padding: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: stat.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <stat.icon size={18} style={{ color: stat.color }} />
@@ -131,16 +151,17 @@ export default function AdminDashboard() {
               </div>
               <p style={{ fontSize: 26, fontWeight: 700, color: "#121a2e", margin: 0, letterSpacing: "-0.5px" }}>{stat.value}</p>
               <p style={{ fontSize: 13, color: "rgba(18,26,46,0.5)", margin: "2px 0 0" }}>{stat.label}</p>
+              {stat.helper && <p style={{ fontSize: 11, color: "rgba(18,26,46,0.38)", margin: "4px 0 0" }}>{stat.helper}</p>}
             </div>
           </Link>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
+      <div className="admin-dashboard-content-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 24 }}>
         {/* Main panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div className="admin-dashboard-main-panel" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {/* Agenda du jour */}
-          <div style={{ ...cardStyle, overflow: "hidden" }}>
+          <div className="admin-dashboard-card" style={{ ...cardStyle, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <CalendarDays size={15} style={{ color: "#0147ff" }} />
@@ -184,8 +205,8 @@ export default function AdminDashboard() {
           </div>
 
           {/* Tasks / Notifications card */}
-          <div style={{ ...cardStyle, overflow: "hidden" }}>
-            <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+          <div className="admin-dashboard-card" style={{ ...cardStyle, overflow: "hidden" }}>
+            <div className="admin-dashboard-tabbar" style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
               {(["tasks", "notifications"] as const).map((t) => (
                 <button key={t} onClick={() => setActiveTab(t)} style={{
                   display: "flex", alignItems: "center", gap: 8,
@@ -219,7 +240,7 @@ export default function AdminDashboard() {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0, letterSpacing: "-0.3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
                               <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "2px 0 0" }}>
-                                {(p.clients as unknown as { name: string } | null)?.name ?? ""} · {p.current_stage ?? "En cours"}
+                                {getClientName(p)} · {p.current_stage ?? "En cours"}
                               </p>
                             </div>
                             {days !== null && (
@@ -276,9 +297,9 @@ export default function AdminDashboard() {
         </div>
 
         {/* Right panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        <div className="admin-dashboard-side-panel" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {/* Projets urgents */}
-          <div style={{ ...cardStyle, padding: 20 }}>
+          <div className="admin-dashboard-card" style={{ ...cardStyle, padding: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <AlertCircle size={15} style={{ color: "#d97706" }} />
@@ -297,7 +318,7 @@ export default function AdminDashboard() {
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 9 }}>
                         <div style={{ minWidth: 0 }}>
                           <p style={{ fontSize: 13, fontWeight: 600, color: "#121a2e", margin: 0, letterSpacing: "-0.3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</p>
-                          <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "1px 0 0" }}>{(p.clients as unknown as { name: string } | null)?.name ?? ""}</p>
+                          <p style={{ fontSize: 12, color: "rgba(18,26,46,0.4)", margin: "1px 0 0" }}>{getClientName(p)}</p>
                         </div>
                         <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, flexShrink: 0, marginLeft: 8, color: days <= 3 ? "#ef4444" : "#d97706" }}>
                           <Clock size={10} />{days}j
@@ -320,7 +341,7 @@ export default function AdminDashboard() {
                 { href: "/admin/agenda", label: "Habits", icon: <Flame size={16} style={{ color: "#dc2626" }} />, bg: "#fee6d0" },
               ].map(item => (
                 <Link key={item.href} href={item.href} style={{ textDecoration: "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 9 }}>
+                  <div className="admin-dashboard-list-row" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 9 }}>
                     <div style={{ width: 30, height: 30, borderRadius: 8, background: item.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       {item.icon}
                     </div>
@@ -352,6 +373,81 @@ export default function AdminDashboard() {
           </Link>
         </div>
       </div>
+
+      <style jsx global>{`
+        @media (max-width: 1023px) {
+          .admin-dashboard-root {
+            max-width: 100vw;
+            overflow-x: hidden;
+            padding: 24px 18px calc(104px + env(safe-area-inset-bottom)) !important;
+          }
+
+          .admin-dashboard-header {
+            align-items: flex-start !important;
+            flex-direction: column !important;
+            gap: 16px !important;
+            margin-bottom: 24px !important;
+          }
+
+          .admin-dashboard-new-project {
+            justify-content: center !important;
+            width: 100% !important;
+          }
+
+          .admin-dashboard-stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 12px !important;
+            margin-bottom: 24px !important;
+          }
+
+          .admin-dashboard-content-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+            gap: 18px !important;
+          }
+
+          .admin-dashboard-main-panel,
+          .admin-dashboard-side-panel {
+            gap: 18px !important;
+            min-width: 0;
+          }
+
+          .admin-dashboard-card {
+            min-width: 0;
+          }
+
+          .admin-dashboard-tabbar {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          .admin-dashboard-tabbar button {
+            flex: 0 0 auto;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .admin-dashboard-root {
+            padding: 18px 14px calc(110px + env(safe-area-inset-bottom)) !important;
+          }
+
+          .admin-dashboard-root h1 {
+            font-size: 24px !important;
+            line-height: 1.16 !important;
+          }
+
+          .admin-dashboard-stats-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+
+          .admin-dashboard-card {
+            border-radius: 16px !important;
+          }
+
+          .admin-dashboard-list-row {
+            align-items: flex-start !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
