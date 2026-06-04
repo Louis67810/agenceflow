@@ -159,6 +159,10 @@ export interface AgendaSettings {
   auto_schedule_enabled: boolean;
   recap_reminder_time: string;
   timezone: string;
+  pwa_notifications_enabled?: boolean;
+  morning_brief_enabled?: boolean;
+  morning_brief_time?: string;
+  recap_reminder_enabled?: boolean;
 }
 
 export interface DashboardStats {
