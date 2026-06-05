@@ -86,6 +86,25 @@ function formatDate(value?: string) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 }
 
+function useCoachViewport() {
+  const [viewportWidth, setViewportWidth] = useState(1280);
+
+  useEffect(() => {
+    function updateViewportWidth() {
+      setViewportWidth(window.innerWidth);
+    }
+
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
+  return {
+    isMobile: viewportWidth < 768,
+    isTablet: viewportWidth >= 768 && viewportWidth < 1100,
+  };
+}
+
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -102,7 +121,6 @@ export default function CoachPage() {
   const [plusHovered, setPlusHovered] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
-  const [viewportWidth, setViewportWidth] = useState(1280);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -111,8 +129,7 @@ export default function CoachPage() {
   const selectedToolEntry = TOOL_ACTIONS.find((entry) => entry.tool === selectedTool);
   const coachComposerRows = Math.min(7, Math.max(1, input.split("\n").length));
   const coachComposerExpanded = coachComposerRows > 1 || input.length > 96;
-  const isMobile = viewportWidth < 768;
-  const isTablet = viewportWidth >= 768 && viewportWidth < 1100;
+  const { isMobile, isTablet } = useCoachViewport();
   const contentLeft = isMobile ? 0 : chatPanelOpen ? 380 : 60;
   const mobileBottomNavHeight = 96;
   const coachShellHeight = isMobile ? `calc(100dvh - ${mobileBottomNavHeight}px)` : "100dvh";
@@ -124,16 +141,6 @@ export default function CoachPage() {
 
   useEffect(() => {
     void loadInitialData();
-  }, []);
-
-  useEffect(() => {
-    function updateViewportWidth() {
-      setViewportWidth(window.innerWidth);
-    }
-
-    updateViewportWidth();
-    window.addEventListener("resize", updateViewportWidth);
-    return () => window.removeEventListener("resize", updateViewportWidth);
   }, []);
 
   useEffect(() => {
