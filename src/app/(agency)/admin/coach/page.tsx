@@ -114,6 +114,8 @@ export default function CoachPage() {
   const isMobile = viewportWidth < 768;
   const isTablet = viewportWidth >= 768 && viewportWidth < 1100;
   const contentLeft = isMobile ? 0 : chatPanelOpen ? 380 : 60;
+  const mobileBottomNavHeight = 96;
+  const coachShellHeight = isMobile ? `calc(100dvh - ${mobileBottomNavHeight}px)` : "100dvh";
   const filteredConversations = (() => {
     const query = search.trim().toLowerCase();
     if (!query) return conversations;
@@ -265,7 +267,7 @@ export default function CoachPage() {
   }
 
   return (
-    <main style={{ height: isMobile ? "calc(100dvh - 96px)" : "100dvh", minHeight: isMobile ? 0 : 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
+    <main style={{ height: coachShellHeight, minHeight: isMobile ? 0 : 720, background: "#fbfbfb", color: "#121a2e", overflow: "hidden", position: "relative", ...jakartaSans }}>
       <div aria-hidden="true" style={{ position: "absolute", inset: "-28%", background: "linear-gradient(180deg, rgba(225,238,255,0.98) 0%, rgba(241,248,255,0.9) 34%, rgba(251,251,251,0.86) 62%, rgba(251,251,251,0.98) 100%), radial-gradient(ellipse at 50% 0%, rgba(1,71,255,0.26) 0%, rgba(84,200,255,0.18) 34%, rgba(255,255,255,0.46) 68%, rgba(255,255,255,0) 94%), radial-gradient(circle at 8% 4%, rgba(1,71,255,0.18), rgba(255,255,255,0) 34%), radial-gradient(circle at 96% 6%, rgba(1,71,255,0.2), rgba(255,255,255,0) 38%)", filter: "blur(8px)", pointerEvents: "none", opacity: loading ? 1 : 0.96, animation: "coachLoaderPulse 2.4s ease-in-out infinite alternate", zIndex: 1 }} />
 
       <aside style={{ position: "absolute", left: 0, top: 0, bottom: isMobile ? "auto" : 0, right: isMobile ? 0 : "auto", width: isMobile ? "100%" : 60, minHeight: isMobile ? 58 : "auto", background: "#fff", borderRight: isMobile ? 0 : "1px solid rgba(18,26,46,0.1)", borderBottom: isMobile ? "1px solid rgba(18,26,46,0.1)" : 0, zIndex: 20, display: "flex", flexDirection: isMobile ? "row" : "column", alignItems: "center", justifyContent: isMobile ? "center" : "flex-start", gap: isMobile ? 10 : 16, paddingTop: isMobile ? 10 : 26, paddingBottom: isMobile ? 10 : 0, boxShadow: isMobile ? "0 10px 26px rgba(18,26,46,0.06)" : "none" }}>
