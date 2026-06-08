@@ -22,12 +22,20 @@ export default function AgendaSettingsPage() {
     auto_schedule_enabled: true,
     recap_reminder_time: "18:30",
     timezone: "Europe/Paris",
+    pwa_notifications_enabled: false,
+    morning_brief_enabled: true,
+    morning_brief_time: "08:30",
+    recap_reminder_enabled: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [gcalMessage, setGcalMessage] = useState("");
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [pushMessage, setPushMessage] = useState("");
+  const [pushLoading, setPushLoading] = useState(false);
 
   useEffect(() => {
     agendaFetch("/api/agenda/settings")
@@ -46,6 +54,10 @@ export default function AgendaSettingsPage() {
     if (params.get("gcal") === "error") {
       setGcalMessage("Erreur lors de la connexion Google Calendar.");
     }
+
+    const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    setPushSupported(supported);
+    setPushPermission(supported ? Notification.permission : "unsupported");
   }, []);
 
   async function handleSave() {
@@ -77,6 +89,75 @@ export default function AgendaSettingsPage() {
     if (data.error) setGcalMessage(`Erreur: ${data.error}`);
     else setGcalMessage(`${data.imported ?? 0} événement(s) importé(s) comme créneaux bloqués.`);
     setGcalSyncing(false);
+  }
+
+
+  function urlBase64ToUint8Array(value: string) {
+    const padding = "=".repeat((4 - (value.length % 4)) % 4);
+    const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = window.atob(base64);
+    return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+  }
+
+  async function enablePushNotifications() {
+    setPushLoading(true);
+    setPushMessage("");
+    try {
+      if (!pushSupported) {
+        setPushMessage("Notifications non supportées sur ce navigateur. Sur iPhone, ajoute AgenceFlow à l’écran d’accueil puis ouvre l’app depuis l’icône.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      setPushPermission(permission);
+      if (permission !== "granted") {
+        setPushMessage("Autorisation refusée. Active les notifications dans les réglages du navigateur/iPhone.");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        setPushMessage("Clé VAPID publique manquante côté environnement.");
+        return;
+      }
+
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+
+      const response = await agendaFetch("/api/agenda/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: subscription.toJSON() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Impossible d’activer les notifications.");
+
+      update("pwa_notifications_enabled", true);
+      setPushMessage("Notifications activées sur cet appareil. Pense à sauvegarder les paramètres.");
+    } catch (error) {
+      setPushMessage(String(error));
+    } finally {
+      setPushLoading(false);
+    }
+  }
+
+  async function sendTestPush() {
+    setPushLoading(true);
+    setPushMessage("");
+    try {
+      const response = await agendaFetch("/api/agenda/push/test", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Notification test impossible.");
+      setPushMessage(data.sent > 0 ? `${data.sent} notification(s) test envoyée(s).` : "Aucun appareil abonné trouvé. Active d’abord les notifications.");
+    } catch (error) {
+      setPushMessage(String(error));
+    } finally {
+      setPushLoading(false);
+    }
   }
 
   function update(key: keyof ExtSettings, value: unknown) {
@@ -199,30 +280,85 @@ export default function AgendaSettingsPage() {
         </Section>
 
         {/* Notifications */}
-        <Section icon={<Bell size={16} />} title="Rappels">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Heure du récap journalier</label>
-              <input type="time" value={settings.recap_reminder_time ?? "18:30"} onChange={e => update("recap_reminder_time", e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+        <Section icon={<Bell size={16} />} title="Notifications PWA">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+              Sur iPhone, installe AgenceFlow sur l’écran d’accueil depuis Safari pour recevoir les notifications PWA. Aucun lien avec le temps d’écran n’est nécessaire.
             </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={enablePushNotifications}
+                disabled={pushLoading || !pushSupported}
+                className="flex items-center justify-center gap-2 rounded-full bg-[#0147FF] px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Bell size={14} />
+                {pushLoading ? "Activation..." : pushPermission === "granted" ? "Réactiver cet appareil" : "Activer sur cet appareil"}
+              </button>
+              <button
+                type="button"
+                onClick={sendTestPush}
+                disabled={pushLoading || pushPermission !== "granted"}
+                className="flex items-center justify-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Envoyer une notification test
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Notifications agenda activées</p>
+                <p className="text-xs text-gray-400">Active/désactive les envois automatiques côté serveur.</p>
+              </div>
+              <button onClick={() => update("pwa_notifications_enabled", !settings.pwa_notifications_enabled)} className={`relative h-6 w-11 rounded-full transition-colors ${settings.pwa_notifications_enabled ? "bg-[#0147FF]" : "bg-gray-200"}`}>
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.pwa_notifications_enabled ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Brief du matin</p>
+                    <p className="text-xs text-gray-400">Tâches, habitudes et priorité.</p>
+                  </div>
+                  <button onClick={() => update("morning_brief_enabled", !settings.morning_brief_enabled)} className={`relative h-6 w-11 rounded-full transition-colors ${settings.morning_brief_enabled ? "bg-[#0147FF]" : "bg-gray-200"}`}>
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.morning_brief_enabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
+                <label className="mb-1 block text-xs text-gray-500">Heure d’envoi</label>
+                <input type="time" value={settings.morning_brief_time ?? "08:30"} onChange={e => update("morning_brief_time", e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              </div>
+
+              <div className="rounded-xl border border-gray-200 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Rappel récap du soir</p>
+                    <p className="text-xs text-gray-400">Envoyé seulement si le récap n’est pas rempli.</p>
+                  </div>
+                  <button onClick={() => update("recap_reminder_enabled", !settings.recap_reminder_enabled)} className={`relative h-6 w-11 rounded-full transition-colors ${settings.recap_reminder_enabled ? "bg-[#0147FF]" : "bg-gray-200"}`}>
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${settings.recap_reminder_enabled ? "translate-x-6" : "translate-x-1"}`} />
+                  </button>
+                </div>
+                <label className="mb-1 block text-xs text-gray-500">Heure d’envoi</label>
+                <input type="time" value={settings.recap_reminder_time ?? "18:30"} onChange={e => update("recap_reminder_time", e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs text-gray-500 mb-1">Fuseau horaire</label>
-              <select value={settings.timezone ?? "Europe/Paris"} onChange={e => update("timezone", e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <option value="Europe/Paris">Europe/Paris (CET)</option>
-                <option value="Europe/London">Europe/London (GMT)</option>
-                <option value="America/New_York">America/New_York (EST)</option>
-                <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
-              </select>
+              <input value={settings.timezone ?? "Europe/Paris"} onChange={e => update("timezone", e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Europe/Paris" />
+              <p className="mt-1 text-xs text-gray-400">Utilisé par le cron pour envoyer les notifications à la bonne heure locale.</p>
             </div>
+
+            {pushMessage && (
+              <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                {pushMessage}
+              </div>
+            )}
           </div>
         </Section>
-      </div>
-
-      <div className="mt-6 flex justify-end">
-        <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 bg-[#121A2E] text-white rounded-full text-sm font-medium hover:bg-[#1a2540] disabled:opacity-50">
-          <Save size={15} />
-          {saving ? "Sauvegarde..." : saved ? "Sauvegardé ✓" : "Sauvegarder"}
-        </button>
       </div>
     </div>
   );
