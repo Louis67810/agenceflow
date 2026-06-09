@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getMissingSchemaColumn } from "@/lib/supabase/postgrest";
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,6 +28,10 @@ export async function GET(req: NextRequest) {
       auto_schedule_enabled: true,
       recap_reminder_time: "18:30",
       timezone: "Europe/Paris",
+      pwa_notifications_enabled: false,
+      morning_brief_enabled: true,
+      morning_brief_time: "08:30",
+      recap_reminder_enabled: true,
     };
 
     return NextResponse.json({ settings: data ?? defaults });
@@ -43,14 +48,21 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { data, error } = await supabase
-      .from("agenda_settings")
-      .upsert({ ...body, user_id: user.id, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-      .select()
-      .single();
+    const payload = { ...body, user_id: user.id, updated_at: new Date().toISOString() };
 
-    if (error) throw error;
-    return NextResponse.json({ settings: data });
+    while (true) {
+      const { data, error } = await supabase
+        .from("agenda_settings")
+        .upsert(payload, { onConflict: "user_id" })
+        .select()
+        .single();
+
+      if (!error) return NextResponse.json({ settings: data });
+
+      const missingColumn = getMissingSchemaColumn(error);
+      if (!missingColumn || !(missingColumn in payload)) throw error;
+      delete (payload as Record<string, unknown>)[missingColumn];
+    }
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
